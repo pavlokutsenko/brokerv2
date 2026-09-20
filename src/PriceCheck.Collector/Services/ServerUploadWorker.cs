@@ -8,7 +8,7 @@ namespace PriceCheck.Collector.Services;
 
 public static class ServerUploadWorker
 {
-    private const int ParallelUploads = 8;
+    private const int ParallelPriceUploads = 8;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public static async Task RunAsync(string directory, CancellationToken cancellationToken = default)
@@ -28,7 +28,7 @@ public static class ServerUploadWorker
             var idleSince = DateTimeOffset.UtcNow;
             while (!cancellationToken.IsCancellationRequested)
             {
-                var claimed = ClaimReady(directory, ParallelUploads);
+                var claimed = ClaimReady(directory, ParallelPriceUploads);
                 if (claimed.Count == 0)
                 {
                     if (DateTimeOffset.UtcNow - idleSince >= TimeSpan.FromMinutes(2)) return;
@@ -56,23 +56,33 @@ public static class ServerUploadWorker
         }
     }
 
-    private static IReadOnlyList<string> ClaimReady(string directory, int maximum)
+    private static IReadOnlyList<string> ClaimReady(string directory, int maximumPriceUploads)
     {
-        var claimed = new List<string>(maximum);
+        var claimed = new List<string>(maximumPriceUploads);
+        var ingestionClaimed = false;
+        var priceClaims = 0;
         foreach (var ready in Directory.EnumerateFiles(directory, "*.ready").OrderBy(path => path, StringComparer.Ordinal))
         {
+            ServerUploadEnvelope? envelope = null;
             try
             {
-                var envelope = JsonSerializer.Deserialize<ServerUploadEnvelope>(File.ReadAllText(ready), Json);
+                envelope = JsonSerializer.Deserialize<ServerUploadEnvelope>(File.ReadAllText(ready), Json);
                 if (envelope is not null && envelope.NextAttemptAtUtc > DateTimeOffset.UtcNow) continue;
             }
             catch (Exception exception) when (exception is JsonException or IOException) { }
+
+            var isIngestion = envelope?.Kind is "radar" or "broker";
+            if (isIngestion && ingestionClaimed) continue;
+            if (!isIngestion && priceClaims >= maximumPriceUploads) continue;
+
             var sending = Path.ChangeExtension(ready, $"sending.{Environment.ProcessId}");
             try
             {
                 File.Move(ready, sending);
                 claimed.Add(sending);
-                if (claimed.Count >= maximum) break;
+                if (isIngestion) ingestionClaimed = true;
+                else priceClaims++;
+                if (ingestionClaimed && priceClaims >= maximumPriceUploads) break;
             }
             catch (IOException) { }
         }

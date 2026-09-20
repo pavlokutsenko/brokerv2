@@ -34,14 +34,15 @@ from 533 to 107 units from `Smileyboy`, captured 11 buy rows, submitted them to
 the API, and then continued processing the server queue while the broker cycle
 remained active.
 
-The hot path does not rescan every actor before every trader. It reuses the
-PID-bound controller/player pointers and receives the current ObjectID, kiosk
-type and coordinates from the leased server job. A full actor scan runs only
-for initial PID cache creation. Older collector builds that pass only ObjectID
-use the captured shop response to determine buy/sell without rescanning the
-actor list. Each shop action sends the target packet twice: selection first,
-then the client's native follow/action command, which uses the game's own
-obstacle avoidance.
+The hot path does not rescan every actor before every trader. The central
+server coordinates leases between computers and returns the stable trader key.
+For a trader currently visible to this client's live radar, the collector uses
+the radar's fresh ObjectID, kiosk type and coordinates. Server observation data
+is only a fallback for a trader outside the current knownlist. The worker
+reuses the PID-bound controller/player pointers; a full actor scan runs only
+for initial PID cache creation. Each shop action sends the target packet twice:
+selection first, then the client's native follow/action command, which uses the
+game's own obstacle avoidance.
 
 For dense local groups, `price-sweep` uses the verified headless batch pipeline:
 up to 16 nearby traders are sent as double-target pairs and their ProcessEvent
@@ -62,9 +63,11 @@ after a successful response, and retries transport and server failures with
 bounded exponential backoff. Requests rejected permanently are preserved under
 `data/server-outbox/rejected` with the server error.
 
-One uploader drains up to eight independent requests concurrently. This keeps
-network latency from throttling dense shop capture when several price-verifier
-profiles or computers send results to the same server.
+One uploader drains up to eight price results concurrently. Radar and broker
+snapshots share a separate serialized lane with at most one in flight because
+each snapshot updates thousands of market rows under the market lock. This
+keeps network latency from throttling dense shop capture without exhausting
+the API database pool with ingestion requests waiting for the same lock.
 
 Multiple collector instances may write the same outbox concurrently. Unique
 request names prevent producer collisions and a directory-specific named mutex

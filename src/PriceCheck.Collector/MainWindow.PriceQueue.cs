@@ -6,7 +6,9 @@ namespace PriceCheck.Collector;
 
 public partial class MainWindow
 {
-    private sealed record LeasedPriceJob(PriceQueueJob Job, string WorkerId, long ObjectId);
+    private sealed record LeasedPriceJob(
+        PriceQueueJob Job, string WorkerId, long ObjectId, int KioskType,
+        string TraderName, double? X, double? Y);
 
     private void TryStartPriceWorker(ProfileRuntime runtime, RadarSnapshot radar)
     {
@@ -36,7 +38,7 @@ public partial class MainWindow
                 return;
             }
             leases.Add(first);
-            var local = IsLocal(first.Job, radar, 95);
+            var local = IsLocal(first, radar, 95);
             LeasedPriceJob? travel = local ? null : first;
             if (local)
             {
@@ -45,7 +47,7 @@ public partial class MainWindow
                     var next = await ClaimLeaseAsync(runtime, radar, workerBase, index);
                     if (next is null) break;
                     leases.Add(next);
-                    if (!IsLocal(next.Job, radar, 95)) { travel = next; break; }
+                    if (!IsLocal(next, radar, 95)) { travel = next; break; }
                 }
                 var batch = travel is null ? leases : leases.Where(item => item != travel).ToList();
                 if (batch.Count > 0) await RunLocalPriceBatchAsync(runtime, pid, batch, settled);
@@ -78,17 +80,30 @@ public partial class MainWindow
         var workerId = $"{workerBase}:{index}";
         var job = await _marketApi.ClaimPriceJobAsync(runtime.Profile, radar, workerId);
         if (job is null) return null;
-        if (!long.TryParse(job.ObjectId, out var objectId) || objectId <= 0)
+        var radarTrader = radar.Traders
+            .Where(item => item.IsVisible)
+            .FirstOrDefault(item =>
+                item.Name.Equals(job.TraderKey, StringComparison.OrdinalIgnoreCase) ||
+                item.Name.Equals(job.TraderName, StringComparison.OrdinalIgnoreCase));
+        var objectId = radarTrader is not null
+            ? radarTrader.ObjectId
+            : long.TryParse(job.ObjectId, out var serverObjectId) ? serverObjectId : 0;
+        if (objectId <= 0)
         {
             await _uploadOutbox.EnqueuePriceFailureAsync(runtime.Profile, job, workerId, "У задачи нет актуального ObjectID");
             return null;
         }
-        Log($"{runtime.Profile.Name}: взят {job.TraderName} ({job.TraderId})");
-        return new LeasedPriceJob(job, workerId, objectId);
+        var name = radarTrader?.Name ?? job.TraderName;
+        var kioskType = radarTrader?.KioskType ?? job.KioskType;
+        var x = radarTrader?.X ?? job.X;
+        var y = radarTrader?.Y ?? job.Y;
+        Log($"{runtime.Profile.Name}: взят {name} ({job.TraderId})" +
+            (radarTrader is null ? " · координаты сервера" : " · найден локальным радаром"));
+        return new LeasedPriceJob(job, workerId, objectId, kioskType, name, x, y);
     }
 
-    private static bool IsLocal(PriceQueueJob job, RadarSnapshot radar, double radius) =>
-        job.X is double x && job.Y is double y && Math.Sqrt(Math.Pow(x - radar.PlayerX, 2) + Math.Pow(y - radar.PlayerY, 2)) <= radius;
+    private static bool IsLocal(LeasedPriceJob lease, RadarSnapshot radar, double radius) =>
+        lease.X is double x && lease.Y is double y && Math.Sqrt(Math.Pow(x - radar.PlayerX, 2) + Math.Pow(y - radar.PlayerY, 2)) <= radius;
 
     private async Task RunLocalPriceBatchAsync(ProfileRuntime runtime, int pid, IReadOnlyList<LeasedPriceJob> batch, HashSet<string> settled)
     {
@@ -97,7 +112,7 @@ public partial class MainWindow
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff");
         var input = Path.Combine(folder, $"{runtime.Profile.Name}-batch-{stamp}.input.json");
         var output = Path.Combine(folder, $"{runtime.Profile.Name}-batch-{stamp}.json");
-        var targets = batch.Select(item => new { object_id = item.ObjectId, kiosk_type = item.Job.KioskType, name = item.Job.TraderName, x = item.Job.X, y = item.Job.Y }).ToArray();
+        var targets = batch.Select(item => new { object_id = item.ObjectId, kiosk_type = item.KioskType, name = item.TraderName, x = item.X, y = item.Y }).ToArray();
         await File.WriteAllTextAsync(input, JsonSerializer.Serialize(targets));
         await RunWorkerAsync(pid, "price-batch", output, start => { start.ArgumentList.Add("--input"); start.ArgumentList.Add(input); });
         var capture = JsonSerializer.Deserialize<PriceBatchCaptureFile>(await File.ReadAllTextAsync(output)) ?? throw new InvalidDataException("Batch Worker вернул пустой снимок");
@@ -117,7 +132,7 @@ public partial class MainWindow
 
     private async Task RunTravelPriceJobAsync(ProfileRuntime runtime, int pid, LeasedPriceJob lease, HashSet<string> settled)
     {
-        runtime.Status = $"Иду к {lease.Job.TraderName} · попытка {lease.Job.AttemptCount}";
+        runtime.Status = $"Иду к {lease.TraderName} · попытка {lease.Job.AttemptCount}";
         var folder = Path.Combine(AppContext.BaseDirectory, "price-snapshots"); Directory.CreateDirectory(folder);
         var output = Path.Combine(folder, $"{runtime.Profile.Name}-{lease.Job.TraderId}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
         using var heartbeatCancellation = new CancellationTokenSource();
@@ -127,16 +142,16 @@ public partial class MainWindow
             await RunWorkerAsync(pid, "price", output, start =>
             {
                 start.ArgumentList.Add("--object-id"); start.ArgumentList.Add(lease.ObjectId.ToString());
-                start.ArgumentList.Add("--kiosk-type"); start.ArgumentList.Add(lease.Job.KioskType.ToString());
-                start.ArgumentList.Add("--trader-name"); start.ArgumentList.Add(lease.Job.TraderName);
-                if (lease.Job.X is double x) { start.ArgumentList.Add("--target-x"); start.ArgumentList.Add(x.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
-                if (lease.Job.Y is double y) { start.ArgumentList.Add("--target-y"); start.ArgumentList.Add(y.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+                start.ArgumentList.Add("--kiosk-type"); start.ArgumentList.Add(lease.KioskType.ToString());
+                start.ArgumentList.Add("--trader-name"); start.ArgumentList.Add(lease.TraderName);
+                if (lease.X is double x) { start.ArgumentList.Add("--target-x"); start.ArgumentList.Add(x.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
+                if (lease.Y is double y) { start.ArgumentList.Add("--target-y"); start.ArgumentList.Add(y.ToString(System.Globalization.CultureInfo.InvariantCulture)); }
             });
         }
         finally { heartbeatCancellation.Cancel(); try { await heartbeat; } catch (OperationCanceledException) { } }
         var capture = JsonSerializer.Deserialize<ShopCaptureFile>(await File.ReadAllTextAsync(output)) ?? throw new InvalidDataException("Price Worker вернул пустой снимок");
         await _uploadOutbox.EnqueuePriceResultAsync(runtime.Profile, lease.Job, capture, lease.WorkerId); settled.Add(lease.Job.TraderId);
-        Log($"{runtime.Profile.Name}: {lease.Job.TraderName} проверен, {capture.Rows.Count} строк");
+        Log($"{runtime.Profile.Name}: {lease.TraderName} проверен, {capture.Rows.Count} строк");
     }
 
     private static async Task RunWorkerAsync(int pid, string mode, string output, Action<ProcessStartInfo> configure)
