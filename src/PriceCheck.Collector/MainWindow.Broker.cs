@@ -24,24 +24,22 @@ public partial class MainWindow
             if (!runtime.IsCollectionEnabled || runtime.ProcessId is not int pid) return;
             runtime.Status = "Брокер: получаю все лавки…";
             Log($"{runtime.Profile.Name}: брокерный проход запущен");
-            var toolFolder = runtime.Profile.BrokerToolFolder;
-            var script = Path.Combine(toolFolder, "collect-broker-inventory.ps1");
-            if (!File.Exists(script)) throw new FileNotFoundException("Не найден инструмент брокера", script);
-            await WriteBrokerActorSnapshotAsync(toolFolder, pid, radar);
+            var worker = Path.Combine(AppContext.BaseDirectory, "BrokerRuntime", "BrokerWorker.exe");
+            if (!File.Exists(worker)) throw new FileNotFoundException("В поставке коллектора отсутствует BrokerWorker", worker);
             var outputFolder = Path.Combine(AppContext.BaseDirectory, "broker-snapshots");
             Directory.CreateDirectory(outputFolder);
             var output = Path.Combine(outputFolder, $"{runtime.Profile.Name}-{runtime.Profile.City}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
             var start = new ProcessStartInfo
             {
-                FileName = "powershell.exe",
-                WorkingDirectory = toolFolder,
+                FileName = worker,
+                WorkingDirectory = Path.GetDirectoryName(worker)!,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            start.ArgumentList.Add("-NoProfile"); start.ArgumentList.Add("-ExecutionPolicy"); start.ArgumentList.Add("Bypass");
-            start.ArgumentList.Add("-File"); start.ArgumentList.Add(script); start.ArgumentList.Add("-Output"); start.ArgumentList.Add(output);
+            start.ArgumentList.Add("--pid"); start.ArgumentList.Add(pid.ToString());
+            start.ArgumentList.Add("--output"); start.ArgumentList.Add(output);
             using var process = Process.Start(start) ?? throw new InvalidOperationException("Не удалось запустить брокерный проход");
             var stdoutTask = process.StandardOutput.ReadToEndAsync(); var stderrTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync(); var stdout = await stdoutTask; var stderr = await stderrTask;
@@ -76,24 +74,6 @@ public partial class MainWindow
             _brokerRunningProfiles.Remove(runtime.Profile.Id);
             if (_brokerCycleGate.CurrentCount == 0) _brokerCycleGate.Release();
         }
-    }
-
-    private static async Task WriteBrokerActorSnapshotAsync(string toolFolder, int pid, RadarSnapshot radar)
-    {
-        var path = Path.Combine(toolFolder, "diagnostics", "latest_actor_snapshot.json");
-        var payload = new
-        {
-            pid,
-            player = new { x = radar.PlayerX, y = radar.PlayerY, z = 0 },
-            traders = radar.Traders.Where(x => x.IsVisible).Select(x => new
-            {
-                object_id = x.ObjectId, name = x.Name, kiosk_type = x.KioskType,
-                x = x.X, y = x.Y, z = 0
-            }).ToArray()
-        };
-        var temporary = path + ".collector.tmp";
-        await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
-        File.Move(temporary, path, true);
     }
 
     private void StopBrokerSchedule(ProfileRuntime runtime)

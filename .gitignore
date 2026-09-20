@@ -9,3 +9,8 @@ artifacts/
 !native/LU4Memory/artifacts/verified/**
 screenshots/
 native/LU4Memory/build/
+release/
+tools/BrokerWorker/stage/
+tools/BrokerWorker/dist/
+src/PriceCheck.Collector/BrokerRuntime/
+src/PriceCheck.Collector/BrokerRuntime.zip

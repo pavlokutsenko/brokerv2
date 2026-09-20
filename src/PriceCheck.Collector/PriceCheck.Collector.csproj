@@ -8,5 +8,7 @@
     <AssemblyName>PriceCheck.Collector</AssemblyName>
     <RootNamespace>PriceCheck.Collector</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Include="BrokerRuntime\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
-

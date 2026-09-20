@@ -2,9 +2,9 @@
 
 ## Repository boundary
 
-This repository contains only the production collector application. Live
-reverse-engineering scripts, packet probes, dumps and experiment artifacts stay
-in the separate research directories and are never copied here.
+This repository contains the production collector and the minimal source set
+needed to reproduce its broker worker. Runtime execution never reads scripts,
+state or binaries from a separate research directory.
 
 ## Modules
 
@@ -105,9 +105,8 @@ PID ownership and collection start/stop state are session-only.
 ## Current milestone
 
 The collector now owns client launch, signature resolution, receive-hook
-installation, packet-ring draining and the in-memory entity table. Archived
-research JSON is not displayed in production. Broker cards stay empty until a
-live broker epoch owned by the same profile is implemented.
+installation, packet-ring draining, the in-memory entity table and live broker
+epochs. Archived research JSON is not displayed in production.
 
 The runtime entity table and market trader catalog have different lifetimes.
 `DeleteObject` removes an actor from the current knownlist but only marks a
@@ -136,8 +135,10 @@ shop inventory is complete. Broker inventory is a separate source and can mark
 one trader's item list complete without coupling radar state to shop contents.
 
 For `BrokerRadar` profiles, enabling collection also starts a broker inventory
-cycle immediately. The cycle queries store types 1, 3, and 8 through the
-validated research harness, uploads complete per-trader item sets, and repeats
-at `BrokerIntervalMinutes`. Broker work runs asynchronously while the receive
-radar continues. A single global broker gate protects the shared ProcessEvent
-capture state when multiple profiles exist.
+cycle immediately. The bundled `BrokerWorker` discovers the current client's
+addresses, installs its PID-scoped temporary hooks, queries store types 1, 3,
+and 8, rolls the hooks back in `finally`, and returns one complete inventory.
+The collector uploads that inventory and repeats at `BrokerIntervalMinutes`.
+Broker work runs asynchronously while the receive radar continues. A single
+global broker gate serializes the temporary ProcessEvent capture when several
+profiles exist.
