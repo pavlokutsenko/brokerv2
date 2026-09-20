@@ -32,11 +32,14 @@ Infrastructure.Windows
 Runtime.Driver
   Lu4Device             IOCTL transport only
   ProcessMemory         bounded typed reads
+  RemoteMemory          bounded allocate/protect/free
 
 Runtime.Radar
-  WorldLocator          GWorld discovery/validation
-  ActorSnapshotReader   coherent actor-array read
-  TraderMapper          actor -> domain trader
+  HookSignatureScanner  unique executable-section AOB resolution
+  ReceiveHookSession    datacave/ring install and exact rollback
+  PacketRingReader      coherent plaintext packet dequeue
+  WorldPacketDecoder    packet -> entity updates
+  TraderMapper          network entity -> domain trader
   RadarLifecycle        generations and transitions
 
 Runtime.Broker
@@ -77,6 +80,9 @@ may deny `ExecutablePath` reads.
   constants.
 - Driver transport is read/write mechanics only; radar, broker and movement
   behavior never accumulate in one driver class.
+- Production radar is reconstructed from the decrypted receive-packet stream.
+  `GWorld`/actor-array reads remain diagnostic fallback only and are not a
+  normal client-update dependency.
 - Every hook has an owner session and a `finally` rollback path.
 - Research JSON support is a temporary adapter and cannot leak into domain
   models or future server contracts.
@@ -85,5 +91,5 @@ may deny `ExecutablePath` reads.
 
 The first UI milestone implements profiles, multi-process ownership, client
 launch/attachment and the broker/radar dashboard. Current metrics are supplied
-by a replaceable research JSON adapter while the native read-only radar runtime
-is ported behind the same application boundary.
+by a replaceable research JSON adapter while the packet-ring radar runtime is
+ported behind the same application boundary.
