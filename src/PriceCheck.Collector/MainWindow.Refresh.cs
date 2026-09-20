@@ -1,5 +1,3 @@
-using System.Net.Http;
-
 namespace PriceCheck.Collector;
 
 public partial class MainWindow
@@ -84,16 +82,16 @@ public partial class MainWindow
         if (unchanged && recentlyUploaded) return;
         try
         {
-            await _marketApi.UploadRadarAsync(runtime.Profile, radar);
+            await _uploadOutbox.EnqueueRadarAsync(runtime.Profile, radar);
             _lastUploadedRadarFingerprints[runtime.Profile.Id] = fingerprint;
             _lastRadarUploads[runtime.Profile.Id] = now;
         }
-        catch (HttpRequestException exception)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             if (!_lastRadarUploads.TryGetValue(runtime.Profile.Id, out var failedAt) || now - failedAt >= TimeSpan.FromSeconds(30))
             {
                 _lastRadarUploads[runtime.Profile.Id] = now;
-                Log($"{runtime.Profile.Name}: сервер недоступен — {exception.Message}");
+                Log($"{runtime.Profile.Name}: очередь отправки недоступна — {exception.Message}");
             }
         }
     }

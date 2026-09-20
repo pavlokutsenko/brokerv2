@@ -48,7 +48,7 @@ public partial class MainWindow
                 throw new InvalidDataException("Пустой результат брокера");
             if (runtime.IsCollectionEnabled)
             {
-                await _marketApi.UploadBrokerAsync(runtime.Profile, inventory);
+                await _uploadOutbox.EnqueueBrokerAsync(runtime.Profile, inventory);
                 runtime.Broker = new BrokerSnapshot
                 {
                     UniqueTraders = inventory.Summary.UniqueTraders,
@@ -60,7 +60,7 @@ public partial class MainWindow
                     CapturedAtUtc = inventory.CapturedAtUtc
                 };
                 runtime.Status = "Радар и брокер работают";
-                Log($"{runtime.Profile.Name}: брокер отправлен — {inventory.Summary.UniqueTraders:N0} трейдеров, {inventory.Summary.ListingRows:N0} строк");
+                Log($"{runtime.Profile.Name}: брокер поставлен на отправку — {inventory.Summary.UniqueTraders:N0} трейдеров, {inventory.Summary.ListingRows:N0} строк");
             }
         }
         catch (Exception exception)

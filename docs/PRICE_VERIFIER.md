@@ -33,3 +33,42 @@ same time. Both processes held a driver handle concurrently. The verifier moved
 from 533 to 107 units from `Smileyboy`, captured 11 buy rows, submitted them to
 the API, and then continued processing the server queue while the broker cycle
 remained active.
+
+The hot path does not rescan every actor before every trader. It reuses the
+PID-bound controller/player pointers and receives the current ObjectID, kiosk
+type and coordinates from the leased server job. A full actor scan runs only
+for initial PID cache creation. Older collector builds that pass only ObjectID
+use the captured shop response to determine buy/sell without rescanning the
+actor list. Each shop action sends the target packet twice: selection first,
+then the client's native follow/action command, which uses the game's own
+obstacle avoidance.
+
+For dense local groups, `price-sweep` uses the verified headless batch pipeline:
+up to 16 nearby traders are sent as double-target pairs and their ProcessEvent
+responses are collected from the capture ring together. The 2026-09-20 baseline
+captured 16 shops in 0.926 seconds at one position; a 30-shop route with two
+short movements averaged 8.154 shops/second overall.
+
+## Independent server delivery
+
+Radar, broker and price captures never wait for an HTTP upload. The collector
+serializes each request into `data/server-outbox` beside the application and
+publishes it with an atomic `.tmp` to `.ready` rename. It immediately continues
+the capture loop after the local durable write.
+
+`PriceCheck.Collector.exe --upload-worker` is a separate headless process. It
+claims ready files, posts them to their configured server, deletes them only
+after a successful response, and retries transport and server failures with
+bounded exponential backoff. Requests rejected permanently are preserved under
+`data/server-outbox/rejected` with the server error.
+
+One uploader drains up to eight independent requests concurrently. This keeps
+network latency from throttling dense shop capture when several price-verifier
+profiles or computers send results to the same server.
+
+Multiple collector instances may write the same outbox concurrently. Unique
+request names prevent producer collisions and a directory-specific named mutex
+allows only one delivery process to drain that directory. Collectors on other
+computers use their own durable outbox and the same central API. Price queue
+worker IDs include machine, profile, timestamp and batch slot, so simultaneous
+price verifiers retain independent leases.

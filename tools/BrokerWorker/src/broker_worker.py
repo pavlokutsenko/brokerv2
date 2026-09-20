@@ -131,10 +131,97 @@ def prepare_price(pid: int) -> None:
     run_script(DIAGNOSTICS / "process_event_shop_capture.py", "suppress-target-ui", "on")
 
 
-def collect_price(pid: int, object_id: int, output: Path) -> None:
+def collect_price(
+    pid: int,
+    object_id: int,
+    output: Path,
+    kiosk_type: int | None = None,
+    trader_name: str | None = None,
+    target_x: float | None = None,
+    target_y: float | None = None,
+) -> None:
     prepare_price(pid)
-    run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", DIAGNOSTICS / "latest_actor_snapshot.json")
-    run_script(DIAGNOSTICS / "event_shop_cycle.py", "--object-id", object_id, "--timeout", 45, "--json", output, timeout=60)
+    snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
+    if not json_matches_pid(snapshot, pid):
+        run_script(
+            DIAGNOSTICS / "scan_lu4_actors.py",
+            pid,
+            "--limit",
+            100,
+            "--json",
+            snapshot,
+        )
+    arguments: list[object] = [
+        "--object-id",
+        object_id,
+        "--pid",
+        pid,
+        "--timeout",
+        45,
+        "--json",
+        output,
+    ]
+    arguments.extend(("--kiosk-type", kiosk_type or 0))
+    if trader_name:
+        arguments.extend(("--trader-name", trader_name))
+    if target_x is not None:
+        arguments.extend(("--target-x", target_x))
+    if target_y is not None:
+        arguments.extend(("--target-y", target_y))
+    run_script(DIAGNOSTICS / "event_shop_cycle.py", *arguments, timeout=60)
+
+
+def sweep_prices(
+    pid: int,
+    output: Path,
+    radius: float,
+    max_shops: int,
+    batch_size: int,
+) -> None:
+    prepare_price(pid)
+    snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
+    if not json_matches_pid(snapshot, pid):
+        run_script(
+            DIAGNOSTICS / "scan_lu4_actors.py",
+            pid,
+            "--limit",
+            100,
+            "--json",
+            snapshot,
+        )
+    run_script(
+        DIAGNOSTICS / "fast_headless_shop_sweep.py",
+        "--radius",
+        radius,
+        "--max-shops",
+        max_shops,
+        "--batch-size",
+        batch_size,
+        "--timeout",
+        2,
+        "--json",
+        output,
+        timeout=60,
+    )
+
+
+def collect_price_batch(pid: int, input_path: Path, output: Path) -> None:
+    prepare_price(pid)
+    snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
+    if not json_matches_pid(snapshot, pid):
+        run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", snapshot)
+    run_script(
+        DIAGNOSTICS / "event_shop_batch.py",
+        "--pid",
+        pid,
+        "--input",
+        input_path.resolve(),
+        "--timeout",
+        2,
+        "--json",
+        output,
+        timeout=15,
+    )
 
 
 def cleanup_price(pid: int) -> None:
@@ -160,17 +247,45 @@ def main() -> int:
         return 0
 
     parser = argparse.ArgumentParser(description="PriceCheck embedded market worker")
-    parser.add_argument("--mode", choices=("broker", "price-prepare", "price", "cleanup"), default="broker")
+    parser.add_argument("--mode", choices=("broker", "price-prepare", "price", "price-batch", "price-sweep", "cleanup"), default="broker")
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--object-id", type=int)
+    parser.add_argument("--kiosk-type", type=int, choices=(1, 3, 8))
+    parser.add_argument("--trader-name")
+    parser.add_argument("--target-x", type=float)
+    parser.add_argument("--target-y", type=float)
+    parser.add_argument("--radius", type=float, default=95.0)
+    parser.add_argument("--max-shops", type=int, default=16)
+    parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--input", type=Path)
     args = parser.parse_args()
     if args.mode == "price-prepare":
         prepare_price(args.pid)
     elif args.mode == "price":
         if args.object_id is None:
             parser.error("--object-id is required in price mode")
-        collect_price(args.pid, args.object_id, args.output.resolve())
+        collect_price(
+            args.pid,
+            args.object_id,
+            args.output.resolve(),
+            args.kiosk_type,
+            args.trader_name,
+            args.target_x,
+            args.target_y,
+        )
+    elif args.mode == "price-sweep":
+        sweep_prices(
+            args.pid,
+            args.output.resolve(),
+            args.radius,
+            args.max_shops,
+            args.batch_size,
+        )
+    elif args.mode == "price-batch":
+        if args.input is None:
+            parser.error("--input is required in price-batch mode")
+        collect_price_batch(args.pid, args.input, args.output.resolve())
     elif args.mode == "cleanup":
         cleanup_price(args.pid)
     else:

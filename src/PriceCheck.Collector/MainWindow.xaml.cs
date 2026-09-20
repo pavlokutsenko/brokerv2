@@ -16,6 +16,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IClientProcessService _processes = new ClientProcessService();
     private readonly RadarSessionManager _radarSessions = new();
     private readonly MarketApiClient _marketApi = new();
+    private readonly ServerUploadOutbox _uploadOutbox = new();
     private readonly Dictionary<Guid, string> _lastUploadedRadarFingerprints = [];
     private readonly Dictionary<Guid, DateTimeOffset> _lastRadarUploads = [];
     private readonly SemaphoreSlim _brokerCycleGate = new(1, 1);
@@ -51,6 +52,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent();
         DataContext = this;
+        UploadWorkerProcess.EnsureRunning();
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _refreshTimer.Tick += async (_, _) => await RefreshAllAsync();
         Loaded += MainWindow_Loaded;

@@ -51,7 +51,7 @@ def event_shop_cycle(
     pid = int(snapshot["pid"])
     object_id = int(trader["object_id"])
     kiosk_type = int(trader["kiosk_type"])
-    expected_side = "buy" if kiosk_type == 3 else "sell"
+    expected_side = "buy" if kiosk_type == 3 else ("sell" if kiosk_type in (1, 8) else None)
     player_actor = int(str(snapshot["player_actor"]), 16)
     capture_state = load_state()
     if int(capture_state["pid"]) != pid:
@@ -117,7 +117,7 @@ def event_shop_cycle(
     cleanup_completed = time.perf_counter()
 
     rows = list(capture["rows"])
-    if capture["side"] != expected_side:
+    if expected_side is not None and capture["side"] != expected_side:
         raise RuntimeError(
             f"shop side mismatch: expected={expected_side} got={capture['side']}"
         )
@@ -167,6 +167,11 @@ def main() -> int:
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--name")
     target.add_argument("--object-id", type=int)
+    parser.add_argument("--pid", type=int)
+    parser.add_argument("--kiosk-type", type=int, choices=(0, 1, 3, 8))
+    parser.add_argument("--trader-name")
+    parser.add_argument("--target-x", type=float)
+    parser.add_argument("--target-y", type=float)
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
@@ -175,13 +180,24 @@ def main() -> int:
             encoding="utf-8"
         )
     )
-    matches = [
-        item
-        for item in snapshot.get("named", [])
-        if ((args.object_id is not None and int(item.get("object_id", 0)) == args.object_id)
-            or (args.name is not None and str(item.get("name", "")).casefold() == args.name.casefold()))
-        and int(item.get("kiosk_type", 0)) in (1, 3, 8)
-    ]
+    if args.pid is not None and int(snapshot.get("pid", -1)) != args.pid:
+        raise RuntimeError("cached actor snapshot belongs to another PID")
+    if args.object_id is not None and args.kiosk_type is not None:
+        matches = [{
+            "object_id": args.object_id,
+            "kiosk_type": args.kiosk_type,
+            "name": args.trader_name or "",
+            "x": args.target_x,
+            "y": args.target_y,
+        }]
+    else:
+        matches = [
+            item
+            for item in snapshot.get("named", [])
+            if ((args.object_id is not None and int(item.get("object_id", 0)) == args.object_id)
+                or (args.name is not None and str(item.get("name", "")).casefold() == args.name.casefold()))
+            and int(item.get("kiosk_type", 0)) in (1, 3, 8)
+        ]
     if len(matches) != 1:
         raise RuntimeError(f"expected one live named trader, found {len(matches)}")
     result = event_shop_cycle(matches[0], snapshot, args.timeout)

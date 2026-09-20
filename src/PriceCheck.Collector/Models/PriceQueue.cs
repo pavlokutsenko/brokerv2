@@ -33,3 +33,29 @@ public sealed class ShopCaptureRow
     [JsonPropertyName("buy_count")] public long BuyCount { get; init; }
     [JsonPropertyName("base_price")] public long BasePrice { get; init; }
 }
+
+public sealed class PriceBatchCaptureFile
+{
+    [JsonPropertyName("shops")] public IReadOnlyList<PriceBatchShopCapture> Shops { get; init; } = [];
+    [JsonPropertyName("failures")] public IReadOnlyList<PriceBatchFailure> Failures { get; init; } = [];
+    [JsonPropertyName("elapsed_seconds")] public double ElapsedSeconds { get; init; }
+    [JsonPropertyName("shops_per_second")] public double ShopsPerSecond { get; init; }
+}
+
+public sealed class PriceBatchShopCapture
+{
+    [JsonPropertyName("trader")] public PriceBatchTrader Trader { get; init; } = new();
+    [JsonPropertyName("side")] public string Side { get; init; } = "sell";
+    [JsonPropertyName("rows")] public IReadOnlyList<ShopCaptureRow> Rows { get; init; } = [];
+}
+
+public sealed class PriceBatchTrader
+{
+    [JsonPropertyName("object_id")] public long ObjectId { get; init; }
+}
+
+public sealed class PriceBatchFailure
+{
+    [JsonPropertyName("object_id")] public long ObjectId { get; init; }
+    [JsonPropertyName("error")] public string Error { get; init; } = "Лавка не ответила";
+}
