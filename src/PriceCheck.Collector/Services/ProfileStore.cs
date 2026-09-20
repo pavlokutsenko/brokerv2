@@ -18,12 +18,13 @@ public sealed class ProfileStore : IProfileStore
 
     public ProfileStore()
     {
-        var root = Path.Combine(
+        _path = Path.Combine(AppContext.BaseDirectory, "profiles.json");
+        var legacyRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PriceCheck",
             "CollectorNext");
-        Directory.CreateDirectory(root);
-        _path = Path.Combine(root, "profiles.json");
+        var legacyPath = Path.Combine(legacyRoot, "profiles.json");
+        if (!File.Exists(_path) && File.Exists(legacyPath)) File.Copy(legacyPath, _path);
     }
 
     public async Task<IReadOnlyList<CollectorProfile>> LoadAsync()

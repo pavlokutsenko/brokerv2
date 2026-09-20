@@ -52,8 +52,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _profileStore.SaveAsync(Runtimes.Select(runtime => runtime.Profile));
 
     private static MarketZone? GetCenterZone(CollectorProfile profile) =>
-        profile.CenterZoneX is double x && profile.CenterZoneY is double y
-            ? new MarketZone(x, y, 500)
+        profile.CenterZonesByCity.TryGetValue(profile.City, out var center) &&
+        double.IsFinite(center.X) && double.IsFinite(center.Y)
+            ? new MarketZone(center.X, center.Y, 500)
             : null;
 
     private void Log(string value)

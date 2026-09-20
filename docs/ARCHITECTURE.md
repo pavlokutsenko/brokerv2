@@ -74,6 +74,19 @@ enters the world, and failed hook setup terminates that owned client. Process
 paths are hints only because the protected client may deny `ExecutablePath`
 reads.
 
+## Local configuration
+
+All persistent collector settings are stored in `profiles.json` beside
+`PriceCheck.Collector.exe`. On the first run after this change, the application
+copies the previous `%LOCALAPPDATA%\PriceCheck\CollectorNext\profiles.json` when
+the new file does not yet exist.
+
+Central-zone coordinates belong to a profile and city. Switching between
+`Giran` and `Gludio` selects that city's saved center automatically; marking or
+resetting a center changes only the currently selected city. The market name,
+city, role, client path, broker interval and city centers are persisted. Live
+PID ownership and collection start/stop state are session-only.
+
 ## Size and dependency rules
 
 - Prefer one responsibility per source file.

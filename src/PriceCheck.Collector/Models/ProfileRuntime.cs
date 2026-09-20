@@ -23,8 +23,8 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
     public string RoleLabel => Profile.Role == CollectorRole.BrokerRadar ? "БРОКЕР" : "ЦЕНЫ";
     public string ProcessLabel => ProcessId is int pid ? $"PID {pid}" : "нет процесса";
     public string RadarTraderCount => Radar is null ? "—" : $"{Radar.Traders.Count:N0} / {Radar.VisibleTraders:N0}";
-    public string CenterZoneLabel => Profile.CenterZoneX is double x && Profile.CenterZoneY is double y
-        ? $"X {x:N0}  ·  Y {y:N0}"
+    public string CenterZoneLabel => Profile.CenterZonesByCity.TryGetValue(Profile.City, out var center)
+        ? $"X {center.X:N0}  ·  Y {center.Y:N0}"
         : "Центр не отмечен";
     public string CenterZoneState => Radar?.CenterZoneConfigured != true
         ? "Центр не отмечен"

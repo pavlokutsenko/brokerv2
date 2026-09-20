@@ -1,5 +1,11 @@
 namespace PriceCheck.Collector.Models;
 
+public sealed class CenterZoneSettings
+{
+    public double X { get; set; }
+    public double Y { get; set; }
+}
+
 public sealed class CollectorProfile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -9,6 +15,8 @@ public sealed class CollectorProfile
     public string ClientFolder { get; set; } = "";
     public string? LaunchFile { get; set; }
     public int BrokerIntervalMinutes { get; set; } = 5;
+    public Dictionary<string, CenterZoneSettings> CenterZonesByCity { get; set; } = [];
+    // Read only during one-time migration from CollectorNext profiles.
     public double? CenterZoneX { get; set; }
     public double? CenterZoneY { get; set; }
     public int? LastProcessId { get; set; }

@@ -22,6 +22,12 @@ public partial class MainWindow
             profile.LastProcessId = null;
             if (!MarketOptions.Contains(profile.Name)) profile.Name = "Gamma";
             if (!CityOptions.Contains(profile.City)) profile.City = "Giran";
+            profile.CenterZonesByCity ??= [];
+            if (profile.CenterZoneX is double legacyX && profile.CenterZoneY is double legacyY &&
+                !profile.CenterZonesByCity.ContainsKey(profile.City))
+                profile.CenterZonesByCity[profile.City] = new CenterZoneSettings { X = legacyX, Y = legacyY };
+            profile.CenterZoneX = null;
+            profile.CenterZoneY = null;
             Runtimes.Add(runtime);
         }
         SelectedRuntime = Runtimes.FirstOrDefault();
@@ -92,8 +98,11 @@ public partial class MainWindow
     private async void MarkCenterZone_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedRuntime?.Radar is not RadarSnapshot radar) return;
-        SelectedRuntime.Profile.CenterZoneX = radar.PlayerX;
-        SelectedRuntime.Profile.CenterZoneY = radar.PlayerY;
+        SelectedRuntime.Profile.CenterZonesByCity[SelectedRuntime.Profile.City] = new CenterZoneSettings
+        {
+            X = radar.PlayerX,
+            Y = radar.PlayerY
+        };
         SelectedRuntime.RefreshProfile();
         await SaveProfilesAsync();
         await RefreshSelectedAsync();
@@ -104,8 +113,7 @@ public partial class MainWindow
     {
         if (SelectedRuntime is null) return;
         SelectedRuntime.IsCollectionEnabled = false;
-        SelectedRuntime.Profile.CenterZoneX = null;
-        SelectedRuntime.Profile.CenterZoneY = null;
+        SelectedRuntime.Profile.CenterZonesByCity.Remove(SelectedRuntime.Profile.City);
         SelectedRuntime.RefreshProfile();
         await SaveProfilesAsync();
         await RefreshSelectedAsync();

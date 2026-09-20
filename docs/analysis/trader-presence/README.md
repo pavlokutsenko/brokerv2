@@ -25,6 +25,9 @@ Each collector profile stores one user-marked market center with a fixed radius
 of 500 world units. The market is known to be fully visible while the
 character is inside this zone.
 
+Centers are stored separately for each city in the profile. Changing the city
+loads its saved center; marking or resetting affects only that city.
+
 Collection has one explicit runtime start/stop toggle independent of the game
 client. Launching the client leaves collection stopped. The catalog changes
 only when collection was started and the character is inside the central zone.
