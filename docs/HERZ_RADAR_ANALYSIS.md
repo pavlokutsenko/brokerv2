@@ -70,3 +70,37 @@ not.
 
 `GWorld` discovery remains useful for diagnostics and independent validation,
 not as the production source of trader presence.
+
+## Live validation on the current client
+
+The approach was validated after a full client relog on 2026-09-20. The AOB
+again resolved to exactly one receive hook, and a bounded diagnostic ring
+captured 6,458 decrypted packets without closing the client. Of those, 394
+were `CharInfo` (`0x31`) and every one passed the recovered structural parser.
+
+The current `CharInfo` prefix is:
+
+```text
+byte    0        opcode = 0x31
+byte    1        variant flag
+uint32  2        ObjectID
+utf16z  6        character name
+utf16z  variable title
+byte    title_end + 31   kiosk type
+int32   title_end + 40   X
+int32   title_end + 44   Y
+int32   title_end + 48   Z
+```
+
+The final packet state contained 227 supported private shops: 174 Sell
+(`1`), 35 Buy (`3`) and 18 Package Sell (`8`). It also exposed Craft (`5`),
+which the collector can discard. An independent actor-memory snapshot matched
+the packet name and kiosk type for 222 of 223 comparable traders. The only
+disagreement was a trader whose packet field changed between `2` and `1`
+around the snapshot, so it is a timing/state-transition sample rather than a
+layout mismatch.
+
+The diagnostic ring had only three slots because the current driver allocation
+request is capped at 64 KiB. It is sufficient to prove the hook and decoder,
+but the production ring must be larger or drained in-process to avoid drops
+during a dense relog burst.
