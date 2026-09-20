@@ -14,3 +14,5 @@ tools/BrokerWorker/stage/
 tools/BrokerWorker/dist/
 src/PriceCheck.Collector/BrokerRuntime/
 src/PriceCheck.Collector/BrokerRuntime.zip
+__pycache__/
+*.pyc

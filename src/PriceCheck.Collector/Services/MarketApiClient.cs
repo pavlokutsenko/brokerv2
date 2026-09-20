@@ -6,7 +6,8 @@ namespace PriceCheck.Collector.Services;
 
 public sealed class MarketApiClient : IDisposable
 {
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
+    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(5) };
+    private readonly SemaphoreSlim _uploadGate = new(1, 1);
 
     public async Task UploadRadarAsync(CollectorProfile profile, RadarSnapshot radar, CancellationToken cancellationToken = default)
     {
@@ -23,8 +24,7 @@ public sealed class MarketApiClient : IDisposable
             completePresence = true, traders
         };
         var baseUrl = profile.ServerUrl.Trim().TrimEnd('/');
-        using var response = await _http.PostAsJsonAsync($"{baseUrl}/ingest/market-snapshot", payload, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await PostSnapshotAsync(baseUrl, payload, cancellationToken);
     }
 
     public async Task UploadBrokerAsync(CollectorProfile profile, BrokerInventoryFile inventory, CancellationToken cancellationToken = default)
@@ -58,9 +58,23 @@ public sealed class MarketApiClient : IDisposable
             completePresence = false, traders
         };
         var baseUrl = profile.ServerUrl.Trim().TrimEnd('/');
-        using var response = await _http.PostAsJsonAsync($"{baseUrl}/ingest/market-snapshot", payload, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await PostSnapshotAsync(baseUrl, payload, cancellationToken);
     }
 
-    public void Dispose() => _http.Dispose();
+    private async Task PostSnapshotAsync(string baseUrl, object payload, CancellationToken cancellationToken)
+    {
+        await _uploadGate.WaitAsync(cancellationToken);
+        try
+        {
+            using var response = await _http.PostAsJsonAsync($"{baseUrl}/ingest/market-snapshot", payload, cancellationToken);
+            response.EnsureSuccessStatusCode();
+        }
+        finally { _uploadGate.Release(); }
+    }
+
+    public void Dispose()
+    {
+        _uploadGate.Dispose();
+        _http.Dispose();
+    }
 }

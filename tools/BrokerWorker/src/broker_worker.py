@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import contextlib  # bundled for dynamically dispatched helpers
+import csv  # bundled for dynamically dispatched helpers
+import ctypes  # bundled for dynamically dispatched helpers
+import ctypes.wintypes  # bundled for dynamically dispatched helpers
 import json
+import math  # bundled for dynamically dispatched helpers
 import subprocess
 import sys
+import unicodedata  # bundled for dynamically dispatched helpers
 from pathlib import Path
 
 
@@ -57,8 +63,8 @@ def collect(pid: int, output: Path) -> None:
     target_prepared = False
     broker_installed = False
     try:
-        run_script(CLIENT / "lu4_target_session.py", "--pid", pid, "prepare")
         target_prepared = True
+        run_script(CLIENT / "lu4_target_session.py", "--pid", pid, "prepare")
         run_script(DIAGNOSTICS / "resolve_target_route.py", pid, "--json", DIAGNOSTICS / "latest_target_route.json")
         run_script(DIAGNOSTICS / "discover_unreal_globals.py", pid, "--json", DIAGNOSTICS / "latest_unreal_globals.json")
         run_script(
@@ -104,6 +110,7 @@ def main() -> int:
         import runpy
 
         script = Path(sys.argv[1]).resolve()
+        sys.path.insert(0, str(script.parent))
         sys.argv = [str(script), *sys.argv[2:]]
         runpy.run_path(str(script), run_name="__main__")
         return 0

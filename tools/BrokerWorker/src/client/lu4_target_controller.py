@@ -42,7 +42,7 @@ from lu4_memory_client import (  # noqa: E402
     PAGE_EXECUTE_READWRITE,
     build_target_packet,
 )
-from emulate_herz_lu4_stubs import run_main_generator, run_post_generator  # noqa: E402
+from runtime_stub_builder import run_main_generator, run_post_generator  # noqa: E402
 
 
 class PROCESS_BASIC_INFORMATION(ctypes.Structure):
