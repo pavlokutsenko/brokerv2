@@ -13,7 +13,10 @@ public partial class MainWindow
             _priceWorkerProfiles.Contains(runtime.Profile.Id)) return;
         var now = DateTimeOffset.UtcNow;
         if (_nextBrokerRuns.TryGetValue(runtime.Profile.Id, out var due) && due > now) return;
-        _nextBrokerRuns[runtime.Profile.Id] = now.AddMinutes(Math.Clamp(runtime.Profile.BrokerIntervalMinutes, 1, 1440));
+        // Schedule the next pass after this one completes. A full broker scan
+        // takes minutes; measuring the interval from its start starves the
+        // price warm-up when the configured interval is short.
+        _nextBrokerRuns[runtime.Profile.Id] = DateTimeOffset.MaxValue;
         _brokerRunningProfiles.Add(runtime.Profile.Id);
         _ = RunBrokerCycleAsync(runtime, radar);
     }
@@ -62,6 +65,8 @@ public partial class MainWindow
                     CapturedAtUtc = inventory.CapturedAtUtc
                 };
                 runtime.Status = "Радар и брокер работают";
+                _nextBrokerRuns[runtime.Profile.Id] = DateTimeOffset.UtcNow.AddMinutes(
+                    Math.Clamp(runtime.Profile.BrokerIntervalMinutes, 1, 1440));
                 Log($"{runtime.Profile.Name}: брокер поставлен на отправку — {inventory.Summary.UniqueTraders:N0} трейдеров, {inventory.Summary.ListingRows:N0} строк");
             }
         }

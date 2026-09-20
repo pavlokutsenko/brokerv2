@@ -15,11 +15,15 @@ public sealed class PacketRingReader
 
     public async Task RunAsync(Action<ReadOnlyMemory<byte>> onPacket, CancellationToken cancellationToken)
     {
-        var polls = 0;
         while (!cancellationToken.IsCancellationRequested)
         {
-            if (++polls % 100 == 0 && BinaryPrimitives.ReadInt32LittleEndian(_device.Read(_pid, _dropCounter, 4)) != 0)
-                throw new InvalidDataException("Packet ring переполнен; полный радар не гарантирован");
+            // A collector restart can leave the producer running while no
+            // reader advances the ring.  Treat its drop counter as a recovery
+            // signal: drain the bounded backlog and reset the counter instead
+            // of permanently disabling collection for an otherwise healthy
+            // client.
+            if (BinaryPrimitives.ReadInt32LittleEndian(_device.Read(_pid, _dropCounter, 4)) != 0)
+                _device.Write(_pid, _dropCounter, new byte[4]);
             // One driver round-trip snapshots the complete bounded ring. Reading
             // every slot separately was too slow during a dense area transition
             // and let the producer lap the consumer.

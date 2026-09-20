@@ -140,7 +140,9 @@ def collect_price(
     target_x: float | None = None,
     target_y: float | None = None,
 ) -> None:
-    prepare_price(pid)
+    # The desktop host owns the lifetime of the price session.  Re-running
+    # prepare for every shop starts several helper processes and reinstalls an
+    # already-live hook, adding seconds between otherwise sub-second reads.
     snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
     if not json_matches_pid(snapshot, pid):
         run_script(
@@ -206,7 +208,8 @@ def sweep_prices(
 
 
 def collect_price_batch(pid: int, input_path: Path, output: Path) -> None:
-    prepare_price(pid)
+    # price-prepare is run once by the desktop host and again after every
+    # broker pass.  Keep the hot batch path free of setup subprocesses.
     snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
     if not json_matches_pid(snapshot, pid):
         run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", snapshot)

@@ -26,7 +26,7 @@ public partial class MainWindow
             if (runtime.ProcessId is not int pid || !runtime.IsCollectionEnabled) return;
             await EnsurePriceSessionAsync(runtime, pid);
             if (!runtime.IsCollectionEnabled || runtime.ProcessId != pid) return;
-            targets = _localPriceQueue.Nearby(runtime.Profile.Id, radar, 145, 16);
+            targets = _localPriceQueue.Nearby(runtime.Profile.Id, radar, 110, 16);
             if (targets.Count > 0) await RunLocalPriceBatchAsync(runtime, pid, targets);
             else if (_localPriceQueue.Next(runtime.Profile.Id, radar) is { } next)
             {

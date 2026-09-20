@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "client"))
 sys.path.insert(0, str(ROOT / "diagnostics"))
 
 from event_shop_cycle import send_packet  # noqa: E402
-from fast_headless_shop_sweep import read_capture_for_mode, wait_for_batch  # noqa: E402
+from fast_headless_shop_sweep import read_capture_for_mode, read_history  # noqa: E402
 from lu4_memory_client import Lu4MemoryClient  # noqa: E402
 from no_ui_target_shop_cycle import player_position  # noqa: E402
 from process_event_shop_capture import HISTORY_DEPTH, load_state, read_capture  # noqa: E402
@@ -41,12 +41,41 @@ def main() -> int:
         sequence_before = int(read_capture(client, state)["sequence"])
 
     packets: dict[int, list[dict[str, object]]] = {}
+    captures: dict[int, dict[str, object]] = {}
+    pending: dict[int, float] = {}
+    seen_sequences: set[int] = set()
+    next_index = 0
+    window = min(8, HISTORY_DEPTH)
     started = time.perf_counter()
-    for target in targets:
-        object_id = int(target["object_id"])
-        packets[object_id] = [send_packet(object_id, position), send_packet(object_id, position)]
-    sent = time.perf_counter()
-    captures = wait_for_batch(state, {int(item["object_id"]) for item in targets}, sequence_before, args.timeout)
+    with Lu4MemoryClient() as reader:
+        while next_index < len(targets) or pending:
+            progress = False
+            for capture in read_history(reader, state):
+                sequence = int(capture["sequence"])
+                object_id = int(capture["object_id"])
+                if sequence <= sequence_before or sequence in seen_sequences or object_id not in pending:
+                    continue
+                seen_sequences.add(sequence)
+                pending.pop(object_id)
+                captures[object_id] = capture
+                progress = True
+
+            now = time.perf_counter()
+            for object_id, sent_at in list(pending.items()):
+                if now - sent_at > args.timeout:
+                    pending.pop(object_id)
+                    progress = True
+
+            while next_index < len(targets) and len(pending) < window:
+                target = targets[next_index]
+                next_index += 1
+                object_id = int(target["object_id"])
+                packets[object_id] = [send_packet(object_id, position), send_packet(object_id, position)]
+                pending[object_id] = time.perf_counter()
+                progress = True
+
+            if not progress:
+                time.sleep(0.0005)
     received = time.perf_counter()
     send_packet(0, position, b"\x48", "target_cancel_after_price_batch")
 
@@ -91,8 +120,9 @@ def main() -> int:
         "failure_count": len(failures),
         "elapsed_seconds": round(elapsed, 3),
         "shops_per_second": round(len(shops) / elapsed, 3) if elapsed else 0,
-        "send_ms": round((sent - started) * 1000, 3),
-        "wait_ms": round((received - sent) * 1000, 3),
+        "window": window,
+        "send_ms": None,
+        "wait_ms": round((received - started) * 1000, 3),
         "shops": shops,
         "failures": failures,
     }
