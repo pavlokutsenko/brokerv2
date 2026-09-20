@@ -12,9 +12,17 @@ public partial class MainWindow
         var profiles = await _profileStore.LoadAsync();
         if (profiles.Count == 0)
             profiles = [new CollectorProfile { Name = "Gamma", City = "Giran", Role = CollectorRole.BrokerRadar }];
+        // The old two-role design used two profiles for one market. A single
+        // collector now owns radar, broker and exact prices, so retain the
+        // broker profile (and its saved center) for each market/city pair.
+        profiles = profiles
+            .GroupBy(profile => $"{profile.Name.Trim().ToUpperInvariant()}|{profile.City.Trim().ToUpperInvariant()}")
+            .Select(group => group.OrderBy(profile => profile.Role == CollectorRole.BrokerRadar ? 0 : 1).First())
+            .ToList();
 
         foreach (var profile in profiles)
         {
+            profile.Role = CollectorRole.BrokerRadar;
             var runtime = new ProfileRuntime { Profile = profile };
             if (!MarketOptions.Contains(profile.Name)) profile.Name = "Gamma";
             if (!CityOptions.Contains(profile.City)) profile.City = "Giran";

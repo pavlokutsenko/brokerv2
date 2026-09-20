@@ -44,13 +44,14 @@ public partial class MainWindow
                 ? _radarSessions.Snapshot(livePid, GetCenterZone(runtime.Profile), runtime.IsCollectionEnabled)
                 : null;
             if (radar is not null) runtime.Radar = radar;
-            if (radar is not null && runtime.IsCollectionEnabled && runtime.Profile.Role == Models.CollectorRole.BrokerRadar && radar.IsInsideCenterZone)
+            if (radar is not null && runtime.IsCollectionEnabled)
             {
-                await UploadRadarWhenChangedAsync(runtime, radar);
-                TryStartBrokerCycle(runtime, radar);
-            }
-            else if (radar is not null && runtime.IsCollectionEnabled && runtime.Profile.Role == Models.CollectorRole.PriceVerifier)
-            {
+                _localPriceQueue.Observe(runtime.Profile, radar);
+                if (radar.IsInsideCenterZone)
+                {
+                    await UploadRadarWhenChangedAsync(runtime, radar);
+                    TryStartBrokerCycle(runtime, radar);
+                }
                 TryStartPriceWorker(runtime, radar);
             }
             // Broker values must belong to this profile's live session. Never
@@ -76,6 +77,11 @@ public partial class MainWindow
     private async Task UploadRadarWhenChangedAsync(Models.ProfileRuntime runtime, Models.RadarSnapshot radar)
     {
         var visible = radar.Traders.Where(x => x.IsVisible).OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        // A receive-hook can briefly expose an empty store while it is being
+        // recovered. An empty authoritative snapshot would incorrectly mark
+        // the whole market as inactive on the server. A real market shutdown
+        // is handled by individual delete packets after the store is warm.
+        if (visible.Length == 0) return;
         var fingerprint = string.Join('|', visible.Select(x => $"{x.Name.ToUpperInvariant()}:{x.ObjectId}:{x.KioskType}:{x.X:F0}:{x.Y:F0}"));
         var now = DateTimeOffset.UtcNow;
         var unchanged = _lastUploadedRadarFingerprints.TryGetValue(runtime.Profile.Id, out var previous) && previous == fingerprint;

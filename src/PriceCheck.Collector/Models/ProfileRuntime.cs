@@ -20,7 +20,7 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
     public RadarSnapshot? Radar { get => _radar; set { if (Set(ref _radar, value)) NotifyMetrics(); } }
     public BrokerSnapshot? Broker { get => _broker; set { if (Set(ref _broker, value)) NotifyMetrics(); } }
 
-    public string RoleLabel => Profile.Role == CollectorRole.BrokerRadar ? "БРОКЕР" : "ЦЕНЫ";
+    public string RoleLabel => "КОЛЛЕКТОР";
     public string ProcessLabel => ProcessId is int pid ? $"PID {pid}" : "нет процесса";
     public string RadarTraderCount => Radar is null ? "—" : $"{Radar.Traders.Count:N0} / {Radar.VisibleTraders:N0}";
     public string CenterZoneLabel => Profile.CenterZonesByCity.TryGetValue(Profile.City, out var center)

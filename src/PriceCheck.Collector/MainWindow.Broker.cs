@@ -9,7 +9,8 @@ public partial class MainWindow
     private void TryStartBrokerCycle(ProfileRuntime runtime, RadarSnapshot radar)
     {
         if (runtime.Profile.Role != CollectorRole.BrokerRadar || !runtime.IsCollectionEnabled ||
-            !radar.IsInsideCenterZone || runtime.ProcessId is not int || _brokerRunningProfiles.Contains(runtime.Profile.Id)) return;
+            !radar.IsInsideCenterZone || runtime.ProcessId is not int || _brokerRunningProfiles.Contains(runtime.Profile.Id) ||
+            _priceWorkerProfiles.Contains(runtime.Profile.Id)) return;
         var now = DateTimeOffset.UtcNow;
         if (_nextBrokerRuns.TryGetValue(runtime.Profile.Id, out var due) && due > now) return;
         _nextBrokerRuns[runtime.Profile.Id] = now.AddMinutes(Math.Clamp(runtime.Profile.BrokerIntervalMinutes, 1, 1440));
@@ -23,6 +24,7 @@ public partial class MainWindow
         {
             await _brokerCycleGate.WaitAsync();
             if (!runtime.IsCollectionEnabled || runtime.ProcessId is not int pid) return;
+            await CleanupPriceSessionAsync(runtime);
             runtime.Status = "Брокер: получаю все лавки…";
             Log($"{runtime.Profile.Name}: брокерный проход запущен");
             var worker = BrokerRuntimeIsolation.WorkerFor(pid);

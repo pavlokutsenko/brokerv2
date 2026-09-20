@@ -224,6 +224,23 @@ def collect_price_batch(pid: int, input_path: Path, output: Path) -> None:
     )
 
 
+def move_to_coordinate(pid: int, output: Path, target_x: float, target_y: float, radius: float) -> None:
+    prepare_price(pid)
+    snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
+    if not json_matches_pid(snapshot, pid):
+        run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", snapshot)
+    run_script(
+        DIAGNOSTICS / "move_to_coordinate.py",
+        "--pid", pid,
+        "--target-x", target_x,
+        "--target-y", target_y,
+        "--radius", radius,
+        "--timeout", 90,
+        "--json", output,
+        timeout=100,
+    )
+
+
 def cleanup_price(pid: int) -> None:
     remove_stale_state(BUILD / "process_event_shop_capture_state.json", pid)
     remove_stale_state(BUILD / "lu4_target_hook_state.json", pid)
@@ -247,7 +264,7 @@ def main() -> int:
         return 0
 
     parser = argparse.ArgumentParser(description="PriceCheck embedded market worker")
-    parser.add_argument("--mode", choices=("broker", "price-prepare", "price", "price-batch", "price-sweep", "cleanup"), default="broker")
+    parser.add_argument("--mode", choices=("broker", "price-prepare", "price", "price-batch", "price-sweep", "move", "cleanup"), default="broker")
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--object-id", type=int)
@@ -286,6 +303,10 @@ def main() -> int:
         if args.input is None:
             parser.error("--input is required in price-batch mode")
         collect_price_batch(args.pid, args.input, args.output.resolve())
+    elif args.mode == "move":
+        if args.target_x is None or args.target_y is None:
+            parser.error("--target-x and --target-y are required in move mode")
+        move_to_coordinate(args.pid, args.output.resolve(), args.target_x, args.target_y, args.radius)
     elif args.mode == "cleanup":
         cleanup_price(args.pid)
     else:

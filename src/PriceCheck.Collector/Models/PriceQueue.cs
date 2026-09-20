@@ -2,20 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace PriceCheck.Collector.Models;
 
-public sealed class PriceQueueJob
-{
-    public required string TraderId { get; init; }
-    public required string TraderName { get; init; }
-    public required string TraderKey { get; init; }
-    public required string LeaseToken { get; init; }
-    public string? ObjectId { get; init; }
-    public int KioskType { get; init; }
-    public double? X { get; init; }
-    public double? Y { get; init; }
-    public double? Z { get; init; }
-    public int AttemptCount { get; init; }
-}
-
 public sealed class ShopCaptureFile
 {
     [JsonPropertyName("side")] public string Side { get; init; } = "sell";

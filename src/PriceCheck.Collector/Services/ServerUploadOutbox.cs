@@ -56,24 +56,19 @@ public sealed class ServerUploadOutbox
         });
     }
 
-    public Task EnqueuePriceResultAsync(
-        CollectorProfile profile, PriceQueueJob job, ShopCaptureFile capture, string workerId) =>
-        EnqueueAsync("price-result", QueueUrl(profile, job, "result"), new
+    public Task EnqueueLocalPriceResultAsync(
+        CollectorProfile profile, LocalPriceTarget target, ShopCaptureFile capture) =>
+        EnqueueAsync("price-snapshot", $"{BaseUrl(profile)}/ingest/price-snapshot", new
         {
-            workerId, leaseToken = job.LeaseToken, side = capture.Side, capturedAtUtc = DateTimeOffset.UtcNow,
+            sourceId = $"collector:{profile.Id:N}", market = profile.Name, city = profile.City,
+            traderKey = target.TraderKey, displayName = target.TraderName,
+            objectId = target.ObjectId, kioskType = target.KioskType,
+            side = capture.Side, capturedAtUtc = DateTimeOffset.UtcNow,
             rows = capture.Rows.Select(row => new
             {
                 row.RowIndex, row.ItemId, row.ItemObjectId, row.Quantity, row.EnchantLevel,
                 row.Price, row.BuyCount, row.BasePrice
             }).ToArray()
-        });
-
-    public Task EnqueuePriceFailureAsync(
-        CollectorProfile profile, PriceQueueJob job, string workerId, string error) =>
-        EnqueueAsync("price-failure", QueueUrl(profile, job, "fail"), new
-        {
-            workerId, leaseToken = job.LeaseToken,
-            error = error.Length <= 2000 ? error : error[..2000]
         });
 
     private static async Task EnqueueAsync(string kind, string url, object body)
@@ -95,9 +90,6 @@ public sealed class ServerUploadOutbox
 
     private static string SnapshotUrl(CollectorProfile profile) =>
         $"{BaseUrl(profile)}/ingest/market-snapshot";
-
-    private static string QueueUrl(CollectorProfile profile, PriceQueueJob job, string action) =>
-        $"{BaseUrl(profile)}/v1/price-check-queue/{job.TraderId}/{action}";
 
     private static string BaseUrl(CollectorProfile profile) => profile.ServerUrl.Trim().TrimEnd('/');
 }

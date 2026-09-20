@@ -10,8 +10,6 @@ public sealed record CollectorRoleOption(CollectorRole Value, string Label)
 {
     public static IReadOnlyList<CollectorRoleOption> All { get; } =
     [
-        new(CollectorRole.BrokerRadar, "Брокер + радар"),
-        new(CollectorRole.PriceVerifier, "Сборщик цен")
+        new(CollectorRole.BrokerRadar, "Единый коллектор")
     ];
 }
-
