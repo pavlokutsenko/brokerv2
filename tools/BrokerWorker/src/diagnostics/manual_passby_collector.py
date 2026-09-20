@@ -15,11 +15,15 @@ sys.path.insert(0, str(ROOT / "diagnostics"))
 
 from event_shop_cycle import send_packet  # noqa: E402
 from fast_headless_shop_sweep import read_capture_for_mode, read_history  # noqa: E402
+from incoming_opcode_suppress import STATE_PATH, install, uninstall  # noqa: E402
 from lu4_memory_client import Lu4MemoryClient  # noqa: E402
 from no_ui_target_shop_cycle import player_position  # noqa: E402
 from passby_event_collector import current_traders  # noqa: E402
 from process_event_shop_capture import HISTORY_DEPTH, load_state, read_capture  # noqa: E402
 from read_open_shop import coherent_row  # noqa: E402
+
+
+MOVE_TO_OBJECT_OPCODE = 0x72
 
 
 def capture_batch(
@@ -71,7 +75,6 @@ def capture_batch(
             if not progress:
                 time.sleep(0.0005)
 
-    send_packet(0, position, b"\x48", "target_cancel_after_manual_batch")
     shops: list[dict[str, object]] = []
     failures: list[dict[str, object]] = []
     for target in targets:
@@ -131,8 +134,16 @@ def main() -> int:
     deadline = started + args.duration if args.duration > 0 else None
     args.json.parent.mkdir(parents=True, exist_ok=True)
     args.jsonl.parent.mkdir(parents=True, exist_ok=True)
+    suppression_installed = False
 
     try:
+        # The shop response starts with incoming opcode 0x72, whose normal
+        # handler replaces the client's current route with a route to the
+        # trader.  The price rows arrive separately through 0xA1, so skip only
+        # 0x72 while this manual reader is active.  Do not cancel the target
+        # between batches: that also clears user-directed movement.
+        install(args.pid, MOVE_TO_OBJECT_OPCODE)
+        suppression_installed = True
         while deadline is None or time.monotonic() < deadline:
             with Lu4MemoryClient() as client:
                 traders, _ = current_traders(client, snapshot)
@@ -176,6 +187,8 @@ def main() -> int:
     except KeyboardInterrupt:
         pass
     finally:
+        if suppression_installed and STATE_PATH.exists():
+            uninstall()
         elapsed = time.monotonic() - started
         summary = {
             "schema": 1,

@@ -280,10 +280,13 @@ def run_manual_passby(
     duration: float,
     max_batch: int,
 ) -> None:
-    prepare_price(pid)
     snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
     if not json_matches_pid(snapshot, pid):
         run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", snapshot)
+    # Route/UFunction discovery validates against the actor snapshot.  Refresh
+    # the snapshot before prepare_price so a packaged cache from another
+    # client PID cannot poison a newly created runtime session.
+    prepare_price(pid)
     jsonl = output.with_suffix(".jsonl")
     command = [
         sys.executable,

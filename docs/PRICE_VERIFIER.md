@@ -12,7 +12,7 @@ The embedded worker validates that `latest_session.json` and `latest_active64_st
 
 ## Manual pass-by reader
 
-`manual-passby-shops.ps1` is the fallback mode for user-controlled movement. It force-stops only `PriceCheck.Collector.exe` so the automatic route cannot compete for the target/shop command lanes; the LU4 client remains running. The script continuously refreshes the live actor array, recomputes distances from the current player position, and sends an eight-request sliding batch for every previously unread trader entering the 95-unit radius. Successful ObjectIDs are not read again during the run. Failed reads wait 30 seconds before another attempt. There is no movement call in this mode.
+`manual-passby-shops.ps1` is the fallback mode for user-controlled movement. It force-stops only `PriceCheck.Collector.exe` so the automatic route cannot compete for the target/shop command lanes; the LU4 client remains running. The script continuously refreshes the live actor array, recomputes distances from the current player position, and sends an eight-request sliding batch for every previously unread trader entering the 95-unit radius. Successful ObjectIDs are not read again during the run. Failed reads wait 30 seconds before another attempt. There is no movement call in this mode. While the reader is active it temporarily suppresses incoming opcode `0x72`, which otherwise replaces the user's current route with the requested trader route. It also leaves target cancellation out of hot batches, because cancellation clears manual movement. The original `0x72` handler is restored in `finally` when the script stops normally or receives Ctrl+C.
 
 Run until `Ctrl+C`:
 
