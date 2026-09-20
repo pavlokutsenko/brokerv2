@@ -104,3 +104,36 @@ The diagnostic ring had only three slots because the current driver allocation
 request is capped at 64 KiB. It is sufficient to prove the hook and decoder,
 but the production ring must be larger or drained in-process to avoid drops
 during a dense relog burst.
+
+## Why HerzBot shows the full market in real time
+
+HerzBot installs the receive hook as part of its client-launch/attach sequence,
+before the character enters the world. Its `PacketReader` then owns a durable
+entity `knownlist`:
+
+- `NpcInfo` and `CharInfo` create or replace entity records;
+- `MoveToLocation` and `StopMove` update their live coordinates;
+- `StatusUpdate` updates mutable state;
+- `DeleteObject` removes an entity from the knownlist.
+
+The radar renders this retained table. It does not expect the server to resend
+every visible character on every refresh.
+
+This was isolated with a second probe that copied only opcode `0x31`, used 63
+slots inside the same 64-KiB allocation, and drained every millisecond. Attached
+to an already populated world, it captured 370 `CharInfo` packets with exactly
+zero ring drops, but still did not reconstruct the roughly 1,700 existing
+traders. Therefore the reduced count in the first experiment was not only a
+ring-capacity problem: a late packet hook has no initial world snapshot.
+
+The collector needs two explicit startup paths:
+
+1. **Managed launch:** start the client, attach the driver and install the hook
+   before world entry, then build the entity table entirely from packets.
+2. **Late attach/recovery:** take one coherent actor snapshot through the
+   driver, seed the same entity table, and immediately continue with packet
+   create/update/move/delete events.
+
+Both paths converge on one user-mode entity store. Periodic full actor-array
+polling is unnecessary after bootstrap; a bounded reconciliation scan can be
+kept only as a health check.
