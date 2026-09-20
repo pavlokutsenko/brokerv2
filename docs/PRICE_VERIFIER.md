@@ -27,3 +27,9 @@ Each PID has its own runtime directory, target hook, session cache and capture
 state. Driver handles are opened with shared read/write access so the broker and
 price verifier can scan different clients concurrently. The driver serializes
 only packet encryption and its active64 state update with the crypto mutex.
+
+Live validation on 2026-09-20 used broker PID 336 and verifier PID 13692 at the
+same time. Both processes held a driver handle concurrently. The verifier moved
+from 533 to 107 units from `Smileyboy`, captured 11 buy rows, submitted them to
+the API, and then continued processing the server queue while the broker cycle
+remained active.
