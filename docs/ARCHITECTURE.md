@@ -68,9 +68,11 @@ broker schedule, server identity and event stream. Starting or stopping one
 profile cannot replace global static state used by another profile.
 
 The process launcher serializes client startup, records the PID set before
-launch and claims only a newly observed `lu4.bin`. Manual attachment chooses an
-unclaimed process. Process paths are hints only because the protected client
-may deny `ExecutablePath` reads.
+launch and claims only a newly observed `lu4.bin`. Manual attachment is not a
+production path: the collector installs the packet hook before the character
+enters the world, and failed hook setup terminates that owned client. Process
+paths are hints only because the protected client may deny `ExecutablePath`
+reads.
 
 ## Size and dependency rules
 
@@ -89,7 +91,7 @@ may deny `ExecutablePath` reads.
 
 ## Current milestone
 
-The first UI milestone implements profiles, multi-process ownership, client
-launch/attachment and the broker/radar dashboard. Current metrics are supplied
-by a replaceable research JSON adapter while the packet-ring radar runtime is
-ported behind the same application boundary.
+The collector now owns client launch, signature resolution, receive-hook
+installation, packet-ring draining and the in-memory entity table. Archived
+research JSON is not displayed in production. Broker cards stay empty until a
+live broker epoch owned by the same profile is implemented.

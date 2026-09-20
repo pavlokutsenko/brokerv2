@@ -137,3 +137,13 @@ The collector needs two explicit startup paths:
 Both paths converge on one user-mode entity store. Periodic full actor-array
 polling is unnecessary after bootstrap; a bounded reconciliation scan can be
 kept only as a health check.
+
+## Managed-launch acceptance
+
+The first collector-owned launch completed the Active Anticheat startup phase,
+installed the receive hook before character entry, and reconstructed the full
+Gamma/Giran market after login. The live UI reported 2,030 retained character
+entities and 1,756 supported private traders: 1,306 Sell, 321 Buy and 129
+Package Sell. This is the expected full-market scale and confirms that the
+missing-trader problem was caused by late attachment rather than the packet
+decoder.

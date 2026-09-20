@@ -90,7 +90,6 @@
                     <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="Подключить" Margin="0,0,8,0" Click="Attach_Click" />
                     <Button Content="Запустить клиент" Background="{StaticResource PrimaryBrush}" Foreground="#07110D"
                             BorderBrush="{StaticResource PrimaryBrush}" FontWeight="SemiBold" Click="Launch_Click" />
                 </StackPanel>
@@ -100,31 +99,45 @@
                     BorderThickness="1" CornerRadius="9" Padding="16" Margin="0,20,0,16">
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="1.15*" />
+                        <ColumnDefinition Width="0.85*" />
+                        <ColumnDefinition Width="0.75*" />
                         <ColumnDefinition Width="1.7*" />
                         <ColumnDefinition Width="0.65*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Margin="0,0,14,0">
-                        <TextBlock Text="Название рынка" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,6" />
-                        <TextBox x:Name="ProfileNameBox" Text="{Binding Profile.Name, UpdateSourceTrigger=PropertyChanged}"
-                                 TextChanged="ProfileField_Changed" />
+                        <TextBlock Text="Рынок" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,6" />
+                        <ComboBox IsEditable="True"
+                                  ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=MarketOptions}"
+                                  Text="{Binding Profile.Name, UpdateSourceTrigger=PropertyChanged}"
+                                  SelectionChanged="ProfileSelection_Changed">
+                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" Foreground="#11161E" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Margin="0,0,14,0">
-                        <TextBlock Text="Папка клиента" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,6" />
+                        <TextBlock Text="Город" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,6" />
+                        <ComboBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=CityOptions}"
+                                  SelectedItem="{Binding Profile.City, Mode=TwoWay}" SelectionChanged="ProfileSelection_Changed">
+                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding}" Foreground="#11161E" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Margin="0,0,14,0">
+                        <TextBlock Text="Файл запуска клиента" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,6" />
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <TextBox Text="{Binding Profile.ClientFolder, UpdateSourceTrigger=PropertyChanged}" TextChanged="ProfileField_Changed" />
+                            <TextBox Text="{Binding Profile.LaunchFile, UpdateSourceTrigger=PropertyChanged}" TextChanged="ProfileField_Changed" />
                             <Button Grid.Column="1" Content="…" Width="38" Padding="0" Margin="6,0,0,0" Click="BrowseFolder_Click" />
                         </Grid>
                     </StackPanel>
-                    <StackPanel Grid.Column="2" Margin="0,0,14,0">
+                    <StackPanel Grid.Column="3" Margin="0,0,14,0">
                         <TextBlock Text="Роль" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,6" />
                         <ComboBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=RoleOptions}"
-                                  DisplayMemberPath="Label" SelectedValuePath="Value"
-                                  SelectedValue="{Binding Profile.Role, Mode=TwoWay}" SelectionChanged="Role_Changed" />
+                                  SelectedValuePath="Value"
+                                  SelectedValue="{Binding Profile.Role, Mode=TwoWay}" SelectionChanged="Role_Changed">
+                            <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Label}" Foreground="#11161E" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
-                    <Button Grid.Column="3" Content="Отвязать" VerticalAlignment="Bottom" Click="Detach_Click" />
+                    <Button Grid.Column="4" Content="Остановить" VerticalAlignment="Bottom" Click="Stop_Click" />
                 </Grid>
             </Border>
 

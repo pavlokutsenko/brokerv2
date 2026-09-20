@@ -65,5 +65,10 @@
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="Padding" Value="8,6" />
         </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#11161E" />
+            <Setter Property="Background" Value="#E7EDF3" />
+            <Setter Property="Padding" Value="8,5" />
+        </Style>
     </Application.Resources>
 </Application>

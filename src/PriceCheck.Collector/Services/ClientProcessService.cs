@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using PriceCheck.Collector.Models;
 using PriceCheck.Collector.Contracts;
+using System.Runtime.InteropServices;
 
 namespace PriceCheck.Collector.Services;
 
@@ -20,11 +21,15 @@ public sealed class ClientProcessService : IClientProcessService
         if (pid is int value) _claimed.Remove(value);
     }
 
-    public bool TryClaim(int pid)
+    public void Terminate(int pid)
     {
-        if (!IsAlive(pid) || _claimed.Contains(pid)) return false;
-        _claimed.Add(pid);
-        return true;
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+        catch (ArgumentException) { }
+        finally { _claimed.Remove(pid); }
     }
 
     public async Task<int> LaunchAndBindAsync(CollectorProfile profile, CancellationToken cancellationToken)
@@ -67,15 +72,27 @@ public sealed class ClientProcessService : IClientProcessService
         }
     }
 
-    public int AttachNewestUnclaimed()
+    public async Task WaitForGameWindowAsync(int pid, CancellationToken cancellationToken)
     {
-        var pid = CurrentClientPids()
-            .Where(value => !_claimed.Contains(value))
-            .OrderByDescending(ProcessStartTime)
-            .FirstOrDefault();
-        if (pid == 0) throw new InvalidOperationException("Свободный процесс lu4.bin не найден");
-        _claimed.Add(pid);
-        return pid;
+        var deadline = DateTime.UtcNow.AddMinutes(3);
+        var stableLargeWindowSamples = 0;
+        while (DateTime.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsAlive(pid)) throw new InvalidOperationException("Клиент завершился во время проверки Active Anticheat");
+            var area = LargestVisibleWindowArea(pid);
+            stableLargeWindowSamples = area >= 800L * 600L ? stableLargeWindowSamples + 1 : 0;
+            if (stableLargeWindowSamples >= 4)
+            {
+                // The splash and integrity dialogs are much smaller. Waiting
+                // for a stable game-sized window keeps our patch outside the
+                // startup file-integrity phase while still preceding login.
+                await Task.Delay(2000, cancellationToken);
+                return;
+            }
+            await Task.Delay(500, cancellationToken);
+        }
+        throw new TimeoutException("Большое окно клиента не появилось за 3 минуты");
     }
 
     private static IEnumerable<int> CurrentClientPids() =>
@@ -88,6 +105,22 @@ public sealed class ClientProcessService : IClientProcessService
     {
         try { return Process.GetProcessById(pid).StartTime.ToUniversalTime(); }
         catch { return DateTime.MinValue; }
+    }
+
+    private static long LargestVisibleWindowArea(int pid)
+    {
+        long largest = 0;
+        EnumWindows((window, _) =>
+        {
+            if (!IsWindowVisible(window)) return true;
+            GetWindowThreadProcessId(window, out var owner);
+            if (owner != (uint)pid || !GetWindowRect(window, out var rect)) return true;
+            var width = Math.Max(0, rect.Right - rect.Left);
+            var height = Math.Max(0, rect.Bottom - rect.Top);
+            largest = Math.Max(largest, (long)width * height);
+            return true;
+        }, IntPtr.Zero);
+        return largest;
     }
 
     private static string ResolveLaunchFile(CollectorProfile profile)
@@ -113,4 +146,12 @@ public sealed class ClientProcessService : IClientProcessService
         }
         throw new FileNotFoundException("В выбранной папке не найден lu4.bin или launcher.exe");
     }
+
+    private delegate bool EnumWindowsCallback(IntPtr window, IntPtr state);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsCallback callback, IntPtr state);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out WindowRect rect);
 }

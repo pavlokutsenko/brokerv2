@@ -5,9 +5,8 @@ namespace PriceCheck.Collector.Contracts;
 public interface IClientProcessService
 {
     bool IsAlive(int pid);
-    bool TryClaim(int pid);
     void Release(int? pid);
+    void Terminate(int pid);
     Task<int> LaunchAndBindAsync(CollectorProfile profile, CancellationToken cancellationToken);
-    int AttachNewestUnclaimed();
+    Task WaitForGameWindowAsync(int pid, CancellationToken cancellationToken);
 }
-
