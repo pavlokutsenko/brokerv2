@@ -1,3 +1,5 @@
+using System.Net.Http;
+
 namespace PriceCheck.Collector;
 
 public partial class MainWindow
@@ -24,6 +26,8 @@ public partial class MainWindow
                 ? _radarSessions.Snapshot(livePid, GetCenterZone(runtime.Profile), runtime.IsCollectionEnabled)
                 : null;
             if (radar is not null) runtime.Radar = radar;
+            if (radar is not null && runtime.IsCollectionEnabled && radar.IsInsideCenterZone)
+                await UploadRadarWhenChangedAsync(runtime, radar);
             // Broker values must belong to this profile's live session. Never
             // surface old research JSON as if it were current market state.
             runtime.Broker = null;
@@ -44,5 +48,29 @@ public partial class MainWindow
             }
         }
         finally { _refreshing = false; }
+    }
+
+    private async Task UploadRadarWhenChangedAsync(Models.ProfileRuntime runtime, Models.RadarSnapshot radar)
+    {
+        var visible = radar.Traders.Where(x => x.IsVisible).OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        var fingerprint = string.Join('|', visible.Select(x => $"{x.Name.ToUpperInvariant()}:{x.ObjectId}:{x.KioskType}:{x.X:F0}:{x.Y:F0}"));
+        var now = DateTimeOffset.UtcNow;
+        var unchanged = _lastUploadedRadarFingerprints.TryGetValue(runtime.Profile.Id, out var previous) && previous == fingerprint;
+        var recentlyUploaded = _lastRadarUploads.TryGetValue(runtime.Profile.Id, out var last) && now - last < TimeSpan.FromSeconds(10);
+        if (unchanged && recentlyUploaded) return;
+        try
+        {
+            await _marketApi.UploadRadarAsync(runtime.Profile, radar);
+            _lastUploadedRadarFingerprints[runtime.Profile.Id] = fingerprint;
+            _lastRadarUploads[runtime.Profile.Id] = now;
+        }
+        catch (HttpRequestException exception)
+        {
+            if (!_lastRadarUploads.TryGetValue(runtime.Profile.Id, out var failedAt) || now - failedAt >= TimeSpan.FromSeconds(30))
+            {
+                _lastRadarUploads[runtime.Profile.Id] = now;
+                Log($"{runtime.Profile.Name}: сервер недоступен — {exception.Message}");
+            }
+        }
     }
 }

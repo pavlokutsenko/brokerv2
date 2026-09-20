@@ -15,6 +15,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IProfileStore _profileStore = new ProfileStore();
     private readonly IClientProcessService _processes = new ClientProcessService();
     private readonly RadarSessionManager _radarSessions = new();
+    private readonly MarketApiClient _marketApi = new();
+    private readonly Dictionary<Guid, string> _lastUploadedRadarFingerprints = [];
+    private readonly Dictionary<Guid, DateTimeOffset> _lastRadarUploads = [];
     private readonly DispatcherTimer _refreshTimer;
     private ProfileRuntime? _selectedRuntime;
     private bool _loaded;
@@ -66,6 +69,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void ShutdownOwnedClients()
     {
         _refreshTimer.Stop();
+        _marketApi.Dispose();
         _radarSessions.DisposeAsync().AsTask().GetAwaiter().GetResult();
         foreach (var pid in Runtimes.Select(value => value.ProcessId).OfType<int>().Distinct())
             _processes.Terminate(pid);

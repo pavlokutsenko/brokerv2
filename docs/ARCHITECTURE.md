@@ -122,3 +122,15 @@ the last market state is frozen. On return,
 the current actor knownlist is rebuilt and previously known traders that remain
 absent after a three-second packet-settle interval are confirmed gone. Broker
 epochs and the future SQLite writer will provide durable cross-session state.
+# Local market server integration
+
+The collector sends complete radar presence snapshots to
+`POST /ingest/market-snapshot` on the profile's `ServerUrl` (default
+`http://127.0.0.1:3021`). Uploads only run while collection is enabled and the
+character is inside the configured center zone. Stable identity is the
+normalized trader name; the current object ID is observation metadata.
+
+The sender uploads immediately when the visible trader set changes and sends a
+heartbeat after ten seconds without changes. Radar batches never claim that a
+shop inventory is complete. Broker inventory is a separate source and can mark
+one trader's item list complete without coupling radar state to shop contents.
