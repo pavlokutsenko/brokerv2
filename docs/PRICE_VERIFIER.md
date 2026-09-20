@@ -8,6 +8,11 @@ Only a radar snapshot captured inside the saved centre zone is authoritative for
 
 Selection follows the useful part of the old collector policy: highest-priority work first, nearest trader inside that priority, and dense local batches of up to 16 traders inside 110 world units. A local batch uses an eight-request sliding window, refilling it as ProcessEvent responses arrive, so the capture ring is not overrun by a burst. The desktop prepares the price hook once per session; hot batches never reinstall it. If no pending shop is nearby, the client follows the nearest pending trader by the normal double target action so the game performs obstacle-aware movement.
 
+For a distant single target, the target is not cancelled immediately after the
+double action. The server-side movement order remains active until the shop
+response arrives, allowing the game client to use its native obstacle-aware
+pathing. The hidden target is cleared only after the price snapshot is captured.
+
 The configured broker interval is a quantity-refresh deadline measured from the end of the previous full pass. When it expires, the same client returns to the saved centre, performs one broker pass for store types 1, 3 and 8, uploads item membership and quantities, then resumes its local price route. The broker does not replace exact price/enchant snapshots and does not change local price priorities.
 
 Radar, broker and exact-price results are written atomically to `data/server-outbox`. A separate upload-worker process sends them without blocking capture. Exact prices use `POST /ingest/price-snapshot`; they no longer claim or lease work from the server. This keeps multiple market collectors independent while the website reads the same central PostgreSQL database.

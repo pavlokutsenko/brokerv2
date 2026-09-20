@@ -64,11 +64,12 @@ def event_shop_cycle(
     started = time.perf_counter()
     first = send_packet(object_id, position)
     second = send_packet(object_id, position)
-    cancel = (
-        send_packet(0, position, b"\x48", "target_cancel")
-        if cleanup_target
-        else None
-    )
+    # Keep the server-side action order alive while an out-of-range trader is
+    # approached.  Cancelling immediately after the double action works only
+    # for shops already inside interaction range and prevents native pathing
+    # from starting for distant shops.  Cleanup is still performed after the
+    # matching shop response has been captured.
+    cancel = None
     sent = time.perf_counter()
 
     capture: dict[str, object] | None = None
