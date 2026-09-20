@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using PriceCheck.Collector.Models;
+using PriceCheck.Collector.Services;
 
 namespace PriceCheck.Collector;
 
@@ -34,8 +35,7 @@ public partial class MainWindow
 
             runtime.Status = $"Иду к {job.TraderName} · попытка {job.AttemptCount}";
             Log($"{runtime.Profile.Name}: взят {job.TraderName} ({job.TraderId})");
-            var executable = Path.Combine(AppContext.BaseDirectory, "BrokerRuntime", "BrokerWorker.exe");
-            if (!File.Exists(executable)) throw new FileNotFoundException("В поставке отсутствует встроенный Price Worker", executable);
+            var executable = BrokerRuntimeIsolation.WorkerFor(pid);
             var outputFolder = Path.Combine(AppContext.BaseDirectory, "price-snapshots");
             Directory.CreateDirectory(outputFolder);
             var output = Path.Combine(outputFolder, $"{runtime.Profile.Name}-{job.TraderId}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
@@ -95,8 +95,7 @@ public partial class MainWindow
     private async Task CleanupPriceSessionAsync(ProfileRuntime runtime)
     {
         if (_priceWorkerProfiles.Contains(runtime.Profile.Id) || runtime.ProcessId is not int pid) return;
-        var executable = Path.Combine(AppContext.BaseDirectory, "BrokerRuntime", "BrokerWorker.exe");
-        if (!File.Exists(executable)) return;
+        var executable = BrokerRuntimeIsolation.WorkerFor(pid);
         var start = new ProcessStartInfo { FileName = executable, WorkingDirectory = Path.GetDirectoryName(executable)!, UseShellExecute = false, CreateNoWindow = true };
         start.ArgumentList.Add("--mode"); start.ArgumentList.Add("cleanup");
         start.ArgumentList.Add("--pid"); start.ArgumentList.Add(pid.ToString());

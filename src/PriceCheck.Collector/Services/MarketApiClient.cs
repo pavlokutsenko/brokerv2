@@ -99,7 +99,8 @@ public sealed class MarketApiClient : IDisposable
 
     public async Task FailPriceJobAsync(CollectorProfile profile, PriceQueueJob job, string workerId, string error, CancellationToken cancellationToken = default)
     {
-        using var response = await _http.PostAsJsonAsync($"{BaseUrl(profile)}/v1/price-check-queue/{job.TraderId}/fail", new { workerId, leaseToken = job.LeaseToken, error }, cancellationToken);
+        var boundedError = error.Length <= 2000 ? error : error[..2000];
+        using var response = await _http.PostAsJsonAsync($"{BaseUrl(profile)}/v1/price-check-queue/{job.TraderId}/fail", new { workerId, leaseToken = job.LeaseToken, error = boundedError }, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
     }
 

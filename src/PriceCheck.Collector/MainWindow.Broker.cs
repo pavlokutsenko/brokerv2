@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using PriceCheck.Collector.Models;
+using PriceCheck.Collector.Services;
 
 namespace PriceCheck.Collector;
 
@@ -24,8 +25,7 @@ public partial class MainWindow
             if (!runtime.IsCollectionEnabled || runtime.ProcessId is not int pid) return;
             runtime.Status = "Брокер: получаю все лавки…";
             Log($"{runtime.Profile.Name}: брокерный проход запущен");
-            var worker = Path.Combine(AppContext.BaseDirectory, "BrokerRuntime", "BrokerWorker.exe");
-            if (!File.Exists(worker)) throw new FileNotFoundException("В поставке коллектора отсутствует BrokerWorker", worker);
+            var worker = BrokerRuntimeIsolation.WorkerFor(pid);
             var outputFolder = Path.Combine(AppContext.BaseDirectory, "broker-snapshots");
             Directory.CreateDirectory(outputFolder);
             var output = Path.Combine(outputFolder, $"{runtime.Profile.Name}-{runtime.Profile.City}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
