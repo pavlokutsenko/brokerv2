@@ -75,3 +75,9 @@ allows only one delivery process to drain that directory. Collectors on other
 computers use their own durable outbox and the same central API. Price queue
 worker IDs include machine, profile, timestamp and batch slot, so simultaneous
 price verifiers retain independent leases.
+
+The profile persists its owned client PID and collection toggle. After an
+unexpected UI/process restart, the collector validates the existing absolute
+jump and stub constants, reattaches to its ring, and resumes the same radar and
+collection session. A normal Stop action still removes the hook and terminates
+the owned client.

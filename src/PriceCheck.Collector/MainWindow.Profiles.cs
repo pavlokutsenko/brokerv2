@@ -16,10 +16,6 @@ public partial class MainWindow
         foreach (var profile in profiles)
         {
             var runtime = new ProfileRuntime { Profile = profile };
-            // A persisted PID cannot prove that our receive hook was installed
-            // before world entry. Every application start requires a new owned
-            // client lifecycle.
-            profile.LastProcessId = null;
             if (!MarketOptions.Contains(profile.Name)) profile.Name = "Gamma";
             if (!CityOptions.Contains(profile.City)) profile.City = "Giran";
             profile.CenterZonesByCity ??= [];
@@ -28,6 +24,26 @@ public partial class MainWindow
                 profile.CenterZonesByCity[profile.City] = new CenterZoneSettings { X = legacyX, Y = legacyY };
             profile.CenterZoneX = null;
             profile.CenterZoneY = null;
+            if (profile.LastProcessId is int pid && _processes.IsAlive(pid))
+            {
+                try
+                {
+                    await _radarSessions.StartAsync(pid, GetCenterZone(profile), profile.CollectionEnabled, CancellationToken.None);
+                    runtime.ProcessId = pid;
+                    runtime.IsCollectionEnabled = profile.CollectionEnabled;
+                    runtime.Status = profile.CollectionEnabled ? "Сессия восстановлена · сбор активен" : "Сессия восстановлена";
+                }
+                catch
+                {
+                    profile.LastProcessId = null;
+                    profile.CollectionEnabled = false;
+                }
+            }
+            else
+            {
+                profile.LastProcessId = null;
+                profile.CollectionEnabled = false;
+            }
             Runtimes.Add(runtime);
         }
         SelectedRuntime = Runtimes.FirstOrDefault();
@@ -113,6 +129,7 @@ public partial class MainWindow
     {
         if (SelectedRuntime is null) return;
         SelectedRuntime.IsCollectionEnabled = false;
+        SelectedRuntime.Profile.CollectionEnabled = false;
         StopBrokerSchedule(SelectedRuntime);
         SelectedRuntime.Profile.CenterZonesByCity.Remove(SelectedRuntime.Profile.City);
         SelectedRuntime.RefreshProfile();
@@ -127,9 +144,11 @@ public partial class MainWindow
         if (SelectedRuntime.IsCollectionEnabled)
         {
             SelectedRuntime.IsCollectionEnabled = false;
+            SelectedRuntime.Profile.CollectionEnabled = false;
             StopBrokerSchedule(SelectedRuntime);
             await CleanupPriceSessionAsync(SelectedRuntime);
             await RefreshSelectedAsync();
+            await SaveProfilesAsync();
             Log($"{SelectedRuntime.Profile.Name}: сбор остановлен, каталог заморожен");
             return;
         }
@@ -141,8 +160,10 @@ public partial class MainWindow
             return;
         }
         SelectedRuntime.IsCollectionEnabled = true;
+        SelectedRuntime.Profile.CollectionEnabled = true;
         _nextBrokerRuns[SelectedRuntime.Profile.Id] = DateTimeOffset.MinValue;
         await RefreshSelectedAsync();
+        await SaveProfilesAsync();
         Log($"{SelectedRuntime.Profile.Name}: сбор запущен");
     }
 
@@ -152,6 +173,7 @@ public partial class MainWindow
         if (SelectedRuntime.IsCollectionEnabled)
         {
             SelectedRuntime.IsCollectionEnabled = false;
+            SelectedRuntime.Profile.CollectionEnabled = false;
             StopBrokerSchedule(SelectedRuntime);
         }
         await CleanupPriceSessionAsync(SelectedRuntime);

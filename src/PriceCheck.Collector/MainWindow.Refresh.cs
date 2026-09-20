@@ -33,6 +33,7 @@ public partial class MainWindow
                 _processes.Release(pid);
                 runtime.ProcessId = null;
                 runtime.IsCollectionEnabled = false;
+                runtime.Profile.CollectionEnabled = false;
                 StopBrokerSchedule(runtime);
                 runtime.Profile.LastProcessId = null;
                 runtime.Status = "Клиент завершён";

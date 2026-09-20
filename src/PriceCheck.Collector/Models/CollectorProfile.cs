@@ -21,5 +21,6 @@ public sealed class CollectorProfile
     public double? CenterZoneX { get; set; }
     public double? CenterZoneY { get; set; }
     public int? LastProcessId { get; set; }
+    public bool CollectionEnabled { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -34,8 +34,12 @@ public sealed class ReceiveHookSession : IDisposable
         var imageBase = _device.GetProcessBase(_pid);
         var signature = HookSignatureScanner.FindUnique(_device, _pid, imageBase);
         _hook = signature + 0x11;
-        if (!_device.Read(_pid, _hook, Original.Length).SequenceEqual(Original))
-            throw new InvalidOperationException("Исходные байты receive-hook не совпали");
+        var current = _device.Read(_pid, _hook, Original.Length);
+        if (!current.SequenceEqual(Original))
+        {
+            AttachExisting(current);
+            return;
+        }
 
         _cave = _device.Allocate(_pid, 0x1000);
         _ring = _device.Allocate(_pid, RingSize);
@@ -50,6 +54,24 @@ public sealed class ReceiveHookSession : IDisposable
         patch[14] = 0x90; patch[15] = 0x90; patch[16] = 0x90; patch[17] = 0x90;
         _device.Write(_pid, _hook, patch);
         _device.Protect(_pid, _hook, (ulong)Original.Length, _oldProtection);
+        _installed = true;
+    }
+
+    private void AttachExisting(byte[] patch)
+    {
+        if (patch.Length < 14 || patch[0] != 0xFF || patch[1] != 0x25)
+            throw new InvalidOperationException("Исходные байты receive-hook не совпали");
+        var stubAddress = BinaryPrimitives.ReadUInt64LittleEndian(patch.AsSpan(6, 8));
+        if (stubAddress < 0x340) throw new InvalidOperationException("Повреждён адрес существующего receive-hook");
+        var stub = _device.Read(_pid, stubAddress, 0x81);
+        var ring = BinaryPrimitives.ReadUInt64LittleEndian(stub.AsSpan(0x29, 8));
+        var ringPlusFour = BinaryPrimitives.ReadUInt64LittleEndian(stub.AsSpan(0x43, 8));
+        var repeatedRing = BinaryPrimitives.ReadUInt64LittleEndian(stub.AsSpan(0x79, 8));
+        if (ring == 0 || ringPlusFour != ring + 4 || repeatedRing != ring)
+            throw new InvalidOperationException("Найден неизвестный патч вместо receive-hook коллектора");
+        _cave = stubAddress - 0x340;
+        _ring = ring;
+        _oldProtection = 0x20;
         _installed = true;
     }
 

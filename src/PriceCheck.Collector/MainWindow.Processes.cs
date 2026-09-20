@@ -24,6 +24,7 @@ public partial class MainWindow
             await _processes.WaitForGameWindowAsync(pid.Value, CancellationToken.None);
             runtime.Status = "Устанавливаю packet radar…";
             runtime.IsCollectionEnabled = false;
+            runtime.Profile.CollectionEnabled = false;
             await _radarSessions.StartAsync(pid.Value, GetCenterZone(runtime.Profile), false, CancellationToken.None);
             runtime.Status = "Радар готов · можно входить";
             await SaveProfilesAsync();
@@ -59,6 +60,7 @@ public partial class MainWindow
         }
         runtime.ProcessId = null;
         runtime.IsCollectionEnabled = false;
+        runtime.Profile.CollectionEnabled = false;
         StopBrokerSchedule(runtime);
         runtime.Profile.LastProcessId = null;
         runtime.Radar = null;
