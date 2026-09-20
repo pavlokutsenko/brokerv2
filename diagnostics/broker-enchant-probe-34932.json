@@ -1,0 +1,220 @@
+{
+  "pid": 10532,
+  "item_id": 34932,
+  "store_type": 1,
+  "levels": [
+    {
+      "enchant_min": 0,
+      "rows": [
+        {
+          "object_id": 1214325670,
+          "amount": 1
+        },
+        {
+          "object_id": 1214345437,
+          "amount": 1
+        },
+        {
+          "object_id": 1220591433,
+          "amount": 1
+        },
+        {
+          "object_id": 1228953657,
+          "amount": 1
+        },
+        {
+          "object_id": 1233212452,
+          "amount": 1
+        },
+        {
+          "object_id": 1241609041,
+          "amount": 1
+        },
+        {
+          "object_id": 1241609041,
+          "amount": 1
+        },
+        {
+          "object_id": 1241609041,
+          "amount": 1
+        },
+        {
+          "object_id": 1241609041,
+          "amount": 1
+        },
+        {
+          "object_id": 1241609041,
+          "amount": 1
+        },
+        {
+          "object_id": 1268838624,
+          "amount": 1
+        },
+        {
+          "object_id": 1296099400,
+          "amount": 1
+        },
+        {
+          "object_id": 1300298734,
+          "amount": 1
+        },
+        {
+          "object_id": 1308694263,
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "enchant_min": 1,
+      "rows": [
+        {
+          "object_id": 1214325670,
+          "amount": 1
+        },
+        {
+          "object_id": 1214345437,
+          "amount": 1
+        },
+        {
+          "object_id": 1220591433,
+          "amount": 1
+        },
+        {
+          "object_id": 1228953657,
+          "amount": 1
+        },
+        {
+          "object_id": 1268838624,
+          "amount": 1
+        },
+        {
+          "object_id": 1296099400,
+          "amount": 1
+        },
+        {
+          "object_id": 1300298734,
+          "amount": 1
+        },
+        {
+          "object_id": 1308694263,
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "enchant_min": 2,
+      "rows": [
+        {
+          "object_id": 1214325670,
+          "amount": 1
+        },
+        {
+          "object_id": 1214345437,
+          "amount": 1
+        },
+        {
+          "object_id": 1220591433,
+          "amount": 1
+        },
+        {
+          "object_id": 1228953657,
+          "amount": 1
+        },
+        {
+          "object_id": 1268838624,
+          "amount": 1
+        },
+        {
+          "object_id": 1296099400,
+          "amount": 1
+        },
+        {
+          "object_id": 1300298734,
+          "amount": 1
+        },
+        {
+          "object_id": 1308694263,
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "enchant_min": 3,
+      "rows": [
+        {
+          "object_id": 1214325670,
+          "amount": 1
+        },
+        {
+          "object_id": 1214345437,
+          "amount": 1
+        },
+        {
+          "object_id": 1220591433,
+          "amount": 1
+        },
+        {
+          "object_id": 1228953657,
+          "amount": 1
+        },
+        {
+          "object_id": 1268838624,
+          "amount": 1
+        },
+        {
+          "object_id": 1296099400,
+          "amount": 1
+        },
+        {
+          "object_id": 1300298734,
+          "amount": 1
+        },
+        {
+          "object_id": 1308694263,
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "enchant_min": 4,
+      "rows": [
+        {
+          "object_id": 1214325670,
+          "amount": 1
+        },
+        {
+          "object_id": 1214345437,
+          "amount": 1
+        },
+        {
+          "object_id": 1220591433,
+          "amount": 1
+        },
+        {
+          "object_id": 1228953657,
+          "amount": 1
+        },
+        {
+          "object_id": 1268838624,
+          "amount": 1
+        },
+        {
+          "object_id": 1296099400,
+          "amount": 1
+        },
+        {
+          "object_id": 1300298734,
+          "amount": 1
+        },
+        {
+          "object_id": 1308694263,
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "enchant_min": 5,
+      "rows": []
+    }
+  ]
+}

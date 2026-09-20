@@ -16,3 +16,5 @@ src/PriceCheck.Collector/BrokerRuntime/
 src/PriceCheck.Collector/BrokerRuntime.zip
 __pycache__/
 *.pyc
+tools/BrokerWorker/src/diagnostics/latest_*.json
+tools/BrokerWorker/src/build/
