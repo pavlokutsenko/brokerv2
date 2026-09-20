@@ -50,15 +50,9 @@ public sealed class DriverBootstrapper
             WorkingDirectory = workingDirectory,
             UseShellExecute = true,
             Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden
+            WindowStyle = ProcessWindowStyle.Hidden,
+            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{loaderPath}\" -LogPath \"{logPath}\""
         };
-        start.ArgumentList.Add("-NoProfile");
-        start.ArgumentList.Add("-ExecutionPolicy");
-        start.ArgumentList.Add("Bypass");
-        start.ArgumentList.Add("-File");
-        start.ArgumentList.Add(loaderPath);
-        start.ArgumentList.Add("-LogPath");
-        start.ArgumentList.Add(logPath);
         try
         {
             return Process.Start(start) ?? throw new InvalidOperationException("Windows не запустил загрузчик LU4Memory");

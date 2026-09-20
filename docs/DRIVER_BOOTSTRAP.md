@@ -1,8 +1,11 @@
 # LU4Memory startup bootstrap
 
-The portable collector owns driver startup. `App.OnStartup` opens
+The portable collector owns driver startup and runs with the Windows
+`requireAdministrator` execution level because the verified driver device is
+administrator-only. `App.OnStartup` opens
 `\\.\LU4Memory` before creating the main window. If the device is missing, the
-collector runs the bundled `DriverRuntime\load-driver.ps1` through UAC and
+collector runs the bundled `DriverRuntime\load-driver.ps1` with the same
+elevated token and
 waits for completion. A failed or cancelled load stops the collector, so LU4
 cannot be launched in an invalid order.
 
