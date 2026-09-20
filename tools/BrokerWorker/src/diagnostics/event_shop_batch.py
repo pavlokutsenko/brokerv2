@@ -27,8 +27,10 @@ def main() -> int:
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args()
     targets = json.loads(args.input.read_text(encoding="utf-8"))
-    if not isinstance(targets, list) or not 1 <= len(targets) <= HISTORY_DEPTH:
-        raise ValueError(f"target batch must contain 1..{HISTORY_DEPTH} entries")
+    # HISTORY_DEPTH limits concurrent in-flight responses, not the total work
+    # list. The sliding window drains captured records before issuing more.
+    if not isinstance(targets, list) or not 1 <= len(targets) <= 64:
+        raise ValueError("target batch must contain 1..64 entries")
 
     snapshot = json.loads((ROOT / "diagnostics" / "latest_actor_snapshot.json").read_text(encoding="utf-8"))
     if int(snapshot.get("pid", -1)) != args.pid:

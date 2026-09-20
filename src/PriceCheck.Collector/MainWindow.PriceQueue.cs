@@ -12,7 +12,13 @@ public partial class MainWindow
             runtime.ProcessId is not int || _priceWorkerProfiles.Contains(runtime.Profile.Id) ||
             _brokerRunningProfiles.Contains(runtime.Profile.Id)) return;
         if (_nextPriceClaims.TryGetValue(runtime.Profile.Id, out var due) && due > DateTimeOffset.UtcNow) return;
-        var brokerDue = !_nextBrokerRuns.TryGetValue(runtime.Profile.Id, out var brokerAt) || brokerAt <= DateTimeOffset.UtcNow;
+        if (!_nextBrokerRuns.TryGetValue(runtime.Profile.Id, out var brokerAt))
+        {
+            brokerAt = DateTimeOffset.UtcNow.AddMinutes(
+                Math.Clamp(runtime.Profile.BrokerIntervalMinutes, 1, 1440));
+            _nextBrokerRuns[runtime.Profile.Id] = brokerAt;
+        }
+        var brokerDue = brokerAt <= DateTimeOffset.UtcNow;
         if (brokerDue && radar.IsInsideCenterZone) return;
         _priceWorkerProfiles.Add(runtime.Profile.Id);
         _ = brokerDue ? ReturnToCenterAsync(runtime) : RunLocalPriceWorkerAsync(runtime, radar);
@@ -26,19 +32,16 @@ public partial class MainWindow
             if (runtime.ProcessId is not int pid || !runtime.IsCollectionEnabled) return;
             await EnsurePriceSessionAsync(runtime, pid);
             if (!runtime.IsCollectionEnabled || runtime.ProcessId != pid) return;
-            targets = _localPriceQueue.Nearby(runtime.Profile.Id, radar, 110, 16);
-            if (targets.Count > 0) await RunLocalPriceBatchAsync(runtime, pid, targets);
-            else if (_localPriceQueue.Next(runtime.Profile.Id, radar) is { } next)
-            {
-                targets = [next];
-                await RunTravelPriceJobAsync(runtime, pid, next);
-            }
-            else
+            var plan = _localPriceQueue.PlanNext(runtime.Profile.Id, radar, 95, 64);
+            if (plan is null)
             {
                 runtime.Status = "Локальная очередь цен пуста";
                 _nextPriceClaims[runtime.Profile.Id] = DateTimeOffset.UtcNow.AddSeconds(2);
                 return;
             }
+            targets = plan.Batch.Count > 0 ? plan.Batch : [plan.Anchor];
+            if (plan.Batch.Count > 0) await RunLocalPriceBatchAsync(runtime, pid, plan.Batch);
+            else await RunTravelToAnchorAsync(runtime, pid, plan.Anchor);
             _nextPriceClaims[runtime.Profile.Id] = DateTimeOffset.UtcNow;
         }
         catch (Exception exception)
@@ -82,23 +85,19 @@ public partial class MainWindow
         Log($"{runtime.Profile.Name}: локальная пачка {capture.Shops.Count}/{batch.Count} за {capture.ElapsedSeconds:F3} сек ({capture.ShopsPerSecond:F1}/с)");
     }
 
-    private async Task RunTravelPriceJobAsync(ProfileRuntime runtime, int pid, LocalPriceTarget target)
+    private async Task RunTravelToAnchorAsync(ProfileRuntime runtime, int pid, LocalPriceTarget target)
     {
         runtime.Status = $"Иду к {target.TraderName} · попытка {target.AttemptCount + 1}";
-        var folder = Path.Combine(AppContext.BaseDirectory, "price-snapshots"); Directory.CreateDirectory(folder);
+        var folder = Path.Combine(AppContext.BaseDirectory, "movement"); Directory.CreateDirectory(folder);
         var output = Path.Combine(folder, $"{runtime.Profile.Name}-{target.ObjectId}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
-        await RunWorkerAsync(pid, "price", output, start =>
+        await RunWorkerAsync(pid, "move", output, start =>
         {
-            start.ArgumentList.Add("--object-id"); start.ArgumentList.Add(target.ObjectId.ToString());
-            start.ArgumentList.Add("--kiosk-type"); start.ArgumentList.Add(target.KioskType.ToString());
-            start.ArgumentList.Add("--trader-name"); start.ArgumentList.Add(target.TraderName);
             start.ArgumentList.Add("--target-x"); start.ArgumentList.Add(target.X.ToString(System.Globalization.CultureInfo.InvariantCulture));
             start.ArgumentList.Add("--target-y"); start.ArgumentList.Add(target.Y.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            start.ArgumentList.Add("--radius"); start.ArgumentList.Add("8");
         });
-        var capture = JsonSerializer.Deserialize<ShopCaptureFile>(await File.ReadAllTextAsync(output)) ?? throw new InvalidDataException("Price Worker вернул пустой снимок");
-        await _uploadOutbox.EnqueueLocalPriceResultAsync(runtime.Profile, target, capture);
-        _localPriceQueue.Complete(runtime.Profile.Id, target.TraderKey);
-        Log($"{runtime.Profile.Name}: {target.TraderName} проверен, {capture.Rows.Count} строк");
+        runtime.Status = $"Прибыл к сектору {target.TraderName} · читаю лавки";
+        Log($"{runtime.Profile.Name}: прибыл к сектору через {target.TraderName}");
     }
 
     private async Task ReturnToCenterAsync(ProfileRuntime runtime)

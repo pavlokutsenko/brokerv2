@@ -9,3 +9,7 @@ public sealed record LocalPriceTarget(
     double Y,
     int Priority,
     int AttemptCount);
+
+public sealed record LocalPricePlan(
+    LocalPriceTarget Anchor,
+    IReadOnlyList<LocalPriceTarget> Batch);

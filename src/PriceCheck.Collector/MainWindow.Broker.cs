@@ -12,7 +12,13 @@ public partial class MainWindow
             !radar.IsInsideCenterZone || runtime.ProcessId is not int || _brokerRunningProfiles.Contains(runtime.Profile.Id) ||
             _priceWorkerProfiles.Contains(runtime.Profile.Id)) return;
         var now = DateTimeOffset.UtcNow;
-        if (_nextBrokerRuns.TryGetValue(runtime.Profile.Id, out var due) && due > now) return;
+        if (!_nextBrokerRuns.TryGetValue(runtime.Profile.Id, out var due))
+        {
+            _nextBrokerRuns[runtime.Profile.Id] = now.AddMinutes(
+                Math.Clamp(runtime.Profile.BrokerIntervalMinutes, 1, 1440));
+            return;
+        }
+        if (due > now) return;
         // Schedule the next pass after this one completes. A full broker scan
         // takes minutes; measuring the interval from its start starves the
         // price warm-up when the configured interval is short.

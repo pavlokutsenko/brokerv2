@@ -117,6 +117,25 @@ def prepare_price(pid: int) -> None:
     target_state = BUILD / "lu4_target_hook_state.json"
     if not target_state.exists():
         run_script(CLIENT / "lu4_target_session.py", "--pid", pid, "prepare")
+    # The hook state and cached encryption/session resolvers are one atomic
+    # PID binding. A runtime update may replace bundled diagnostic files, but
+    # must never leave a live hook paired with cache JSON from another client.
+    session_path = DIAGNOSTICS / "latest_session.json"
+    active64_path = DIAGNOSTICS / "latest_active64_state.json"
+    if not json_matches_pid(session_path, pid):
+        run_script(
+            DIAGNOSTICS / "resolve_lu4_session.py",
+            pid,
+            "--json",
+            session_path,
+        )
+    if not json_matches_pid(active64_path, pid):
+        run_script(
+            DIAGNOSTICS / "resolve_active64_state.py",
+            pid,
+            "--json",
+            active64_path,
+        )
     route_path = DIAGNOSTICS / "latest_target_route.json"
     globals_path = DIAGNOSTICS / "latest_unreal_globals.json"
     functions_path = DIAGNOSTICS / "latest_shop_ufunctions.json"
@@ -228,7 +247,8 @@ def collect_price_batch(pid: int, input_path: Path, output: Path) -> None:
 
 
 def move_to_coordinate(pid: int, output: Path, target_x: float, target_y: float, radius: float) -> None:
-    prepare_price(pid)
+    # The desktop host prepares the shared target/capture session once. The
+    # movement hot path must not reinstall it between route sectors.
     snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
     if not json_matches_pid(snapshot, pid):
         run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", snapshot)
@@ -250,7 +270,34 @@ def cleanup_price(pid: int) -> None:
     if (BUILD / "process_event_shop_capture_state.json").exists():
         run_script(DIAGNOSTICS / "process_event_shop_capture.py", "uninstall")
     if (BUILD / "lu4_target_hook_state.json").exists():
-        run_script(CLIENT / "lu4_target_session.py", "cleanup")
+            run_script(CLIENT / "lu4_target_session.py", "cleanup")
+
+
+def run_manual_passby(
+    pid: int,
+    output: Path,
+    radius: float,
+    duration: float,
+    max_batch: int,
+) -> None:
+    prepare_price(pid)
+    snapshot = DIAGNOSTICS / "latest_actor_snapshot.json"
+    if not json_matches_pid(snapshot, pid):
+        run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", snapshot)
+    jsonl = output.with_suffix(".jsonl")
+    command = [
+        sys.executable,
+        str(DIAGNOSTICS / "manual_passby_collector.py"),
+        "--pid", str(pid),
+        "--radius", str(radius),
+        "--duration", str(duration),
+        "--max-batch", str(max_batch),
+        "--json", str(output.resolve()),
+        "--jsonl", str(jsonl.resolve()),
+    ]
+    completed = subprocess.run(command, cwd=ROOT)
+    if completed.returncode != 0:
+        raise RuntimeError(f"manual pass-by collector failed ({completed.returncode})")
 
 
 def main() -> int:
@@ -267,7 +314,7 @@ def main() -> int:
         return 0
 
     parser = argparse.ArgumentParser(description="PriceCheck embedded market worker")
-    parser.add_argument("--mode", choices=("broker", "price-prepare", "price", "price-batch", "price-sweep", "move", "cleanup"), default="broker")
+    parser.add_argument("--mode", choices=("broker", "price-prepare", "price", "price-batch", "price-sweep", "manual-passby", "move", "cleanup"), default="broker")
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--object-id", type=int)
@@ -279,6 +326,7 @@ def main() -> int:
     parser.add_argument("--max-shops", type=int, default=16)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--input", type=Path)
+    parser.add_argument("--duration", type=float, default=0.0)
     args = parser.parse_args()
     if args.mode == "price-prepare":
         prepare_price(args.pid)
@@ -306,6 +354,14 @@ def main() -> int:
         if args.input is None:
             parser.error("--input is required in price-batch mode")
         collect_price_batch(args.pid, args.input, args.output.resolve())
+    elif args.mode == "manual-passby":
+        run_manual_passby(
+            args.pid,
+            args.output.resolve(),
+            args.radius,
+            args.duration,
+            args.batch_size,
+        )
     elif args.mode == "move":
         if args.target_x is None or args.target_y is None:
             parser.error("--target-x and --target-y are required in move mode")
