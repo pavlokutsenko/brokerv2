@@ -4,5 +4,8 @@ obj/
 .idea/
 *.user
 artifacts/
+!native/LU4Memory/artifacts/
+!native/LU4Memory/artifacts/verified/
+!native/LU4Memory/artifacts/verified/**
 screenshots/
-
+native/LU4Memory/build/

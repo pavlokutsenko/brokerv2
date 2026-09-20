@@ -1,0 +1,11 @@
+{
+  "artifact": "lu4_memory.sys",
+  "protocolVersion": 3,
+  "architecture": "x64",
+  "length": 27136,
+  "sha256": "2393EEE0E77E03A3C5D4640CE16F0A6AC1B6DE1E1A3D7887B1635AE6186AE766",
+  "status": "verified-running-baseline",
+  "serviceName": "LU4Memory",
+  "devicePath": "\\\\.\\LU4Memory",
+  "source": "Imported from the candidate5 baseline before the source-only module split."
+}
