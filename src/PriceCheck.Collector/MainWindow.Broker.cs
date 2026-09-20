@@ -1,0 +1,103 @@
+using System.Diagnostics;
+using PriceCheck.Collector.Models;
+
+namespace PriceCheck.Collector;
+
+public partial class MainWindow
+{
+    private void TryStartBrokerCycle(ProfileRuntime runtime, RadarSnapshot radar)
+    {
+        if (runtime.Profile.Role != CollectorRole.BrokerRadar || !runtime.IsCollectionEnabled ||
+            !radar.IsInsideCenterZone || runtime.ProcessId is not int || _brokerRunningProfiles.Contains(runtime.Profile.Id)) return;
+        var now = DateTimeOffset.UtcNow;
+        if (_nextBrokerRuns.TryGetValue(runtime.Profile.Id, out var due) && due > now) return;
+        _nextBrokerRuns[runtime.Profile.Id] = now.AddMinutes(Math.Clamp(runtime.Profile.BrokerIntervalMinutes, 1, 1440));
+        _brokerRunningProfiles.Add(runtime.Profile.Id);
+        _ = RunBrokerCycleAsync(runtime, radar);
+    }
+
+    private async Task RunBrokerCycleAsync(ProfileRuntime runtime, RadarSnapshot radar)
+    {
+        try
+        {
+            await _brokerCycleGate.WaitAsync();
+            if (!runtime.IsCollectionEnabled || runtime.ProcessId is not int pid) return;
+            runtime.Status = "Брокер: получаю все лавки…";
+            Log($"{runtime.Profile.Name}: брокерный проход запущен");
+            var toolFolder = runtime.Profile.BrokerToolFolder;
+            var script = Path.Combine(toolFolder, "collect-broker-inventory.ps1");
+            if (!File.Exists(script)) throw new FileNotFoundException("Не найден инструмент брокера", script);
+            await WriteBrokerActorSnapshotAsync(toolFolder, pid, radar);
+            var outputFolder = Path.Combine(AppContext.BaseDirectory, "broker-snapshots");
+            Directory.CreateDirectory(outputFolder);
+            var output = Path.Combine(outputFolder, $"{runtime.Profile.Name}-{runtime.Profile.City}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.json");
+            var start = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                WorkingDirectory = toolFolder,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            start.ArgumentList.Add("-NoProfile"); start.ArgumentList.Add("-ExecutionPolicy"); start.ArgumentList.Add("Bypass");
+            start.ArgumentList.Add("-File"); start.ArgumentList.Add(script); start.ArgumentList.Add("-Output"); start.ArgumentList.Add(output);
+            using var process = Process.Start(start) ?? throw new InvalidOperationException("Не удалось запустить брокерный проход");
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(); var stderrTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync(); var stdout = await stdoutTask; var stderr = await stderrTask;
+            if (process.ExitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr);
+            var inventory = JsonSerializer.Deserialize<BrokerInventoryFile>(await File.ReadAllTextAsync(output)) ??
+                throw new InvalidDataException("Пустой результат брокера");
+            if (runtime.IsCollectionEnabled)
+            {
+                await _marketApi.UploadBrokerAsync(runtime.Profile, inventory);
+                runtime.Broker = new BrokerSnapshot
+                {
+                    UniqueTraders = inventory.Summary.UniqueTraders,
+                    ListingRows = inventory.Summary.ListingRows,
+                    SellTraders = inventory.Rows.Where(x => x.StoreType == 1).Select(x => x.TraderObjectId).Distinct().Count(),
+                    BuyTraders = inventory.Rows.Where(x => x.StoreType == 3).Select(x => x.TraderObjectId).Distinct().Count(),
+                    PackageTraders = inventory.Rows.Where(x => x.StoreType == 8).Select(x => x.TraderObjectId).Distinct().Count(),
+                    ElapsedSeconds = inventory.ElapsedSeconds,
+                    CapturedAtUtc = inventory.CapturedAtUtc
+                };
+                runtime.Status = "Радар и брокер работают";
+                Log($"{runtime.Profile.Name}: брокер отправлен — {inventory.Summary.UniqueTraders:N0} трейдеров, {inventory.Summary.ListingRows:N0} строк");
+            }
+        }
+        catch (Exception exception)
+        {
+            runtime.Status = "Радар работает · ошибка брокера";
+            Log($"{runtime.Profile.Name}: брокер — {exception.GetBaseException().Message.Trim()}");
+            _nextBrokerRuns[runtime.Profile.Id] = DateTimeOffset.UtcNow.AddSeconds(30);
+        }
+        finally
+        {
+            _brokerRunningProfiles.Remove(runtime.Profile.Id);
+            if (_brokerCycleGate.CurrentCount == 0) _brokerCycleGate.Release();
+        }
+    }
+
+    private static async Task WriteBrokerActorSnapshotAsync(string toolFolder, int pid, RadarSnapshot radar)
+    {
+        var path = Path.Combine(toolFolder, "diagnostics", "latest_actor_snapshot.json");
+        var payload = new
+        {
+            pid,
+            player = new { x = radar.PlayerX, y = radar.PlayerY, z = 0 },
+            traders = radar.Traders.Where(x => x.IsVisible).Select(x => new
+            {
+                object_id = x.ObjectId, name = x.Name, kiosk_type = x.KioskType,
+                x = x.X, y = x.Y, z = 0
+            }).ToArray()
+        };
+        var temporary = path + ".collector.tmp";
+        await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+        File.Move(temporary, path, true);
+    }
+
+    private void StopBrokerSchedule(ProfileRuntime runtime)
+    {
+        _nextBrokerRuns.Remove(runtime.Profile.Id);
+    }
+}

@@ -18,6 +18,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly MarketApiClient _marketApi = new();
     private readonly Dictionary<Guid, string> _lastUploadedRadarFingerprints = [];
     private readonly Dictionary<Guid, DateTimeOffset> _lastRadarUploads = [];
+    private readonly SemaphoreSlim _brokerCycleGate = new(1, 1);
+    private readonly HashSet<Guid> _brokerRunningProfiles = [];
+    private readonly Dictionary<Guid, DateTimeOffset> _nextBrokerRuns = [];
     private readonly DispatcherTimer _refreshTimer;
     private ProfileRuntime? _selectedRuntime;
     private bool _loaded;

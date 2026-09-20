@@ -113,6 +113,7 @@ public partial class MainWindow
     {
         if (SelectedRuntime is null) return;
         SelectedRuntime.IsCollectionEnabled = false;
+        StopBrokerSchedule(SelectedRuntime);
         SelectedRuntime.Profile.CenterZonesByCity.Remove(SelectedRuntime.Profile.City);
         SelectedRuntime.RefreshProfile();
         await SaveProfilesAsync();
@@ -126,6 +127,7 @@ public partial class MainWindow
         if (SelectedRuntime.IsCollectionEnabled)
         {
             SelectedRuntime.IsCollectionEnabled = false;
+            StopBrokerSchedule(SelectedRuntime);
             await RefreshSelectedAsync();
             Log($"{SelectedRuntime.Profile.Name}: сбор остановлен, каталог заморожен");
             return;
@@ -138,6 +140,7 @@ public partial class MainWindow
             return;
         }
         SelectedRuntime.IsCollectionEnabled = true;
+        _nextBrokerRuns[SelectedRuntime.Profile.Id] = DateTimeOffset.MinValue;
         await RefreshSelectedAsync();
         Log($"{SelectedRuntime.Profile.Name}: сбор запущен");
     }

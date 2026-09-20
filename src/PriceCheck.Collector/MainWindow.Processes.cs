@@ -59,6 +59,7 @@ public partial class MainWindow
         }
         runtime.ProcessId = null;
         runtime.IsCollectionEnabled = false;
+        StopBrokerSchedule(runtime);
         runtime.Profile.LastProcessId = null;
         runtime.Radar = null;
         runtime.Status = "Остановлен";

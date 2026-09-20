@@ -17,6 +17,7 @@ public partial class MainWindow
                 _processes.Release(pid);
                 runtime.ProcessId = null;
                 runtime.IsCollectionEnabled = false;
+                StopBrokerSchedule(runtime);
                 runtime.Profile.LastProcessId = null;
                 runtime.Status = "Клиент завершён";
                 await SaveProfilesAsync();
@@ -27,7 +28,10 @@ public partial class MainWindow
                 : null;
             if (radar is not null) runtime.Radar = radar;
             if (radar is not null && runtime.IsCollectionEnabled && radar.IsInsideCenterZone)
+            {
                 await UploadRadarWhenChangedAsync(runtime, radar);
+                TryStartBrokerCycle(runtime, radar);
+            }
             // Broker values must belong to this profile's live session. Never
             // surface old research JSON as if it were current market state.
             runtime.Broker = null;

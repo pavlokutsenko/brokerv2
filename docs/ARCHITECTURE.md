@@ -134,3 +134,10 @@ The sender uploads immediately when the visible trader set changes and sends a
 heartbeat after ten seconds without changes. Radar batches never claim that a
 shop inventory is complete. Broker inventory is a separate source and can mark
 one trader's item list complete without coupling radar state to shop contents.
+
+For `BrokerRadar` profiles, enabling collection also starts a broker inventory
+cycle immediately. The cycle queries store types 1, 3, and 8 through the
+validated research harness, uploads complete per-trader item sets, and repeats
+at `BrokerIntervalMinutes`. Broker work runs asynchronously while the receive
+radar continues. A single global broker gate protects the shared ProcessEvent
+capture state when multiple profiles exist.
