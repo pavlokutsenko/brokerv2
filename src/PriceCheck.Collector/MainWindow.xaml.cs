@@ -22,6 +22,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly HashSet<Guid> _brokerRunningProfiles = [];
     private readonly Dictionary<Guid, DateTimeOffset> _nextBrokerRuns = [];
     private readonly HashSet<Guid> _priceWorkerProfiles = [];
+    private readonly HashSet<int> _preparedPricePids = [];
     private readonly Dictionary<Guid, DateTimeOffset> _nextPriceClaims = [];
     private readonly DispatcherTimer _refreshTimer;
     private ProfileRuntime? _selectedRuntime;

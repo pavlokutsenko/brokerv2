@@ -22,6 +22,8 @@ public partial class MainWindow
         try
         {
             if (runtime.ProcessId is not int pid || !runtime.IsCollectionEnabled) return;
+            await EnsurePriceSessionAsync(runtime, pid);
+            if (!runtime.IsCollectionEnabled || runtime.ProcessId != pid) return;
             runtime.Status = "Очередь цен: получаю задачу…";
             job = await _marketApi.ClaimPriceJobAsync(runtime.Profile, radar, workerId);
             if (job is null)
@@ -85,6 +87,37 @@ public partial class MainWindow
         }
     }
 
+    private async Task EnsurePriceSessionAsync(ProfileRuntime runtime, int pid)
+    {
+        if (_preparedPricePids.Contains(pid)) return;
+        runtime.Status = "Подготовка сборщика цен…";
+        Log($"{runtime.Profile.Name}: подготавливаю price-сессию PID {pid}");
+        var executable = BrokerRuntimeIsolation.WorkerFor(pid);
+        var start = new ProcessStartInfo
+        {
+            FileName = executable,
+            WorkingDirectory = Path.GetDirectoryName(executable)!,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add("--mode"); start.ArgumentList.Add("price-prepare");
+        start.ArgumentList.Add("--pid"); start.ArgumentList.Add(pid.ToString());
+        start.ArgumentList.Add("--output"); start.ArgumentList.Add("NUL");
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Не удалось подготовить Price Worker");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        var stdout = await stdoutTask;
+        var stderr = await stderrTask;
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(string.IsNullOrWhiteSpace(stderr) ? stdout : stderr);
+        _preparedPricePids.Add(pid);
+        runtime.Status = "Сборщик цен готов";
+        Log($"{runtime.Profile.Name}: price-сессия PID {pid} готова");
+    }
+
     private async Task KeepLeaseAliveAsync(CollectorProfile profile, PriceQueueJob job, string workerId, CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
@@ -95,6 +128,7 @@ public partial class MainWindow
     private async Task CleanupPriceSessionAsync(ProfileRuntime runtime)
     {
         if (_priceWorkerProfiles.Contains(runtime.Profile.Id) || runtime.ProcessId is not int pid) return;
+        _preparedPricePids.Remove(pid);
         var executable = BrokerRuntimeIsolation.WorkerFor(pid);
         var start = new ProcessStartInfo { FileName = executable, WorkingDirectory = Path.GetDirectoryName(executable)!, UseShellExecute = false, CreateNoWindow = true };
         start.ArgumentList.Add("--mode"); start.ArgumentList.Add("cleanup");

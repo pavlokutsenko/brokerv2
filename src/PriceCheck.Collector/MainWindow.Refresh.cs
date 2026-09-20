@@ -31,6 +31,7 @@ public partial class MainWindow
             if (runtime.ProcessId is int pid && !_processes.IsAlive(pid))
             {
                 await _radarSessions.StopAsync(pid);
+                _preparedPricePids.Remove(pid);
                 _processes.Release(pid);
                 runtime.ProcessId = null;
                 runtime.IsCollectionEnabled = false;

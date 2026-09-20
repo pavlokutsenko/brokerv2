@@ -109,7 +109,7 @@ def collect(pid: int, output: Path) -> None:
                 pass
 
 
-def collect_price(pid: int, object_id: int, output: Path) -> None:
+def prepare_price(pid: int) -> None:
     BUILD.mkdir(parents=True, exist_ok=True)
     DIAGNOSTICS.mkdir(parents=True, exist_ok=True)
     for name in ("lu4_target_hook_state.json", "process_event_shop_capture_state.json"):
@@ -126,10 +126,14 @@ def collect_price(pid: int, object_id: int, output: Path) -> None:
         run_script(DIAGNOSTICS / "discover_unreal_globals.py", pid, "--json", DIAGNOSTICS / "latest_unreal_globals.json")
     if not json_matches_pid(functions_path, pid):
         run_script(DIAGNOSTICS / "inspect_shop_ufunctions.py", pid, "--globals", DIAGNOSTICS / "latest_unreal_globals.json", "--json", DIAGNOSTICS / "latest_shop_ufunctions.json")
-    run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", DIAGNOSTICS / "latest_actor_snapshot.json")
     run_script(DIAGNOSTICS / "process_event_shop_capture.py", "install", pid)
     run_script(DIAGNOSTICS / "process_event_shop_capture.py", "suppress-ui", "on")
     run_script(DIAGNOSTICS / "process_event_shop_capture.py", "suppress-target-ui", "on")
+
+
+def collect_price(pid: int, object_id: int, output: Path) -> None:
+    prepare_price(pid)
+    run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", DIAGNOSTICS / "latest_actor_snapshot.json")
     run_script(DIAGNOSTICS / "event_shop_cycle.py", "--object-id", object_id, "--timeout", 45, "--json", output, timeout=60)
 
 
@@ -156,12 +160,14 @@ def main() -> int:
         return 0
 
     parser = argparse.ArgumentParser(description="PriceCheck embedded market worker")
-    parser.add_argument("--mode", choices=("broker", "price", "cleanup"), default="broker")
+    parser.add_argument("--mode", choices=("broker", "price-prepare", "price", "cleanup"), default="broker")
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--object-id", type=int)
     args = parser.parse_args()
-    if args.mode == "price":
+    if args.mode == "price-prepare":
+        prepare_price(args.pid)
+    elif args.mode == "price":
         if args.object_id is None:
             parser.error("--object-id is required in price mode")
         collect_price(args.pid, args.object_id, args.output.resolve())

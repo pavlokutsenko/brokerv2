@@ -284,8 +284,17 @@ def main() -> int:
                     "best_groups": best_groups,
                     "derived_slots": derived,
                 }
-                if len(derived) == 1:
-                    matches = derived
+                # active64 contains one RC4 group per live LU4 process.  A
+                # multi-client collector therefore legitimately produces
+                # several equally long groups; select the slot whose guarded
+                # PID field matches the requested client instead of requiring
+                # global uniqueness across the whole kernel image.
+                matches = [
+                    slot
+                    for slot in derived
+                    if int(slot["valid"]) != 0
+                    and int(slot["pid_field"]) == args.pid
+                ]
     except OSError as error:
         if getattr(error, "winerror", None) == 1:
             raise SystemExit(

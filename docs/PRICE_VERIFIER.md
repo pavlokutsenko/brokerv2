@@ -11,3 +11,19 @@ Every live PID receives an isolated runtime directory. Hook state, resolved sess
 The first task for a new client process performs signature/UObject discovery and can take around 100 seconds on the current client. The verified warm path reuses the hooks and took 6.9 seconds in the live test on 2026-09-20. The collector renews the server lease every 30 seconds during either path.
 
 On a read or movement failure the collector reports the error and releases the task for delayed retry. If the worker hangs or the machine disappears, its lease expires and another collector can take the task. Stopping collection cleans the live hooks after the current bounded task exits; closing an owned client removes them with the process.
+# Session warm-up
+
+The verifier prepares its PID-bound target/session/active64 and ProcessEvent
+capture state before claiming a server job. This one-time warm-up can take
+about a minute on the current client, but no queue lease is held during it.
+After warm-up, each claimed trader reuses the validated PID/image-bound caches;
+only the actor snapshot and the shop action are refreshed per trader.
+
+The active64 fallback may find one equally long RC4-state group per live LU4
+client. It selects the group whose guarded PID field equals the verifier PID;
+global uniqueness across every client is neither expected nor required.
+
+Each PID has its own runtime directory, target hook, session cache and capture
+state. Driver handles are opened with shared read/write access so the broker and
+price verifier can scan different clients concurrently. The driver serializes
+only packet encryption and its active64 state update with the crypto mutex.

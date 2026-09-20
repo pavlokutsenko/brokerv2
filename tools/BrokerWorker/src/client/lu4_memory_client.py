@@ -14,6 +14,8 @@ FILE_DEVICE = 0x8337
 METHOD_BUFFERED = 0
 FILE_READ_DATA = 1
 FILE_WRITE_DATA = 2
+FILE_SHARE_READ = 1
+FILE_SHARE_WRITE = 2
 OPEN_EXISTING = 3
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 HEADER_SIZE = 24
@@ -82,7 +84,7 @@ class Lu4MemoryClient:
         self.handle = kernel32.CreateFileW(
             DEVICE_PATH,
             0x80000000 | 0x40000000,
-            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
             None,
             OPEN_EXISTING,
             0,
