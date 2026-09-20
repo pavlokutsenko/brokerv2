@@ -10,6 +10,7 @@ public sealed class RadarSession : IAsyncDisposable
     private readonly Lu4Device _device;
     private readonly ReceiveHookSession _hook;
     private readonly RadarEntityStore _store = new();
+    private readonly LocalPlayerPositionReader? _playerPosition;
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _readerTask;
 
@@ -18,6 +19,9 @@ public sealed class RadarSession : IAsyncDisposable
         _pid = pid;
         _device = device;
         _hook = hook;
+        try { _playerPosition = new LocalPlayerPositionReader(device, pid); }
+        catch (InvalidOperationException) { }
+        catch (InvalidDataException) { }
         var reader = new PacketRingReader(device, pid, hook.RingAddress, hook.DropCounterAddress);
         _readerTask = Task.Run(() => reader.RunAsync(OnPacket, _stop.Token));
     }
@@ -58,7 +62,9 @@ public sealed class RadarSession : IAsyncDisposable
             if (separator >= 0 && separator + 3 < title.Length) playerName = title[(separator + 3)..].Trim();
         }
         catch { }
-        return _store.Snapshot(_pid, playerName);
+        PlayerPosition? livePlayer = null;
+        if (_playerPosition?.TryRead(out var position) == true) livePlayer = position;
+        return _store.Snapshot(_pid, playerName, livePlayer);
     }
 
     private void OnPacket(ReadOnlyMemory<byte> data)

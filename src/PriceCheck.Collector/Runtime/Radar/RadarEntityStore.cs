@@ -28,15 +28,15 @@ public sealed class RadarEntityStore
         }
     }
 
-    public RadarSnapshot Snapshot(int pid, string? playerName)
+    internal RadarSnapshot Snapshot(int pid, string? playerName, PlayerPosition? livePlayer)
     {
         lock (_gate)
         {
             var traders = _entities.Values.Where(value => value.KioskType is 1 or 3 or 8).ToArray();
             var player = string.IsNullOrWhiteSpace(playerName) ? null : _entities.Values.FirstOrDefault(
                 value => string.Equals(value.Name, playerName, StringComparison.OrdinalIgnoreCase));
-            var centerX = player?.X ?? (traders.Length == 0 ? 0 : traders.Average(value => (double)value.X));
-            var centerY = player?.Y ?? (traders.Length == 0 ? 0 : traders.Average(value => (double)value.Y));
+            var centerX = livePlayer?.X ?? player?.X ?? (traders.Length == 0 ? 0 : traders.Average(value => (double)value.X));
+            var centerY = livePlayer?.Y ?? player?.Y ?? (traders.Length == 0 ? 0 : traders.Average(value => (double)value.Y));
             return new RadarSnapshot
             {
                 ProcessId = pid,

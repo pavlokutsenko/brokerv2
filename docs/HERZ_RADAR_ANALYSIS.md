@@ -138,6 +138,12 @@ Both paths converge on one user-mode entity store. Periodic full actor-array
 polling is unnecessary after bootstrap; a bounded reconciliation scan can be
 kept only as a health check.
 
+The local character is a special case: LU4 sends its movement outbound and does
+not reliably echo it into the receive stream. For an exact moving radar center,
+the collector uses the fingerprinted local pawn/capsule chain documented in
+`docs/analysis/local-player-position/README.md`. This is a small coordinate-only
+read; the trader knownlist remains packet based.
+
 ## Managed-launch acceptance
 
 The first collector-owned launch completed the Active Anticheat startup phase,
