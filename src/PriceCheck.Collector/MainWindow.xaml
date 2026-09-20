@@ -98,6 +98,10 @@
             <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="1" CornerRadius="9" Padding="16" Margin="0,20,0,16">
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="0.85*" />
                         <ColumnDefinition Width="0.75*" />
@@ -138,6 +142,33 @@
                         </ComboBox>
                     </StackPanel>
                     <Button Grid.Column="4" Content="Остановить" VerticalAlignment="Bottom" Click="Stop_Click" />
+                    <Border Grid.Row="1" Grid.ColumnSpan="5" Background="#0E131A" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="7" Padding="11" Margin="0,14,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Margin="0,0,22,0">
+                                <TextBlock Text="ЦЕНТРАЛЬНАЯ ЗОНА" Foreground="{StaticResource MutedBrush}" FontSize="10" FontWeight="SemiBold" />
+                                <TextBlock Text="Радиус 1 000" FontSize="12" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding CenterZoneLabel}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding CenterZoneState}" Foreground="{StaticResource PrimaryBrush}" FontSize="11" Margin="0,3,0,0" />
+                            </StackPanel>
+                            <Button Grid.Column="3" Content="Отметить здесь" Click="MarkCenterZone_Click" Margin="10,0,0,0" />
+                            <Button Grid.Column="4" Content="Сбросить" Click="ClearCenterZone_Click" Margin="8,0,0,0" />
+                            <Button Grid.Column="5" Content="Запустить сбор" Background="{StaticResource PrimaryBrush}" Foreground="#07110D"
+                                    BorderBrush="{StaticResource PrimaryBrush}" FontWeight="SemiBold" Click="StartCollection_Click" Margin="18,0,0,0" />
+                            <Button Grid.Column="6" Content="Остановить сбор" Click="StopCollection_Click" Margin="8,0,0,0" />
+                        </Grid>
+                    </Border>
                 </Grid>
             </Border>
 

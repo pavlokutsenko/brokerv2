@@ -23,7 +23,8 @@ public partial class MainWindow
             runtime.Status = "Жду завершения Active Anticheat…";
             await _processes.WaitForGameWindowAsync(pid.Value, CancellationToken.None);
             runtime.Status = "Устанавливаю packet radar…";
-            await _radarSessions.StartAsync(pid.Value, CancellationToken.None);
+            runtime.IsCollectionEnabled = false;
+            await _radarSessions.StartAsync(pid.Value, GetCenterZone(runtime.Profile), false, CancellationToken.None);
             runtime.Status = "Радар готов · можно входить";
             await SaveProfilesAsync();
             Log($"{runtime.Profile.Name}: PID {pid}, receive-hook установлен до входа");
@@ -57,6 +58,7 @@ public partial class MainWindow
             _processes.Terminate(value);
         }
         runtime.ProcessId = null;
+        runtime.IsCollectionEnabled = false;
         runtime.Profile.LastProcessId = null;
         runtime.Radar = null;
         runtime.Status = "Остановлен";

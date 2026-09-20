@@ -6,13 +6,14 @@ public sealed class RadarSessionManager : IAsyncDisposable
 {
     private readonly Dictionary<int, RadarSession> _sessions = [];
 
-    public async Task StartAsync(int pid, CancellationToken cancellationToken)
+    public async Task StartAsync(int pid, MarketZone? zone, bool collectionEnabled, CancellationToken cancellationToken)
     {
         if (_sessions.ContainsKey(pid)) return;
-        _sessions.Add(pid, await RadarSession.StartAsync(pid, cancellationToken));
+        _sessions.Add(pid, await RadarSession.StartAsync(pid, zone, collectionEnabled, cancellationToken));
     }
 
-    public RadarSnapshot? Snapshot(int pid) => _sessions.TryGetValue(pid, out var session) ? session.Snapshot() : null;
+    public RadarSnapshot? Snapshot(int pid, MarketZone? zone, bool collectionEnabled) =>
+        _sessions.TryGetValue(pid, out var session) ? session.Snapshot(zone, collectionEnabled) : null;
 
     public async Task StopAsync(int pid)
     {

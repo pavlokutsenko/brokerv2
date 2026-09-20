@@ -89,6 +89,51 @@ public partial class MainWindow
         await SaveProfilesAsync();
     }
 
+    private async void MarkCenterZone_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRuntime?.Radar is not RadarSnapshot radar) return;
+        SelectedRuntime.Profile.CenterZoneX = radar.PlayerX;
+        SelectedRuntime.Profile.CenterZoneY = radar.PlayerY;
+        SelectedRuntime.RefreshProfile();
+        await SaveProfilesAsync();
+        await RefreshSelectedAsync();
+        Log($"{SelectedRuntime.Profile.Name}: центр зоны отмечен ({radar.PlayerX:N0}, {radar.PlayerY:N0})");
+    }
+
+    private async void ClearCenterZone_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRuntime is null) return;
+        SelectedRuntime.IsCollectionEnabled = false;
+        SelectedRuntime.Profile.CenterZoneX = null;
+        SelectedRuntime.Profile.CenterZoneY = null;
+        SelectedRuntime.RefreshProfile();
+        await SaveProfilesAsync();
+        await RefreshSelectedAsync();
+        Log($"{SelectedRuntime.Profile.Name}: центральная зона сброшена");
+    }
+
+    private async void StartCollection_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRuntime?.ProcessId is not int || SelectedRuntime.Radar is null) return;
+        if (GetCenterZone(SelectedRuntime.Profile) is null)
+        {
+            MessageBox.Show("Сначала отметьте центральную зону.", "PriceCheck Collector",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        SelectedRuntime.IsCollectionEnabled = true;
+        await RefreshSelectedAsync();
+        Log($"{SelectedRuntime.Profile.Name}: сбор запущен");
+    }
+
+    private async void StopCollection_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRuntime is null) return;
+        SelectedRuntime.IsCollectionEnabled = false;
+        await RefreshSelectedAsync();
+        Log($"{SelectedRuntime.Profile.Name}: сбор остановлен, каталог заморожен");
+    }
+
     private async void Role_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_loaded || SelectedRuntime is null) return;

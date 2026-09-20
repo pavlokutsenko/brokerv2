@@ -51,6 +51,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private Task SaveProfilesAsync() =>
         _profileStore.SaveAsync(Runtimes.Select(runtime => runtime.Profile));
 
+    private static MarketZone? GetCenterZone(CollectorProfile profile) =>
+        profile.CenterZoneX is double x && profile.CenterZoneY is double y
+            ? new MarketZone(x, y, 1_000)
+            : null;
+
     private void Log(string value)
     {
         Events.Insert(0, $"{DateTime.Now:HH:mm:ss}  {value}");

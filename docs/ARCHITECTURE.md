@@ -101,13 +101,11 @@ The runtime entity table and market trader catalog have different lifetimes.
 catalogued trader as out of range. The trader's normalized nickname, last shop
 type and coordinates remain available while a broker-role character leaves the
 market and later returns. A visible non-shop `CharInfo` marks that trader as no
-longer trading. An invisible trader is also confirmed gone when the collector
-returns within 2,000 world units of its last coordinates and the actor remains
-absent after a three-second packet-settle interval. Broker epochs and the future
-SQLite writer will provide durable cross-session confirmation and expiry.
-
-The market center is not a complete-coverage assumption. Outer traders stay in
-an unverified state until the character completes a settled coverage sample
-whose circle contains their last coordinates. Future movement orchestration
-will choose a small overlapping set of checkpoints from real trader
-coordinates; ordinary purchase trips can satisfy those checkpoints as well.
+longer trading. Each profile has a user-marked central zone with a fixed
+1,000-unit radius. The catalog accepts packet changes only while the character
+has explicitly started collection and is inside that zone. Client launch and
+collection start/stop are separate controls. Outside the zone or while stopped,
+the last market state is frozen. On return,
+the current actor knownlist is rebuilt and previously known traders that remain
+absent after a three-second packet-settle interval are confirmed gone. Broker
+epochs and the future SQLite writer will provide durable cross-session state.

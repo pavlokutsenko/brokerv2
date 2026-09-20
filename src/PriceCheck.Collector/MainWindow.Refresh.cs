@@ -14,12 +14,15 @@ public partial class MainWindow
                 await _radarSessions.StopAsync(pid);
                 _processes.Release(pid);
                 runtime.ProcessId = null;
+                runtime.IsCollectionEnabled = false;
                 runtime.Profile.LastProcessId = null;
                 runtime.Status = "Клиент завершён";
                 await SaveProfilesAsync();
             }
 
-            var radar = runtime.ProcessId is int livePid ? _radarSessions.Snapshot(livePid) : null;
+            var radar = runtime.ProcessId is int livePid
+                ? _radarSessions.Snapshot(livePid, GetCenterZone(runtime.Profile), runtime.IsCollectionEnabled)
+                : null;
             if (radar is not null) runtime.Radar = radar;
             // Broker values must belong to this profile's live session. Never
             // surface old research JSON as if it were current market state.
@@ -34,6 +37,7 @@ public partial class MainWindow
             {
                 await _radarSessions.StopAsync(pid);
                 runtime.Radar = null;
+                runtime.IsCollectionEnabled = false;
                 runtime.Status = $"Радар остановлен, клиент оставлен: {exception.GetBaseException().Message}";
                 Log(runtime.Status);
                 await SaveProfilesAsync();

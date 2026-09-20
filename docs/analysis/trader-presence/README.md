@@ -19,38 +19,29 @@ The UI counter displays `known / visible`; dim radar points are retained
 out-of-range shops. Durable persistence and broker-confirmed expiry belong to
 the planned SQLite writer and are not implemented in this in-memory milestone.
 
-## Confirmed absence rule
+## Central-zone rule
 
-The current safe presence radius is 2,000 world units. When the character is
-farther away, missing traders remain retained because they are outside the
-client knownlist. When the character comes within 2,000 units of a retained
-trader's last coordinates and that trader is still absent, a three-second
-packet-settle interval starts. If no supported `CharInfo` arrives during that
-interval, the shop is marked inactive. Moving outside the radius cancels the
-pending absence decision.
+Each collector profile stores one user-marked market center with a fixed radius
+of 1,000 world units. The market is known to be fully visible while the
+character is inside this zone.
 
-The configured market center is not assumed to cover the complete market.
-Traders outside the current 2,000-unit circle remain retained and unverified;
-they are never expired merely because the character returned to its center.
+Collection has an explicit runtime start/stop switch independent of the game
+client. Launching the client leaves collection stopped. The catalog changes
+only when collection was started and the character is inside the central zone.
+Stopping collection freezes the catalog without closing the client or removing
+the packet hook.
 
-## Planned market coverage
+Presence has three states:
 
-Presence will use three explicit states:
+1. `visible`: present in the packet knownlist while collection is active;
+2. `frozen`: retained exactly as last observed while the character is outside
+   the central zone;
+3. `gone`: still absent after the character returns to the central zone and the
+   three-second packet-settle interval completes.
 
-1. `visible`: currently present in the packet knownlist;
-2. `unverified`: last known shop is outside a completed coverage circle;
-3. `gone`: absent from a completed coverage circle that contains its last
-   coordinates.
-
-A coverage sample is valid only after the character stays near its checkpoint
-for the packet-settle interval. Passing through a circle does not confirm
-absence. Purchase trips may contribute valid coverage samples when they meet
-the same dwell condition.
-
-For full-market reconciliation, candidate checkpoints are actual retained
-trader coordinates. A greedy set-cover pass chooses the point that covers the
-most unverified traders within a radius slightly below the protocol's safe
-2,000-unit range, then repeats until every retained coordinate is covered.
-Using a conservative radius provides overlap and avoids boundary misses. The
-route visits only the required checkpoints; the character does not return to
-the market center between them.
+Entering the zone rebuilds current visibility from the live actor table. A
+supported `CharInfo` refreshes a trader. Previously known traders that remain
+absent after settling are marked inactive regardless of their individual
+coordinates, because the center provides complete market visibility. Leaving
+the zone cancels pending absence checks and freezes the catalog. Packets seen
+during purchase trips do not add, remove or move catalog entries.
