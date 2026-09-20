@@ -10,5 +10,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Content Include="BrokerRuntime\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\native\LU4Memory\artifacts\verified\lu4_memory.sys"
+             Link="DriverRuntime\lu4_memory.sys"
+             CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\native\LU4Memory\loader\**\*"
+             Link="DriverRuntime\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
