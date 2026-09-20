@@ -51,7 +51,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeComponent();
         DataContext = this;
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _refreshTimer.Tick += async (_, _) => await RefreshSelectedAsync();
+        _refreshTimer.Tick += async (_, _) => await RefreshAllAsync();
         Loaded += MainWindow_Loaded;
         Closed += (_, _) => ShutdownOwnedClients();
     }

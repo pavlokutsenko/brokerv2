@@ -146,7 +146,7 @@ public partial class MainWindow
         Log($"{SelectedRuntime.Profile.Name}: сбор запущен");
     }
 
-    private async void Role_Changed(object sender, SelectionChangedEventArgs e)
+    private async void Role_DropDownClosed(object sender, EventArgs e)
     {
         if (!_loaded || SelectedRuntime is null) return;
         if (SelectedRuntime.IsCollectionEnabled)

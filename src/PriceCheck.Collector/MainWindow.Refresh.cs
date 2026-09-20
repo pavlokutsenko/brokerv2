@@ -6,11 +6,28 @@ public partial class MainWindow
 {
     private async Task RefreshSelectedAsync()
     {
-        if (_refreshing || SelectedRuntime is null) return;
+        if (SelectedRuntime is null) return;
+        await RefreshRuntimesAsync([SelectedRuntime]);
+    }
+
+    private Task RefreshAllAsync() => RefreshRuntimesAsync(Runtimes.ToArray());
+
+    private async Task RefreshRuntimesAsync(IReadOnlyList<Models.ProfileRuntime> runtimes)
+    {
+        if (_refreshing || runtimes.Count == 0) return;
         _refreshing = true;
         try
         {
-            var runtime = SelectedRuntime;
+            foreach (var runtime in runtimes)
+                await RefreshRuntimeAsync(runtime);
+        }
+        finally { _refreshing = false; }
+    }
+
+    private async Task RefreshRuntimeAsync(Models.ProfileRuntime runtime)
+    {
+        try
+        {
             if (runtime.ProcessId is int pid && !_processes.IsAlive(pid))
             {
                 await _radarSessions.StopAsync(pid);
@@ -44,8 +61,7 @@ public partial class MainWindow
         catch (JsonException) { }
         catch (Exception exception)
         {
-            var runtime = SelectedRuntime;
-            if (runtime?.ProcessId is int pid)
+            if (runtime.ProcessId is int pid)
             {
                 await _radarSessions.StopAsync(pid);
                 runtime.Radar = null;
@@ -55,7 +71,6 @@ public partial class MainWindow
                 await SaveProfilesAsync();
             }
         }
-        finally { _refreshing = false; }
     }
 
     private async Task UploadRadarWhenChangedAsync(Models.ProfileRuntime runtime, Models.RadarSnapshot radar)
