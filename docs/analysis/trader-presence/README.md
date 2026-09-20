@@ -22,10 +22,10 @@ the planned SQLite writer and are not implemented in this in-memory milestone.
 ## Central-zone rule
 
 Each collector profile stores one user-marked market center with a fixed radius
-of 1,000 world units. The market is known to be fully visible while the
+of 500 world units. The market is known to be fully visible while the
 character is inside this zone.
 
-Collection has an explicit runtime start/stop switch independent of the game
+Collection has one explicit runtime start/stop toggle independent of the game
 client. Launching the client leaves collection stopped. The catalog changes
 only when collection was started and the character is inside the central zone.
 Stopping collection freezes the catalog without closing the client or removing

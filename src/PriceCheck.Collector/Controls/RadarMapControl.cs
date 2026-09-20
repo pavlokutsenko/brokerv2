@@ -37,6 +37,23 @@ public sealed class RadarMapControl : FrameworkElement
         context.DrawLine(gridPen, new Point(center.X, 18), new Point(center.X, ActualHeight - 18));
         context.DrawLine(gridPen, new Point(18, center.Y), new Point(ActualWidth - 18, center.Y));
 
+        if (Snapshot.CenterZoneConfigured)
+        {
+            var zoneCenter = new Point(
+                center.X + (Snapshot.CenterZoneX - Snapshot.PlayerX) * scale,
+                center.Y + (Snapshot.CenterZoneY - Snapshot.PlayerY) * scale);
+            var zoneRadius = Snapshot.CenterZoneRadius * scale;
+            var zoneColor = Snapshot.IsInsideCenterZone
+                ? Color.FromRgb(87, 215, 160)
+                : Color.FromRgb(242, 189, 102);
+            var zonePen = new Pen(new SolidColorBrush(Color.FromArgb(210, zoneColor.R, zoneColor.G, zoneColor.B)), 1.5)
+            {
+                DashStyle = DashStyles.Dash
+            };
+            context.DrawEllipse(new SolidColorBrush(Color.FromArgb(16, zoneColor.R, zoneColor.G, zoneColor.B)),
+                zonePen, zoneCenter, zoneRadius, zoneRadius);
+        }
+
         var brushes = new Dictionary<int, Brush>
         {
             [1] = new SolidColorBrush(Color.FromRgb(87, 215, 160)),

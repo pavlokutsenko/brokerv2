@@ -20,6 +20,9 @@ public sealed class RadarSnapshot
     public bool CenterZoneConfigured { get; init; }
     public bool IsInsideCenterZone { get; init; }
     public bool CollectionRequested { get; init; }
+    public double CenterZoneX { get; init; }
+    public double CenterZoneY { get; init; }
+    public double CenterZoneRadius { get; init; }
     public int PositionedActors { get; init; }
     public int VisibleTraders { get; init; }
     public IReadOnlyList<RadarPoint> Traders { get; init; } = [];

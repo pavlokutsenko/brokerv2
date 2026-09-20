@@ -102,7 +102,7 @@ catalogued trader as out of range. The trader's normalized nickname, last shop
 type and coordinates remain available while a broker-role character leaves the
 market and later returns. A visible non-shop `CharInfo` marks that trader as no
 longer trading. Each profile has a user-marked central zone with a fixed
-1,000-unit radius. The catalog accepts packet changes only while the character
+500-unit radius. The catalog accepts packet changes only while the character
 has explicitly started collection and is inside that zone. Client launch and
 collection start/stop are separate controls. Outside the zone or while stopped,
 the last market state is frozen. On return,

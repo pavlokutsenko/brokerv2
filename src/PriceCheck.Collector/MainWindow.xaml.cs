@@ -53,7 +53,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static MarketZone? GetCenterZone(CollectorProfile profile) =>
         profile.CenterZoneX is double x && profile.CenterZoneY is double y
-            ? new MarketZone(x, y, 1_000)
+            ? new MarketZone(x, y, 500)
             : null;
 
     private void Log(string value)

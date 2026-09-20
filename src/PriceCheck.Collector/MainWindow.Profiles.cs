@@ -112,9 +112,17 @@ public partial class MainWindow
         Log($"{SelectedRuntime.Profile.Name}: центральная зона сброшена");
     }
 
-    private async void StartCollection_Click(object sender, RoutedEventArgs e)
+    private async void ToggleCollection_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedRuntime?.ProcessId is not int || SelectedRuntime.Radar is null) return;
+        if (SelectedRuntime is null) return;
+        if (SelectedRuntime.IsCollectionEnabled)
+        {
+            SelectedRuntime.IsCollectionEnabled = false;
+            await RefreshSelectedAsync();
+            Log($"{SelectedRuntime.Profile.Name}: сбор остановлен, каталог заморожен");
+            return;
+        }
+        if (SelectedRuntime.ProcessId is not int || SelectedRuntime.Radar is null) return;
         if (GetCenterZone(SelectedRuntime.Profile) is null)
         {
             MessageBox.Show("Сначала отметьте центральную зону.", "PriceCheck Collector",
@@ -124,14 +132,6 @@ public partial class MainWindow
         SelectedRuntime.IsCollectionEnabled = true;
         await RefreshSelectedAsync();
         Log($"{SelectedRuntime.Profile.Name}: сбор запущен");
-    }
-
-    private async void StopCollection_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is null) return;
-        SelectedRuntime.IsCollectionEnabled = false;
-        await RefreshSelectedAsync();
-        Log($"{SelectedRuntime.Profile.Name}: сбор остановлен, каталог заморожен");
     }
 
     private async void Role_Changed(object sender, SelectionChangedEventArgs e)

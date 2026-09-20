@@ -86,6 +86,9 @@ public sealed class RadarEntityStore
                 CenterZoneConfigured = _zone is not null,
                 IsInsideCenterZone = _insideZone,
                 CollectionRequested = _collectionRequested,
+                CenterZoneX = _zone?.X ?? 0,
+                CenterZoneY = _zone?.Y ?? 0,
+                CenterZoneRadius = _zone?.Radius ?? 0,
                 PositionedActors = _entities.Count,
                 VisibleTraders = traders.Count(value => value.IsVisible),
                 Traders = traders.Select(value => new RadarPoint(
