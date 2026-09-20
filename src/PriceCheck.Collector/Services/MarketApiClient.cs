@@ -67,7 +67,7 @@ public sealed class MarketApiClient : IDisposable
         try
         {
             using var response = await _http.PostAsJsonAsync($"{baseUrl}/ingest/market-snapshot", payload, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            await EnsureSuccessAsync(response, cancellationToken);
         }
         finally { _uploadGate.Release(); }
     }
