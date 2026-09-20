@@ -33,10 +33,8 @@ public partial class MainWindow
             if (runtime?.ProcessId is int pid)
             {
                 await _radarSessions.StopAsync(pid);
-                _processes.Terminate(pid);
-                runtime.ProcessId = null;
-                runtime.Profile.LastProcessId = null;
-                runtime.Status = $"Радар остановлен: {exception.GetBaseException().Message}";
+                runtime.Radar = null;
+                runtime.Status = $"Радар остановлен, клиент оставлен: {exception.GetBaseException().Message}";
                 Log(runtime.Status);
                 await SaveProfilesAsync();
             }

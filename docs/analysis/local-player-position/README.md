@@ -27,3 +27,12 @@ previous center fallback.
 Trader presence and movement still come entirely from the packet knownlist.
 This path supplies only the exact local radar center. It does not scan the actor
 array and does not poll `GWorld` continuously.
+
+## Area-transition failure found during validation
+
+The first long run ended because the 126-slot receive ring overflowed while the
+character entered a new area. The consumer previously issued one driver read
+and one read-index write per packet, so a spawn burst could outrun it. It now
+copies the complete 64-KiB ring in one driver call, consumes every packet from
+that stable snapshot, and publishes the final read index once. A future radar
+failure restores the hook but leaves the owned game client running.

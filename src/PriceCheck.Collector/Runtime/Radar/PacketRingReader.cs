@@ -20,24 +20,27 @@ public sealed class PacketRingReader
         {
             if (++polls % 100 == 0 && BinaryPrimitives.ReadInt32LittleEndian(_device.Read(_pid, _dropCounter, 4)) != 0)
                 throw new InvalidDataException("Packet ring переполнен; полный радар не гарантирован");
-            var header = _device.Read(_pid, _ring, 8);
-            var write = BinaryPrimitives.ReadInt32LittleEndian(header);
-            var read = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(4));
+            // One driver round-trip snapshots the complete bounded ring. Reading
+            // every slot separately was too slow during a dense area transition
+            // and let the producer lap the consumer.
+            var snapshot = _device.Read(_pid, _ring, ReceiveHookSession.RingSize);
+            var write = BinaryPrimitives.ReadInt32LittleEndian(snapshot);
+            var read = BinaryPrimitives.ReadInt32LittleEndian(snapshot.AsSpan(4));
             if ((uint)write >= ReceiveHookSession.Capacity || (uint)read >= ReceiveHookSession.Capacity)
                 throw new InvalidDataException($"Некорректные индексы packet ring: {write}/{read}");
             while (read != write)
             {
-                var slot = _device.Read(_pid, _ring + 8 + (ulong)(read * ReceiveHookSession.SlotSize), ReceiveHookSession.SlotSize);
-                var length = BinaryPrimitives.ReadInt32LittleEndian(slot);
+                var offset = 8 + read * ReceiveHookSession.SlotSize;
+                var slot = snapshot.AsMemory(offset, ReceiveHookSession.SlotSize);
+                var length = BinaryPrimitives.ReadInt32LittleEndian(slot.Span);
                 if (length <= 0 || length > ReceiveHookSession.MaxPacket)
                     throw new InvalidDataException($"Некорректная длина packet ring: {length}");
-                onPacket(slot.AsMemory(4, length));
+                onPacket(slot.Slice(4, length));
                 read = (read + 1) % ReceiveHookSession.Capacity;
-                var next = new byte[4];
-                BinaryPrimitives.WriteInt32LittleEndian(next, read);
-                _device.Write(_pid, _ring + 4, next);
-                write = BinaryPrimitives.ReadInt32LittleEndian(_device.Read(_pid, _ring, 4));
             }
+            var next = new byte[4];
+            BinaryPrimitives.WriteInt32LittleEndian(next, read);
+            _device.Write(_pid, _ring + 4, next);
             await Task.Delay(1, cancellationToken);
         }
     }
