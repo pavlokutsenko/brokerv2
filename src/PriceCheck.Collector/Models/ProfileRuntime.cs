@@ -32,6 +32,9 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
             ? "Сбор остановлен"
             : Radar.IsInsideCenterZone ? "В зоне · сбор активен" : "Вне зоны · сбор на паузе";
     public string CollectionToggleLabel => IsCollectionEnabled ? "Остановить сбор" : "Запустить сбор";
+    public string CurrentPositionLabel => Radar is null
+        ? "Текущая позиция недоступна"
+        : $"Сейчас X {Radar.PlayerX:N0}  ·  Y {Radar.PlayerY:N0}";
     public string ActorCount => Radar?.PositionedActors.ToString("N0") ?? "—";
     public string BrokerTraderCount => Broker?.UniqueTraders.ToString("N0") ?? "—";
     public string ListingCount => Broker?.ListingRows.ToString("N0") ?? "—";
@@ -49,6 +52,7 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
         OnPropertyChanged(nameof(CenterZoneLabel));
         OnPropertyChanged(nameof(CenterZoneState));
         OnPropertyChanged(nameof(CollectionToggleLabel));
+        OnPropertyChanged(nameof(CurrentPositionLabel));
         OnPropertyChanged(nameof(Profile));
     }
 
@@ -64,6 +68,7 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
         OnPropertyChanged(nameof(LastRadarLabel));
         OnPropertyChanged(nameof(CenterZoneState));
         OnPropertyChanged(nameof(CollectionToggleLabel));
+        OnPropertyChanged(nameof(CurrentPositionLabel));
         OnPropertyChanged(nameof(LastBrokerLabel));
     }
 

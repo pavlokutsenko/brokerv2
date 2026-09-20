@@ -11,6 +11,7 @@ internal sealed class LocalPlayerPositionReader
     private readonly Lu4Device _device;
     private readonly int _pid;
     private readonly ulong _imageBase;
+    private ulong _controller;
     private ulong _capsule;
 
     public LocalPlayerPositionReader(Lu4Device device, int pid)
@@ -26,13 +27,14 @@ internal sealed class LocalPlayerPositionReader
         position = default;
         try
         {
-            if (!IsPointer(_capsule) && !TryResolveCapsule()) return false;
+            if (!TryRefreshCapsule() && !TryResolveCapsule()) return false;
             var coordinates = _device.Read(_pid, _capsule + 0x1F0, 24);
             var x = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(coordinates));
             var y = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(coordinates.AsSpan(8)));
             var z = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(coordinates.AsSpan(16)));
             if (!IsCoordinate(x) || !IsCoordinate(y) || !IsCoordinate(z))
             {
+                _controller = 0;
                 _capsule = 0;
                 return false;
             }
@@ -41,6 +43,7 @@ internal sealed class LocalPlayerPositionReader
         }
         catch
         {
+            _controller = 0;
             _capsule = 0;
             return false;
         }
@@ -55,8 +58,19 @@ internal sealed class LocalPlayerPositionReader
         var controller = ReadPointer(localPlayer + 0x30);
         var playerActor = ReadPointer(controller + 0x2D0);
         var capsule = ReadPointer(playerActor + 0x1A0);
-        if (!IsPointer(capsule)) return false;
+        if (!IsPointer(controller) || !IsPointer(capsule)) return false;
+        _controller = controller;
         _capsule = capsule;
+        return true;
+    }
+
+    private bool TryRefreshCapsule()
+    {
+        if (!IsPointer(_controller)) return false;
+        var playerActor = ReadPointer(_controller + 0x2D0);
+        var currentCapsule = ReadPointer(playerActor + 0x1A0);
+        if (!IsPointer(currentCapsule)) return false;
+        _capsule = currentCapsule;
         return true;
     }
 

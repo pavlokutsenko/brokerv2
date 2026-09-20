@@ -159,6 +159,7 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding CenterZoneLabel}" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding CurrentPositionLabel}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,3,0,0" />
                                 <TextBlock Text="{Binding CenterZoneState}" Foreground="{StaticResource PrimaryBrush}" FontSize="11" Margin="0,3,0,0" />
                             </StackPanel>
                             <Button Grid.Column="3" Content="Отметить здесь" Click="MarkCenterZone_Click" Margin="10,0,0,0" />

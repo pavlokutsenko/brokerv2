@@ -22,6 +22,12 @@ causes one guarded re-resolution. The profile is accepted only when both PE
 timestamp and image size match; otherwise packet radar continues with its
 previous center fallback.
 
+The pawn can be replaced after initial world entry while the old capsule memory
+remains readable with frozen coordinates. Each snapshot therefore re-reads
+`Controller + 0x2D0 -> Pawn + 0x1A0 -> Capsule` and updates the cached capsule
+before reading position. `GWorld` is resolved again only if the cached
+controller chain becomes invalid.
+
 ## Scope
 
 Trader presence and movement still come entirely from the packet knownlist.
