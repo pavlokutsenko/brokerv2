@@ -95,3 +95,19 @@ The collector now owns client launch, signature resolution, receive-hook
 installation, packet-ring draining and the in-memory entity table. Archived
 research JSON is not displayed in production. Broker cards stay empty until a
 live broker epoch owned by the same profile is implemented.
+
+The runtime entity table and market trader catalog have different lifetimes.
+`DeleteObject` removes an actor from the current knownlist but only marks a
+catalogued trader as out of range. The trader's normalized nickname, last shop
+type and coordinates remain available while a broker-role character leaves the
+market and later returns. A visible non-shop `CharInfo` marks that trader as no
+longer trading. An invisible trader is also confirmed gone when the collector
+returns within 2,000 world units of its last coordinates and the actor remains
+absent after a three-second packet-settle interval. Broker epochs and the future
+SQLite writer will provide durable cross-session confirmation and expiry.
+
+The market center is not a complete-coverage assumption. Outer traders stay in
+an unverified state until the character completes a settled coverage sample
+whose circle contains their last coordinates. Future movement orchestration
+will choose a small overlapping set of checkpoints from real trader
+coordinates; ordinary purchase trips can satisfy those checkpoints as well.

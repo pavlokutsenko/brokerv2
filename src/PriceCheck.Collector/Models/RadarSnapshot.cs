@@ -6,7 +6,9 @@ public sealed record RadarPoint(
     int KioskType,
     double X,
     double Y,
-    double Distance);
+    double Distance,
+    bool IsVisible,
+    DateTimeOffset LastSeenAtUtc);
 
 public sealed class RadarSnapshot
 {
@@ -14,6 +16,7 @@ public sealed class RadarSnapshot
     public double PlayerX { get; init; }
     public double PlayerY { get; init; }
     public int PositionedActors { get; init; }
+    public int VisibleTraders { get; init; }
     public IReadOnlyList<RadarPoint> Traders { get; init; } = [];
     public DateTimeOffset CapturedAtUtc { get; init; }
 }
@@ -28,4 +31,3 @@ public sealed class BrokerSnapshot
     public double ElapsedSeconds { get; init; }
     public DateTimeOffset CapturedAtUtc { get; init; }
 }
-

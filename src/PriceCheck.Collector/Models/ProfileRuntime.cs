@@ -20,7 +20,7 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
 
     public string RoleLabel => Profile.Role == CollectorRole.BrokerRadar ? "БРОКЕР" : "ЦЕНЫ";
     public string ProcessLabel => ProcessId is int pid ? $"PID {pid}" : "нет процесса";
-    public string RadarTraderCount => Radar?.Traders.Count.ToString("N0") ?? "—";
+    public string RadarTraderCount => Radar is null ? "—" : $"{Radar.Traders.Count:N0} / {Radar.VisibleTraders:N0}";
     public string ActorCount => Radar?.PositionedActors.ToString("N0") ?? "—";
     public string BrokerTraderCount => Broker?.UniqueTraders.ToString("N0") ?? "—";
     public string ListingCount => Broker?.ListingRows.ToString("N0") ?? "—";
@@ -63,4 +63,3 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
-

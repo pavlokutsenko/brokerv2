@@ -49,7 +49,9 @@ public sealed class RadarMapControl : FrameworkElement
             var y = center.Y + (trader.Y - Snapshot.PlayerY) * scale;
             if (x < 8 || y < 8 || x > ActualWidth - 8 || y > ActualHeight - 8) continue;
             var brush = brushes.GetValueOrDefault(trader.KioskType, Brushes.Gray);
-            context.DrawEllipse(brush, null, new Point(x, y), 1.7, 1.7);
+            context.PushOpacity(trader.IsVisible ? 1 : 0.28);
+            context.DrawEllipse(brush, null, new Point(x, y), trader.IsVisible ? 1.7 : 1.25, trader.IsVisible ? 1.7 : 1.25);
+            context.Pop();
         }
         context.DrawEllipse(Brushes.White, new Pen(new SolidColorBrush(Color.FromRgb(87, 215, 160)), 2), center, 4.5, 4.5);
     }
@@ -61,4 +63,3 @@ public sealed class RadarMapControl : FrameworkElement
         context.DrawText(text, new Point((ActualWidth - text.Width) / 2, (ActualHeight - text.Height) / 2));
     }
 }
-
