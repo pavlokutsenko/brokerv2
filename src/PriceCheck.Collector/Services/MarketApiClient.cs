@@ -72,6 +72,46 @@ public sealed class MarketApiClient : IDisposable
         finally { _uploadGate.Release(); }
     }
 
+    public async Task<PriceQueueJob?> ClaimPriceJobAsync(CollectorProfile profile, RadarSnapshot radar, string workerId, CancellationToken cancellationToken = default)
+    {
+        var payload = new { market = profile.Name, city = profile.City, workerId, currentX = radar.PlayerX, currentY = radar.PlayerY, leaseSeconds = 120 };
+        using var response = await _http.PostAsJsonAsync($"{BaseUrl(profile)}/v1/price-check-queue/claim", payload, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<PriceQueueJob>(cancellationToken: cancellationToken);
+    }
+
+    public async Task HeartbeatPriceJobAsync(CollectorProfile profile, PriceQueueJob job, string workerId, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"{BaseUrl(profile)}/v1/price-check-queue/{job.TraderId}/heartbeat", new { workerId, leaseToken = job.LeaseToken, leaseSeconds = 120 }, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    public async Task SubmitPriceJobAsync(CollectorProfile profile, PriceQueueJob job, ShopCaptureFile capture, string workerId, CancellationToken cancellationToken = default)
+    {
+        var payload = new
+        {
+            workerId, leaseToken = job.LeaseToken, side = capture.Side, capturedAtUtc = DateTimeOffset.UtcNow,
+            rows = capture.Rows.Select(row => new { row.RowIndex, row.ItemId, row.ItemObjectId, row.Quantity, row.EnchantLevel, row.Price, row.BuyCount, row.BasePrice }).ToArray()
+        };
+        using var response = await _http.PostAsJsonAsync($"{BaseUrl(profile)}/v1/price-check-queue/{job.TraderId}/result", payload, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    public async Task FailPriceJobAsync(CollectorProfile profile, PriceQueueJob job, string workerId, string error, CancellationToken cancellationToken = default)
+    {
+        using var response = await _http.PostAsJsonAsync($"{BaseUrl(profile)}/v1/price-check-queue/{job.TraderId}/fail", new { workerId, leaseToken = job.LeaseToken, error }, cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+    }
+
+    private static string BaseUrl(CollectorProfile profile) => profile.ServerUrl.Trim().TrimEnd('/');
+
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode) return;
+        var message = await response.Content.ReadAsStringAsync(cancellationToken);
+        throw new HttpRequestException(string.IsNullOrWhiteSpace(message) ? $"Server returned {(int)response.StatusCode}" : message, null, response.StatusCode);
+    }
+
     public void Dispose()
     {
         _uploadGate.Dispose();

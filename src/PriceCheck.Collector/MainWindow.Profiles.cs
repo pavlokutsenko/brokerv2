@@ -128,12 +128,13 @@ public partial class MainWindow
         {
             SelectedRuntime.IsCollectionEnabled = false;
             StopBrokerSchedule(SelectedRuntime);
+            await CleanupPriceSessionAsync(SelectedRuntime);
             await RefreshSelectedAsync();
             Log($"{SelectedRuntime.Profile.Name}: сбор остановлен, каталог заморожен");
             return;
         }
         if (SelectedRuntime.ProcessId is not int || SelectedRuntime.Radar is null) return;
-        if (GetCenterZone(SelectedRuntime.Profile) is null)
+        if (SelectedRuntime.Profile.Role == CollectorRole.BrokerRadar && GetCenterZone(SelectedRuntime.Profile) is null)
         {
             MessageBox.Show("Сначала отметьте центральную зону.", "PriceCheck Collector",
                 MessageBoxButton.OK, MessageBoxImage.Information);
@@ -148,6 +149,12 @@ public partial class MainWindow
     private async void Role_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (!_loaded || SelectedRuntime is null) return;
+        if (SelectedRuntime.IsCollectionEnabled)
+        {
+            SelectedRuntime.IsCollectionEnabled = false;
+            StopBrokerSchedule(SelectedRuntime);
+        }
+        await CleanupPriceSessionAsync(SelectedRuntime);
         SelectedRuntime.RefreshProfile();
         await SaveProfilesAsync();
         Log($"{SelectedRuntime.Profile.Name}: роль — {SelectedRuntime.RoleLabel}");

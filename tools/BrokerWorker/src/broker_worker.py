@@ -49,6 +49,13 @@ def remove_stale_state(path: Path, pid: int) -> None:
     path.unlink(missing_ok=True)
 
 
+def json_matches_pid(path: Path, pid: int) -> bool:
+    try:
+        return int(json.loads(path.read_text(encoding="utf-8")).get("pid", -1)) == pid
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def collect(pid: int, output: Path) -> None:
     BUILD.mkdir(parents=True, exist_ok=True)
     DIAGNOSTICS.mkdir(parents=True, exist_ok=True)
@@ -102,6 +109,39 @@ def collect(pid: int, output: Path) -> None:
                 pass
 
 
+def collect_price(pid: int, object_id: int, output: Path) -> None:
+    BUILD.mkdir(parents=True, exist_ok=True)
+    DIAGNOSTICS.mkdir(parents=True, exist_ok=True)
+    for name in ("lu4_target_hook_state.json", "process_event_shop_capture_state.json"):
+        remove_stale_state(BUILD / name, pid)
+    target_state = BUILD / "lu4_target_hook_state.json"
+    if not target_state.exists():
+        run_script(CLIENT / "lu4_target_session.py", "--pid", pid, "prepare")
+    route_path = DIAGNOSTICS / "latest_target_route.json"
+    globals_path = DIAGNOSTICS / "latest_unreal_globals.json"
+    functions_path = DIAGNOSTICS / "latest_shop_ufunctions.json"
+    if not json_matches_pid(route_path, pid):
+        run_script(DIAGNOSTICS / "resolve_target_route.py", pid, "--json", DIAGNOSTICS / "latest_target_route.json")
+    if not json_matches_pid(globals_path, pid):
+        run_script(DIAGNOSTICS / "discover_unreal_globals.py", pid, "--json", DIAGNOSTICS / "latest_unreal_globals.json")
+    if not json_matches_pid(functions_path, pid):
+        run_script(DIAGNOSTICS / "inspect_shop_ufunctions.py", pid, "--globals", DIAGNOSTICS / "latest_unreal_globals.json", "--json", DIAGNOSTICS / "latest_shop_ufunctions.json")
+    run_script(DIAGNOSTICS / "scan_lu4_actors.py", pid, "--limit", 100, "--json", DIAGNOSTICS / "latest_actor_snapshot.json")
+    run_script(DIAGNOSTICS / "process_event_shop_capture.py", "install", pid)
+    run_script(DIAGNOSTICS / "process_event_shop_capture.py", "suppress-ui", "on")
+    run_script(DIAGNOSTICS / "process_event_shop_capture.py", "suppress-target-ui", "on")
+    run_script(DIAGNOSTICS / "event_shop_cycle.py", "--object-id", object_id, "--timeout", 45, "--json", output, timeout=60)
+
+
+def cleanup_price(pid: int) -> None:
+    remove_stale_state(BUILD / "process_event_shop_capture_state.json", pid)
+    remove_stale_state(BUILD / "lu4_target_hook_state.json", pid)
+    if (BUILD / "process_event_shop_capture_state.json").exists():
+        run_script(DIAGNOSTICS / "process_event_shop_capture.py", "uninstall")
+    if (BUILD / "lu4_target_hook_state.json").exists():
+        run_script(CLIENT / "lu4_target_session.py", "cleanup")
+
+
 def main() -> int:
     # Python helpers launch sys.executable with a script path. In the frozen
     # worker sys.executable is BrokerWorker.exe, so dispatch that invocation
@@ -115,11 +155,20 @@ def main() -> int:
         runpy.run_path(str(script), run_name="__main__")
         return 0
 
-    parser = argparse.ArgumentParser(description="PriceCheck embedded broker collector")
+    parser = argparse.ArgumentParser(description="PriceCheck embedded market worker")
+    parser.add_argument("--mode", choices=("broker", "price", "cleanup"), default="broker")
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--object-id", type=int)
     args = parser.parse_args()
-    collect(args.pid, args.output.resolve())
+    if args.mode == "price":
+        if args.object_id is None:
+            parser.error("--object-id is required in price mode")
+        collect_price(args.pid, args.object_id, args.output.resolve())
+    elif args.mode == "cleanup":
+        cleanup_price(args.pid)
+    else:
+        collect(args.pid, args.output.resolve())
     print(json.dumps({"pid": args.pid, "output": str(args.output.resolve())}))
     return 0
 

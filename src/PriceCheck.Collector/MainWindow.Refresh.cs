@@ -27,10 +27,14 @@ public partial class MainWindow
                 ? _radarSessions.Snapshot(livePid, GetCenterZone(runtime.Profile), runtime.IsCollectionEnabled)
                 : null;
             if (radar is not null) runtime.Radar = radar;
-            if (radar is not null && runtime.IsCollectionEnabled && radar.IsInsideCenterZone)
+            if (radar is not null && runtime.IsCollectionEnabled && runtime.Profile.Role == Models.CollectorRole.BrokerRadar && radar.IsInsideCenterZone)
             {
                 await UploadRadarWhenChangedAsync(runtime, radar);
                 TryStartBrokerCycle(runtime, radar);
+            }
+            else if (radar is not null && runtime.IsCollectionEnabled && runtime.Profile.Role == Models.CollectorRole.PriceVerifier)
+            {
+                TryStartPriceWorker(runtime, radar);
             }
             // Broker values must belong to this profile's live session. Never
             // surface old research JSON as if it were current market state.
