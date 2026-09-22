@@ -11,7 +11,9 @@ Updated: 2026-09-23 (Europe/Kiev)
 - Normal development cycle: `cd C:\broker; .\dev.ps1 run`.
 - Full packaging check: `cd C:\broker; .\dev.ps1 full`.
 - Scheduled task `PriceCheck Collector Standalone` points to the portable EXE in `C:\broker` and is currently running.
-- The market API and website are separate in `C:\Users\Pavel\Documents\ChatGPT\pricecheck-market`; their scheduled tasks and paths were not moved.
+- The market API, website and PostgreSQL runtime are separate in
+  `C:\broker-server`. Scheduled tasks `PriceCheck Market API` and
+  `PriceCheck Market Web` run from that path.
 
 ## Preserved local state
 
