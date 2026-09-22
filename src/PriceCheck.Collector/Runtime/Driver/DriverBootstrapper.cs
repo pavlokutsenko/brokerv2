@@ -18,7 +18,7 @@ public sealed class DriverBootstrapper
 
         var logDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PriceCheck Collector",
+            "PriceCheckCollector",
             "logs");
         Directory.CreateDirectory(logDirectory);
         var logPath = Path.Combine(logDirectory, "driver-bootstrap.log");
@@ -31,7 +31,12 @@ public sealed class DriverBootstrapper
         }
 
         if (process.ExitCode != 0)
-            throw new InvalidOperationException(ReadFailure(logPath, process.ExitCode));
+        {
+            var processError = ReadProcessError(process);
+            if (!string.IsNullOrWhiteSpace(processError))
+                File.WriteAllText(logPath + ".process.log", processError);
+            throw new InvalidOperationException(ReadFailure(logPath, process.ExitCode, processError));
+        }
 
         var deadline = DateTime.UtcNow.AddSeconds(5);
         while (DateTime.UtcNow < deadline)
@@ -48,11 +53,24 @@ public sealed class DriverBootstrapper
         {
             FileName = "powershell.exe",
             WorkingDirectory = workingDirectory,
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Hidden,
-            Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{loaderPath}\" -LogPath \"{logPath}\""
+            UseShellExecute = !IsAdministrator(),
+            WindowStyle = ProcessWindowStyle.Hidden
         };
+        if (start.UseShellExecute) start.Verb = "runas";
+        else
+        {
+            start.CreateNoWindow = true;
+            start.RedirectStandardOutput = true;
+            start.RedirectStandardError = true;
+        }
+
+        start.ArgumentList.Add("-NoProfile");
+        start.ArgumentList.Add("-ExecutionPolicy");
+        start.ArgumentList.Add("Bypass");
+        start.ArgumentList.Add("-File");
+        start.ArgumentList.Add(loaderPath);
+        start.ArgumentList.Add("-LogPath");
+        start.ArgumentList.Add(logPath);
         try
         {
             return Process.Start(start) ?? throw new InvalidOperationException("Windows не запустил загрузчик LU4Memory");
@@ -61,6 +79,13 @@ public sealed class DriverBootstrapper
         {
             throw new InvalidOperationException("Для загрузки LU4Memory нужно подтвердить запрос UAC", exception);
         }
+    }
+
+    private static bool IsAdministrator()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var principal = new System.Security.Principal.WindowsPrincipal(identity);
+        return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
     }
 
     private static bool IsDeviceReady()
@@ -78,9 +103,20 @@ public sealed class DriverBootstrapper
         }
     }
 
-    private static string ReadFailure(string logPath, int exitCode)
+    private static string ReadProcessError(Process process)
     {
-        if (!File.Exists(logPath)) return $"Загрузчик LU4Memory завершился с кодом {exitCode}";
+        if (process.StartInfo.UseShellExecute) return string.Empty;
+        return string.Join(Environment.NewLine,
+            process.StandardError.ReadToEnd(),
+            process.StandardOutput.ReadToEnd()).Trim();
+    }
+
+    private static string ReadFailure(string logPath, int exitCode, string processError)
+    {
+        if (!File.Exists(logPath))
+            return string.IsNullOrWhiteSpace(processError)
+                ? $"Загрузчик LU4Memory завершился с кодом {exitCode}"
+                : $"Загрузчик LU4Memory завершился с кодом {exitCode}:\n{processError}";
         var lines = File.ReadAllLines(logPath).Where(line => !string.IsNullOrWhiteSpace(line)).TakeLast(8);
         return $"Не удалось загрузить LU4Memory (код {exitCode}):\n{string.Join(Environment.NewLine, lines)}";
     }

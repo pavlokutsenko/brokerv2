@@ -9,7 +9,7 @@ Updated: 2026-09-23 (Europe/Kiev)
 - Branch: `main`.
 - Portable application: `C:\broker\release\PriceCheckCollector\PriceCheck.Collector.exe`.
 - Build and packaging check: `cd C:\broker; .\build.ps1`.
-- Scheduled task `PriceCheck Collector Standalone` points to the portable EXE in `C:\broker` and is currently stopped/Ready.
+- Scheduled task `PriceCheck Collector Standalone` points to the portable EXE in `C:\broker` and is currently running.
 - The market API and website are separate in `C:\Users\Pavel\Documents\ChatGPT\pricecheck-market`; their scheduled tasks and paths were not moved.
 
 ## Preserved local state
@@ -17,7 +17,22 @@ Updated: 2026-09-23 (Europe/Kiev)
 - `release\PriceCheckCollector\profiles.json` contains the Gamma / Giran profile, game launch path and saved centre `(82413.619, 148116.979)`.
 - `release\PriceCheckCollector\data` was preserved, including the local price queue and server outbox.
 - The only preserved manual capture is `release\PriceCheckCollector\manual-captures\manual-passby-20260921-005751.{json,jsonl}`.
-- At this checkpoint `lu4.bin` PID 1416 was alive, but no Collector or BrokerWorker process was running. Always re-check the PID; do not trust this snapshot later.
+- At this checkpoint the Collector is running. The separate `--upload-worker`
+  child is expected. No game client was running during the final driver check;
+  always discover current PIDs again.
+
+## Driver startup status
+
+Automatic driver loading from the portable Collector is working. A startup
+failure after the repository move was traced to `load-driver.ps1` being UTF-8
+without BOM: Windows PowerShell 5.1 decoded its Cyrillic messages as ANSI and
+failed before the script could create a log. The source loader now has a BOM,
+the bootstrap uses an argument list, and diagnostics use the no-space path
+`%LOCALAPPDATA%\PriceCheckCollector\logs\driver-bootstrap.log`.
+
+Final live check on 2026-09-23: service `LU4Memory` was `RUNNING` from the
+bundled `C:\broker` driver, and an independent IOCTL read returned `MZ` from
+the Collector process image base.
 
 ## Current working path
 

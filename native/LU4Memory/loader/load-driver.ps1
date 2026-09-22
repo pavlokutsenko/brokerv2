@@ -1,4 +1,4 @@
-param([Parameter(Mandatory = $true)][string]$LogPath)
+﻿param([Parameter(Mandatory = $true)][string]$LogPath)
 
 $ErrorActionPreference = 'Stop'
 $ServiceName = 'LU4Memory'
