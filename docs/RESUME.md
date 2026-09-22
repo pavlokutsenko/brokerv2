@@ -8,7 +8,8 @@ Updated: 2026-09-23 (Europe/Kiev)
 - Read `AGENTS.md`, this file, then `docs/PRICE_VERIFIER.md`.
 - Branch: `main`.
 - Portable application: `C:\broker\release\PriceCheckCollector\PriceCheck.Collector.exe`.
-- Build and packaging check: `cd C:\broker; .\build.ps1`.
+- Normal development cycle: `cd C:\broker; .\dev.ps1 run`.
+- Full packaging check: `cd C:\broker; .\dev.ps1 full`.
 - Scheduled task `PriceCheck Collector Standalone` points to the portable EXE in `C:\broker` and is currently running.
 - The market API and website are separate in `C:\Users\Pavel\Documents\ChatGPT\pricecheck-market`; their scheduled tasks and paths were not moved.
 
@@ -33,6 +34,13 @@ the bootstrap uses an argument list, and diagnostics use the no-space path
 Final live check on 2026-09-23: service `LU4Memory` was `RUNNING` from the
 bundled `C:\broker` driver, and an independent IOCTL read returned `MZ` from
 the Collector process image base.
+
+The development flow is documented in `docs\DEVELOPMENT.md`. `dev.ps1 run`
+stops the previous UI, performs an incremental build, validates the bundled
+loader with Windows PowerShell 5.1, launches through the highest-level
+scheduled task and waits for both the main window and the running driver.
+`dev.ps1 restart` does the same readiness check without rebuilding. A repeated
+incremental run was validated in 6.2 seconds; restart completed in 4.5 seconds.
 
 ## Current working path
 

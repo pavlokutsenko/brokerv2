@@ -18,4 +18,5 @@ if ($LASTEXITCODE -ne 0) { throw 'BrokerWorker build failed' }
 $Target = Join-Path $Repository 'src\PriceCheck.Collector\BrokerRuntime'
 Remove-Item -LiteralPath $Target -Recurse -Force -ErrorAction SilentlyContinue
 Copy-Item -LiteralPath (Join-Path $Dist 'BrokerWorker') -Destination $Target -Recurse
+Remove-Item -LiteralPath $Stage,$Dist -Recurse -Force
 Write-Host "Broker runtime staged at $Target"
