@@ -17,7 +17,7 @@ The embedded worker validates that `latest_session.json` and `latest_active64_st
 Run until `Ctrl+C`:
 
 ```powershell
-cd C:\Users\Pavel\Documents\ChatGPT\pricecheck-collector
+cd C:\broker
 .\manual-passby-shops.ps1
 ```
 

@@ -16,7 +16,7 @@ The implementation is split by responsibility and compiled as one translation un
 Run from an ordinary PowerShell terminal with Visual Studio 2022 Enterprise, Windows SDK `10.0.26100.0`, and WDK installed:
 
 ```powershell
-cd C:\Users\Pavel\Documents\ChatGPT\pricecheck-collector\native\LU4Memory
+cd C:\broker\native\LU4Memory
 .\build.ps1
 ```
 
