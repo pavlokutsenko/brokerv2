@@ -2,6 +2,13 @@
 #include <wdmsec.h>
 #include <aux_klib.h>
 #include <initguid.h>
+#define NDIS630 1
+#pragma warning(push)
+#pragma warning(disable:4201)
+#include <ndis.h>
+#include <fwpsk.h>
+#include <fwpmk.h>
+#pragma warning(pop)
 
 #include "../include/lu4_protocol.h"
 #include "../include/lu4_target_packet.h"
@@ -14,12 +21,20 @@ C_ASSERT(LU4_COPY_HEADER_SIZE == 24);
 C_ASSERT(sizeof(LU4_TARGET_COMMAND) == 48);
 C_ASSERT(sizeof(LU4_KERNEL_MODULE_INFO) == 24);
 C_ASSERT(LU4_MODULE_READ_HEADER_SIZE == 24);
+C_ASSERT(sizeof(LU4_PROBE_ACTIVE64_MAC_REQUEST) == 24);
 C_ASSERT(sizeof(LU4_PACKET_CRYPTO_REQUEST) == 48);
 C_ASSERT(sizeof(LU4_RC4_STATE) == LU4_RC4_STATE_SIZE);
 C_ASSERT(sizeof(LU4_VIRTUAL_MEMORY_REQUEST) == 40);
+C_ASSERT(sizeof(LU4_PROXY_REDIRECT_REQUEST) == 28);
+C_ASSERT(sizeof(LU4_PROXY_REDIRECT_CONTEXT) == 16);
 
+#ifdef LU4_PROBE_BUILD
+static const UNICODE_STRING g_DeviceName = RTL_CONSTANT_STRING(L"\\Device\\LU4Probe");
+static const UNICODE_STRING g_SymbolicLink = RTL_CONSTANT_STRING(L"\\DosDevices\\LU4Probe");
+#else
 static const UNICODE_STRING g_DeviceName = RTL_CONSTANT_STRING(L"\\Device\\LU4Memory");
 static const UNICODE_STRING g_SymbolicLink = RTL_CONSTANT_STRING(L"\\DosDevices\\LU4Memory");
+#endif
 static FAST_MUTEX g_TargetMutex;
 static FAST_MUTEX g_CryptoMutex;
 static LU4_TARGET_COMMAND g_TargetCommand;
@@ -50,5 +65,6 @@ NTSYSAPI NTSTATUS NTAPI PsResumeProcess(_In_ PEPROCESS Process);
 #include "packet_transform.inc"
 #include "packet_crypto.inc"
 #include "virtual_memory.inc"
+#include "proxy_redirect.inc"
 #include "dispatch.inc"
 

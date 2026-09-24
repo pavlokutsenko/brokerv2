@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{A4E10BB4-9D77-468B-8DD7-E03276F99119}</ProjectGuid>
+    <RootNamespace>ClientLaunchAgent</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(ProjectDir)build\x64\</OutDir>
+    <IntDir>$(ProjectDir)build\obj-agent\</IntDir>
+    <TargetName>PriceCheck.ClientAgent</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile><WarningLevel>Level3</WarningLevel><LanguageStandard>stdcpp17</LanguageStandard><PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><RuntimeLibrary>MultiThreaded</RuntimeLibrary></ClCompile>
+    <Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation><AdditionalDependencies>ws2_32.lib;iphlpapi.lib;ole32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="world_identity.cpp" />
+    <ClCompile Include="agent.cpp" /><ClCompile Include="early_child.cpp" /><ClCompile Include="early_smart.cpp" /><ClCompile Include="early_registry.cpp" /><ClCompile Include="anticheat_registry_trace.cpp" /><ClCompile Include="firmware_snapshot.cpp" /><ClCompile Include="identity.cpp" /><ClCompile Include="disk_identity.cpp" /><ClCompile Include="disk_serial.cpp" /><ClCompile Include="router_identity.cpp" /><ClCompile Include="proxy.cpp" /><ClCompile Include="proxy_pipe.cpp" /><ClCompile Include="trace.cpp" /><ClCompile Include="network_observe.cpp" /><ClCompile Include="world_send_probe.cpp" />
+    <ClCompile Include="minhook\src\buffer.c" /><ClCompile Include="minhook\src\hook.c" /><ClCompile Include="minhook\src\trampoline.c" />
+    <ClCompile Include="minhook\src\hde\hde32.c" /><ClCompile Include="minhook\src\hde\hde64.c" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

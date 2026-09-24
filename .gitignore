@@ -9,7 +9,9 @@ artifacts/
 !native/LU4Memory/artifacts/verified/**
 screenshots/
 native/LU4Memory/build/
+native/ClientLaunch/build/
 release/
+workspace/
 tools/BrokerWorker/stage/
 tools/BrokerWorker/dist/
 src/PriceCheck.Collector/BrokerRuntime/
@@ -18,3 +20,14 @@ __pycache__/
 *.pyc
 tools/BrokerWorker/src/diagnostics/latest_*.json
 tools/BrokerWorker/src/build/
+tests/**/build/
+*.pdb
+*.ilk
+*.exp
+*.dmp
+*.pcap
+*.pcapng
+.env
+.env.*
+profiles.json
+launch-templates.json

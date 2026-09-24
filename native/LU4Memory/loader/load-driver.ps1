@@ -1,9 +1,9 @@
-﻿param([Parameter(Mandatory = $true)][string]$LogPath)
+﻿param([Parameter(Mandatory = $true)][string]$LogPath, [switch]$ForceReload)
 
 $ErrorActionPreference = 'Stop'
 $ServiceName = 'LU4Memory'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$DriverPath = Join-Path $Root 'lu4_memory.sys'
+$DriverPath = Join-Path $Root 'lu4_memory_wfp.sys'
 $KduPath = Join-Path $Root 'kdu.exe'
 
 function Write-DriverLog {
@@ -40,7 +40,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogPath) | Out-Null
     Set-Content -LiteralPath $LogPath -Value '' -Encoding UTF8
     Assert-Administrator
-    Assert-FileHash $DriverPath '2393EEE0E77E03A3C5D4640CE16F0A6AC1B6DE1E1A3D7887B1635AE6186AE766'
+    Assert-FileHash $DriverPath 'C7228FD5D285C29268A64707B3062FEEEFCCB76BEB5332CB8BF5B4E52CCC64DA'
     Assert-FileHash $KduPath 'EA626A9FF0F0A6FD0BB8377AFA93C6ECBFB388204C3ED4E90D7000CDEDC25B1D'
     Assert-FileHash (Join-Path $Root 'drv64.dll') '155E357D76874EA8D203643F63C9066A3DFD3DAB3E150E4735FBAD673EF06F7F'
     Assert-FileHash (Join-Path $Root 'Taigei64.dll') '8A48F93D2A8121A8E4F4BF76378D54EC40184987EB16B795614142C8E3E2BDA1'
@@ -51,11 +51,28 @@ try {
         $normalized = $existingPath
         if ($normalized -and $normalized.StartsWith('\??\')) { $normalized = $normalized.Substring(4) }
         if (-not $normalized -or -not (Test-Path -LiteralPath $normalized) -or
-            (Get-FileHash -LiteralPath $normalized -Algorithm SHA256).Hash -ne '2393EEE0E77E03A3C5D4640CE16F0A6AC1B6DE1E1A3D7887B1635AE6186AE766') {
+            (Get-FileHash -LiteralPath $normalized -Algorithm SHA256).Hash -notin @(
+                '2393EEE0E77E03A3C5D4640CE16F0A6AC1B6DE1E1A3D7887B1635AE6186AE766',
+                'C7228FD5D285C29268A64707B3062FEEEFCCB76BEB5332CB8BF5B4E52CCC64DA')) {
             throw 'Служба LU4Memory уже запущена из другого или повреждённого бинарника. Закройте игровые клиенты и перезагрузите Windows.'
         }
-        Write-DriverLog 'LU4Memory уже запущен.'
-        exit 0
+        if (-not $ForceReload) {
+            Write-DriverLog 'LU4Memory уже запущен.'
+            exit 0
+        }
+        if (Get-Process -Name 'lu4','lu4.bin','lu4-win64-shipping' -ErrorAction SilentlyContinue) {
+            throw 'Закройте клиенты LU4 перед обновлением LU4Memory.'
+        }
+        Write-DriverLog 'Останавливаю прежний LU4Memory для обновления.'
+        & sc.exe stop $ServiceName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Не удалось остановить прежний LU4Memory.' }
+        $stopped = $false
+        for ($attempt = 0; $attempt -lt 50; $attempt++) {
+            $current = Get-CimInstance Win32_SystemDriver -Filter "Name='$ServiceName'" -ErrorAction Stop
+            if ($current.State -eq 'Stopped') { $stopped = $true; break }
+            Start-Sleep -Milliseconds 200
+        }
+        if (-not $stopped) { throw 'Прежний LU4Memory не остановился за 10 секунд.' }
     }
 
     if ($existingPath) {

@@ -2,6 +2,18 @@
 
 Все команды выполняются из `C:\broker`. Обычный цикл после изменения кода:
 
+Наблюдение текущей пары остановлено пользователем 24 сентября в 15:13 по Киеву;
+автоматизация `gamma` приостановлена. Игры оставлены открытыми. Перед
+`dev.ps1 run/restart` перепроверьте живые процессы и учитывайте потерю их прокси
+при завершении владеющего Collector.
+Рефакторинг двух модулей опубликован отдельно в
+`workspace\module-separation-publish`; рабочий release остаётся прежним.
+Проверки модулей: `dotnet run --project tests/ModuleIsolation.Smoke -c Release`;
+визуальный smoke: `dotnet run --project tests/CollectorUi.Smoke -c Release --
+workspace\module-ui\templates.png`. Последний явно отключает WPF startup и
+проверяет неизменность файлов пользовательских настроек. См.
+[результаты и ограничения](analysis/module-separation/README.md).
+
 ```powershell
 .\dev.ps1 run
 ```
@@ -34,6 +46,9 @@
 тоже проверяет время изменения входов BrokerWorker и пропускает PyInstaller,
 если staged runtime актуален. `build.ps1 -ForceBroker` всегда пересобирает
 worker, а `build.ps1 -SkipBroker` публикует только WPF-часть.
+Для проверки сборки при открытом клиенте используйте
+`build.ps1 -SkipBroker -OutputDirectory workspace\build-verify`: загруженные
+клиентом DLL не позволяют перезаписать обычный каталог `release`.
 Временные каталоги PyInstaller `stage` и `dist` удаляются после успешного
 копирования runtime в WPF-проект.
 
@@ -55,4 +70,37 @@ cd C:\broker
 
 ```text
 %LOCALAPPDATA%\PriceCheckCollector\logs\driver-bootstrap.log
+```
+
+После проверки 2026-09-24 штатный запуск HWID-профиля также задаёт отдельный
+world identity из сохранённого ID профиля и `WorldIdentitySeed` шаблона.
+Regenerate меняет seed, сохраняя ID профиля; общий шаблон по-прежнему даёт
+разные значения двум профилям. Старые шаблоны без seed сохраняют прежнее
+значение до регенерации. Результат без секретов записывается
+в `%LOCALAPPDATA%\PriceCheckCollector\logs\world-identity-<PID>.txt`.
+Поддержка привязана к проверенной версии клиента/античита; после обновления
+нужно заново проверить guards и одиночный/парный вход. Подробности и read-only
+проверка двух профилей: `tools/TwoClientIsolation/README.md`.
+
+Для последовательного запуска двух сохранённых профилей одним Collector:
+
+```powershell
+Start-Process -FilePath 'C:\broker\release\PriceCheckCollector\PriceCheck.Collector.exe' `
+    -ArgumentList '--launch-profiles=Gamma,Black'
+```
+
+Второй профиль запускается после получения позиции первого в мире.
+Этот аргумент следует использовать при старте Collector; не запускать
+дополнительный экземпляр приложения поверх уже работающего.
+
+Для контрольного восстановления конкретного профиля после запуска приложения
+можно передать `--launch-profile=<имя>` напрямую portable EXE. Collector
+загружает сохранённые профили и шаблоны, затем запускает выбранный профиль тем
+же путём, что и кнопка `Launch client`. Если профиль уже владеет живым PID,
+повторный запуск пропускается. Пример:
+
+```powershell
+Start-Process -FilePath 'C:\broker\release\PriceCheckCollector\PriceCheck.Collector.exe' `
+    -WorkingDirectory 'C:\broker\release\PriceCheckCollector' `
+    -ArgumentList '--launch-profile=Gamma'
 ```

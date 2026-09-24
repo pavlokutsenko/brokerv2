@@ -22,9 +22,12 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>$(ProjectDir)build\x64\Release\</OutDir>
-    <IntDir>$(ProjectDir)build\obj\x64\Release\</IntDir>
-    <TargetName>lu4_memory</TargetName>
+    <OutDir Condition="'$(LU4ProbeBuild)'!='true'">$(ProjectDir)build\x64\Release\</OutDir>
+    <IntDir Condition="'$(LU4ProbeBuild)'!='true'">$(ProjectDir)build\obj\x64\Release\</IntDir>
+    <TargetName Condition="'$(LU4ProbeBuild)'!='true'">lu4_memory</TargetName>
+    <OutDir Condition="'$(LU4ProbeBuild)'=='true'">$(ProjectDir)build\probe\x64\Release\</OutDir>
+    <IntDir Condition="'$(LU4ProbeBuild)'=='true'">$(ProjectDir)build\obj\probe\x64\Release\</IntDir>
+    <TargetName Condition="'$(LU4ProbeBuild)'=='true'">lu4_probe</TargetName>
     <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
     <SignMode>Off</SignMode>
   </PropertyGroup>
@@ -32,11 +35,12 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <PreprocessorDefinitions>_AMD64_;AMD64;_WIN64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_AMD64_;AMD64;_WIN64;$(LU4ProbeDefine);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>ntoskrnl.lib;wdmsec.lib;Aux_Klib.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ntoskrnl.lib;wdmsec.lib;Aux_Klib.lib;fwpkclnt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/INTEGRITYCHECK %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -50,6 +54,7 @@
     <None Include="driver\packet_transform.inc" />
     <None Include="driver\packet_crypto.inc" />
     <None Include="driver\virtual_memory.inc" />
+    <None Include="driver\proxy_redirect.inc" />
     <None Include="driver\dispatch.inc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

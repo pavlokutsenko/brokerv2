@@ -2,10 +2,10 @@
   "artifact": "lu4_memory.sys",
   "protocolVersion": 3,
   "architecture": "x64",
-  "length": 27136,
-  "sha256": "2393EEE0E77E03A3C5D4640CE16F0A6AC1B6DE1E1A3D7887B1635AE6186AE766",
-  "status": "verified-running-baseline",
+  "length": 30720,
+  "sha256": "C7228FD5D285C29268A64707B3062FEEEFCCB76BEB5332CB8BF5B4E52CCC64DA",
+  "status": "verified-wfp-proxy-live",
   "serviceName": "LU4Memory",
   "devicePath": "\\\\.\\LU4Memory",
-  "source": "Imported from the candidate5 baseline before the source-only module split."
+  "source": "Built from native/LU4Memory on 2026-09-23; benign WFP redirect and LU4 local/external HTTP CONNECT live smokes passed."
 }

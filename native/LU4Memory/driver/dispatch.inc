@@ -61,6 +61,16 @@ static NTSTATUS DispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ 
         status = HandleReadActive64(
             buffer, inputLength, outputLength, &information);
         break;
+#ifdef LU4_PROBE_BUILD
+    case IOCTL_LU4_PROBE_CAS_ACTIVE64_MAC:
+        status = HandleProbeCasActive64Mac(
+            buffer, inputLength, outputLength, &information);
+        break;
+    case IOCTL_LU4_PROBE_CAS_ACTIVE64_EIGHT:
+        status = HandleProbeCasActive64Eight(
+            buffer, inputLength, outputLength, &information);
+        break;
+#endif
     case IOCTL_LU4_ENCRYPT_PACKET:
         status = HandleEncryptPacket(
             buffer, inputLength, outputLength, &information);
@@ -77,6 +87,10 @@ static NTSTATUS DispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ 
         status = HandleFreeProcessMemory(
             buffer, inputLength, outputLength, &information);
         break;
+    case IOCTL_LU4_SET_PROXY_REDIRECT:
+        status = HandleProxyRedirect(
+            DeviceObject, buffer, inputLength, outputLength, &information);
+        break;
     default:
         status = STATUS_INVALID_DEVICE_REQUEST;
         break;
@@ -87,6 +101,9 @@ static NTSTATUS DispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ 
 
 static VOID DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 {
+#ifndef LU4_PROBE_BUILD
+    ProxyRedirectShutdown();
+#endif
     IoDeleteSymbolicLink((PUNICODE_STRING)&g_SymbolicLink);
     if (DriverObject->DeviceObject != NULL) {
         IoDeleteDevice(DriverObject->DeviceObject);
@@ -106,6 +123,9 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
 
     ExInitializeFastMutex(&g_TargetMutex);
     ExInitializeFastMutex(&g_CryptoMutex);
+#ifndef LU4_PROBE_BUILD
+    ProxyRedirectInitialize();
+#endif
     RtlZeroMemory(&g_TargetCommand, sizeof(g_TargetCommand));
     g_TargetCommand.Version = LU4_PROTOCOL_VERSION;
 

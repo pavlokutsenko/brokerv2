@@ -1,0 +1,166 @@
+<UserControl x:Class="PriceCheck.Collector.LaunchTemplatesView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextBrush}">
+    <Grid Margin="20">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,10">
+            <Grid>
+                <TextBlock Text="Launch templates" FontSize="22" FontWeight="SemiBold"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock x:Name="ScanStatusText" Foreground="{StaticResource MutedBrush}" FontSize="11"
+                               VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <Button Content="Scan this PC" Click="Scan_Click"/>
+                </StackPanel>
+            </Grid>
+            <TextBlock Text="Create a template, then assign it to a client profile. Changes take effect on the next launch."
+                       Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"/>
+        </StackPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <ListBox x:Name="TemplateList" ItemsSource="{Binding Templates}" SelectionChanged="TemplateList_SelectionChanged"
+                         Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}">
+                    <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}"/></DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button Content="+ New" Click="New_Click"/>
+                    <Button Content="Delete" Margin="8,0,0,0" Click="Delete_Click"/>
+                </StackPanel>
+            </Grid>
+            <Border Grid.Column="2" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="18">
+                <ScrollViewer x:Name="EditorScroll" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="Editor">
+                        <TextBlock Text="TEMPLATE NAME" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                        <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,6"/>
+                        <TextBlock Text="DESCRIPTION" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                        <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8"/>
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="7" Padding="12" Margin="0,6,0,14">
+                            <StackPanel>
+                                <CheckBox x:Name="ProxyToggle" Content="Use authenticated HTTP proxy"
+                                          IsChecked="{Binding ProxyEnabled, Mode=TwoWay}" FontWeight="SemiBold"/>
+                                <TextBlock Text="Optional. Each launched client gets its own proxy route."
+                                           Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,5,0,10"/>
+                                <StackPanel x:Name="ProxyFields" IsEnabled="{Binding IsChecked, ElementName=ProxyToggle}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="108"/></Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,8,0"><TextBlock Text="HOST" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
+                                            <TextBox x:Name="ProxyHostInput" Text="{Binding ProxyHost, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"/></StackPanel>
+                                        <StackPanel Grid.Column="1"><TextBlock Text="PORT" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
+                                            <TextBox x:Name="ProxyPortInput" Text="{Binding ProxyPort, UpdateSourceTrigger=LostFocus}" Margin="0,4,0,0"/></StackPanel>
+                                    </Grid>
+                                    <Grid Margin="0,9,0,0">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,8,0"><TextBlock Text="USERNAME" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
+                                            <TextBox x:Name="ProxyUserInput" Text="{Binding ProxyUser, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"/></StackPanel>
+                                        <StackPanel Grid.Column="1"><TextBlock Text="PASSWORD" FontSize="10" Foreground="{StaticResource MutedBrush}"/>
+                                            <PasswordBox x:Name="TemplatePassword" PasswordChanged="TemplatePassword_Changed" Margin="0,4,0,0"/></StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="HARDWARE IDENTITY" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8"/>
+                        <CheckBox Content="Override hardware IDs" IsChecked="{Binding HardwareEnabled}" Margin="0,0,0,5"/>
+                        <CheckBox Content="Generate a new identity on every launch"
+                                  IsChecked="{Binding RotateEachLaunch}" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,9">
+                            <TextBlock Text="GENERATED VALUES" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource PrimaryBrush}" VerticalAlignment="Center"/>
+                            <Button Content="↻ Regenerate" HorizontalAlignment="Right" Click="Regenerate_Click"/>
+                        </Grid>
+                        <TextBlock Text="For rotating identities, these values show the most recent launch."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,8"/>
+                        <TextBlock Text="SMBIOS strings keep their original lengths on each PC. MAC is a base value for network adapters."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,8"/>
+                        <Expander Header="View 20 generated identifiers" Foreground="{StaticResource TextBrush}" IsExpanded="False">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="System UUID · SMBIOS" VerticalAlignment="Center"/>
+                            <TextBox Grid.Column="1" Text="{Binding Identity.SystemUuid}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="1" Text="MachineGuid · registry" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Identity.MachineGuid}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="2" Text="Baseboard serial" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Identity.BoardSerial}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="3" Text="Volume serial" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Identity.VolumeSerial}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="4" Text="MAC · adapters" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Identity.MacAddress}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="5" Text="System serial" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding Identity.SystemSerial}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="6" Text="Chassis serial" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding Identity.ChassisSerial}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="7" Text="Processor ID" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding Identity.ProcessorId}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="8" Text="Processor serial" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="8" Grid.Column="1" Text="{Binding Identity.ProcessorSerial}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="9" Text="Memory serial" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="9" Grid.Column="1" Text="{Binding Identity.MemorySerial}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="10" Text="Disk serial" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="10" Grid.Column="1" Text="{Binding Identity.DiskSerial}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="11" Text="HwProfileGuid" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="11" Grid.Column="1" Text="{Binding Identity.HardwareProfileGuid}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="12" Text="Windows ProductId" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="12" Grid.Column="1" Text="{Binding Identity.WindowsProductId}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="13" Text="Disk · GPT GUID" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="13" Grid.Column="1" Text="{Binding Identity.DiskGuid}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="14" Text="Disk · MBR ID" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="14" Grid.Column="1" Text="{Binding Identity.DiskSignature}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="15" Text="Windows · SusClientId" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="15" Grid.Column="1" Text="{Binding Identity.SusClientId}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="16" Text="Video · registry" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="16" Grid.Column="1" Text="{Binding Identity.VideoIdentifier}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="17" Text="PC name · registry" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="17" Grid.Column="1" Text="{Binding Identity.RegistryComputerName}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="18" Text="Install date · Unix" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="18" Grid.Column="1" Text="{Binding Identity.InstallDate}" IsReadOnly="True" Margin="0,2"/>
+                            <TextBlock Grid.Row="19" Text="Gateway MAC · SendARP" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="19" Grid.Column="1" Text="{Binding Identity.RouterMac}" IsReadOnly="True" Margin="0,2"/>
+                        </Grid>
+                        </Expander>
+                        <Separator Margin="0,16,0,12"/>
+                        <Expander x:Name="ScanDetails" Header="Detected on this PC · scan on demand"
+                                  Foreground="{StaticResource TextBrush}" IsExpanded="False">
+                        <StackPanel>
+                        <TextBlock Text="Original values are read locally and are not saved in the template. Coverage shows what the current agent can override."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,8"/>
+                        <ItemsControl ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=UserControl}, Path=ScanRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="0,7">
+                                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Label}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding CurrentValue}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentValue}"/>
+                                                 <TextBlock Text="{Binding TargetValue, StringFormat='Template value: {0}'}"
+                                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding TargetValue}" FontSize="11" Margin="0,2,0,0"/>
+                                                <TextBlock Text="{Binding Coverage}" FontSize="10" Foreground="{StaticResource PrimaryBrush}" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Discard changes" Click="Reset_Click"/>
+            <Button x:Name="SaveTemplatesButton" Content="Save templates" Margin="10,0,0,0" Background="{StaticResource PrimaryBrush}"
+                    Foreground="#07110D" Click="Save_Click"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

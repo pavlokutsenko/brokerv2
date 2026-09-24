@@ -1,0 +1,32 @@
+# Early agent loading feasibility (2026-09-23)
+
+Goal: place our user-mode agent in the final LU4 child before the existing `clmods64.dll` Winsock detours so proxy traffic still passes through its receive transformation and startup HWID reads are covered. This is an experimental path, disabled in ordinary Collector launches.
+
+## Verified capabilities
+
+- `tests/ClientLaunch.EarlyProbe.ps1` used `CreateProcessW(CREATE_SUSPENDED)` on `lu4-win64-shipping.exe`. The returned root process and thread handles each had `GrantedAccess=0x001FFFFF` in `NtQueryObject(ObjectBasicInformation)`. `VirtualAllocEx`, `WriteProcessMemory` and `CreateRemoteThread(LoadLibraryW)` loaded our DLL before the root primary thread resumed; loader thread finished successfully.
+- With only `PRICECHECK_EARLY_CHILD_INJECT=1` set, the root agent hooked `CreateProcessW`, caught the final `lu4.bin`, and loaded the same DLL through the original child process handle before resuming its primary thread. The root trace recorded `early_child_pid` and `early_loader_result=1`. This proves the early handle path is technically available on this machine; it does not prove the game accepts the DLL.
+- In an early HWID-template trial, the child agent reported ready and intercepted two SMBIOS reads (`firmware_provider=RSMB`) before the game window. This confirms the later GUI-hook loader misses at least these startup calls.
+- A later opt-in caller trace identified both early `RSMB` calls as originating in runtime `clmods64.dll`, at return RVAs `0xA711` and `0xA735` (test PID 15508). A previously captured read-only image of the module's live `.text` shows the first call requesting the buffer size and the second filling the allocated buffer. The module passes provider `RSMB` and table ID zero. This confirms that the anticheat-side client module reads physical SMBIOS data before the normal GUI-hook agent is installed. It does not prove which bytes are sent to the world server or why the second same-server session is rejected.
+
+## Live compatibility result
+
+- The early HWID-template child exited before a stable game window appeared. An early proxy-only child (no HWID hook) also reported agent ready, then exited before the game window. Both trials used the experimental early path and their owned child PIDs were stopped/cleaned by the harness. The exact exit reason was not logged by Windows Application events; do not label it a proven anticheat rejection.
+- A control run using the same suspended root launch **without DLL injection** still had a `lu4.bin` child after 45 seconds. A second run with early DLL injection but no identity/proxy configuration no longer had a child at 45 seconds. Thus early DLL presence itself is associated with the failure; the proxy or HWID hooks are not required to reproduce it.
+- Follow-up trials resumed the final child and delayed the early DLL load by 3, 4.5 and 5 seconds (test PIDs 10224, 18632 and 13596). Each load still preceded and intercepted both `clmods64.dll` SMBIOS calls, and each client then exited before a stable game window during Active Anticheat checks. The delay experiment was removed from source and the native agent rebuilt. Timing within this tested pre-read window does not make early DLL loading compatible with this client.
+- The GUI-hook loader after the game window remains the tested working path for direct account login, Gamma and first character. Early loading stays behind `PRICECHECK_EARLY_LAUNCH=1` for laboratory tests only. Do not enable it by default or claim it reproduces HardShift's driver loading.
+
+## Code and next check
+
+## Root-only import interception trial
+
+An opt-in root-only launch (`PRICECHECK_EARLY_CHILD_SKIP_AGENT=1`) leaves the protected `lu4.bin` free of our DLL during startup. A control child remained alive after 45 seconds. For a separate owned test child, the root hook found the runtime `clmods64.dll` image through `VirtualQueryEx`/`GetMappedFileNameW`; Toolhelp module enumeration did not list it. It patched the module's `GetProcAddress` IAT slot at RVA `0x4C040` to an anonymous RX pass-through stub. The root trace counted 70 resolver calls, including one call with the `GetSystemFirmwareTable` name pointer at RVA `0x5E828`. The child remained alive for 30 seconds and was terminated by the test harness.
+
+A second opt-in test replaced only that resolver result with an anonymous callback that forwards the original firmware API unchanged. It counted one matching resolver call and **two `RSMB` firmware calls** inside the final child; the child again remained alive for 30 seconds. No hardware data was changed in either trial. This proves early firmware calls can be reached without loading our DLL into the protected child at startup. It does not show that spoofing those calls will allow two sessions on Gamma.
+
+These offsets are from this local runtime `clmods64.dll` build and the import hook remains test-only. The test-owned child's hook pages and patched IAT slot were discarded when the harness ended the child. The normal Collector does not enable this path. A first attempt at the counted stub had a malformed instruction and caused its test child to exit; the emitter was changed to assemble full 64-bit immediate operands explicitly before the successful repeat.
+
+The next opt-in callback copied a prepatched, same-length RSMB table after the real API completed. In a standalone child it patched ten SMBIOS fields, routed both early calls and replaced the one full-table response while leaving the child alive at 25 seconds. A controlled two-client Gamma run confirmed the same early replacement for Black, but world entry still ended with a remote EOF at the previous handshake point. The mismatch therefore involves another observable input or server-side condition; early SMBIOS alone is not enough. See `../two-client-isolation/README.md`.
+
+- Root/child native hook: `native/ClientLaunch/early_child.cpp`; suspended process and root injection: `src/PriceCheck.Collector/Services/EarlyClientAgentLoader.cs`; opt-in launcher switch: `ClientProcessService.cs`; controlled probe: `tests/ClientLaunch.EarlyProbe.ps1`.
+- Next collect a bounded child exit code or screen state in the no-hook early run, then compare loaded-module and integrity timing with HardShift's successful driver-assisted agent path. The cause could be loader timing, process checks, or another startup dependency; current evidence does not distinguish them.

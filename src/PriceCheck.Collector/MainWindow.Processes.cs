@@ -1,72 +1,120 @@
+using System.ComponentModel;
 using System.Windows;
+using PriceCheck.Collector.Models;
+using PriceCheck.Windows;
 
 namespace PriceCheck.Collector;
 
 public partial class MainWindow
 {
-    private async void Launch_Click(object sender, RoutedEventArgs e)
+    private async void Launch_Click(object sender, RoutedEventArgs e) => await LaunchProfileAsync(SelectedRuntime);
+
+    private async Task LaunchProfileAsync(ProfileRuntime? runtime)
     {
-        if (SelectedRuntime is null || SelectedRuntime.IsBusy) return;
-        var runtime = SelectedRuntime;
-        if (runtime.ProcessId is int current && _processes.IsAlive(current))
+        if (runtime is null || runtime.IsBusy || _closing) return;
+        if (runtime.Session is { } current && ClientProcessIdentity.IsCurrent(current))
         {
-            Log($"{runtime.Profile.Name}: клиент уже запущен");
+            Log($"{runtime.Profile.Name}: client is already running");
             return;
         }
         runtime.IsBusy = true;
-        runtime.Status = "Запускаю клиент…";
-        int? pid = null;
+        var template = LaunchTemplates.FirstOrDefault(value => value.Id == runtime.Profile.LaunchTemplateId && value.Id != Guid.Empty);
         try
         {
-            pid = await _processes.LaunchAndBindAsync(runtime.Profile, CancellationToken.None);
-            runtime.ProcessId = pid;
-            runtime.Status = "Жду завершения Active Anticheat…";
-            await _processes.WaitForGameWindowAsync(pid.Value, CancellationToken.None);
-            runtime.Status = "Устанавливаю packet radar…";
-            runtime.IsCollectionEnabled = false;
-            runtime.Profile.CollectionEnabled = false;
-            await _radarSessions.StartAsync(pid.Value, GetCenterZone(runtime.Profile), false, CancellationToken.None);
-            runtime.Status = "Радар готов · можно входить";
+            if (runtime.ReaderAttached) await _collection.DetachAsync(runtime);
+            runtime.Session = await _launcher.LaunchAsync(runtime.Profile, template,
+                status => runtime.LaunchStatus = status, CancellationToken.None);
+            runtime.Profile.LastProcessId = runtime.Session.ProcessId;
+            runtime.Profile.LastProcessStartUtc = runtime.Session.StartedAtUtc;
             await SaveProfilesAsync();
-            Log($"{runtime.Profile.Name}: PID {pid}, receive-hook установлен до входа");
+            Log($"{runtime.Profile.Name}: PID {runtime.ProcessId} · launcher ready; reader disconnected");
         }
         catch (Exception exception)
         {
-            runtime.Status = "Ошибка запуска";
-            if (pid is int failedPid)
+            runtime.LaunchStatus = "Launch failed";
+            if (runtime.Session is null || !ClientProcessIdentity.IsCurrent(runtime.Session))
             {
-                await _radarSessions.StopAsync(failedPid);
-                _processes.Terminate(failedPid);
-                runtime.ProcessId = null;
+                runtime.Session = null;
                 runtime.Profile.LastProcessId = null;
+                runtime.Profile.LastProcessStartUtc = null;
             }
-            Log(exception.Message);
-            MessageBox.Show(exception.Message, "Не удалось запустить клиент", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowModuleError(runtime, exception);
         }
-        finally { runtime.IsBusy = false; }
+        finally
+        {
+            runtime.IsBusy = false;
+            if (template?.RotateEachLaunch == true)
+            {
+                await SaveTemplatesAsync();
+                TemplatesView.RefreshAfterLaunch(LaunchTemplates.Where(value => value.Id != Guid.Empty));
+            }
+            RefreshClientList();
+        }
     }
 
     private async void Stop_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedRuntime is null || SelectedRuntime.IsBusy) return;
-        var runtime = SelectedRuntime;
+        if (SelectedRuntime is { IsBusy: false } runtime) await StopProfileAsync(runtime);
+    }
+
+    private async Task<bool> StopProfileAsync(ProfileRuntime runtime)
+    {
         runtime.IsBusy = true;
-        runtime.Status = "Останавливаю…";
-        var pid = runtime.ProcessId;
-        if (pid is int value)
+        try
         {
-            await _radarSessions.StopAsync(value);
-            _processes.Terminate(value);
+            await _collection.DetachAsync(runtime);
+            if (runtime.Session is { } session && !_launcher.Owns(runtime.Profile.Id, session) && ClientProcessIdentity.IsCurrent(session))
+            {
+                runtime.LaunchStatus = "Client managed elsewhere · reader disconnected";
+                Log($"{runtime.Profile.Name}: external client left open");
+            }
+            else
+            {
+                _launcher.Stop(runtime.Profile.Id);
+                runtime.LaunchStatus = "Stopped";
+            }
+            runtime.Session = null;
+            runtime.Profile.LastProcessId = null;
+            runtime.Profile.LastProcessStartUtc = null;
+            await SaveProfilesAsync();
+            return true;
         }
-        runtime.ProcessId = null;
-        runtime.IsCollectionEnabled = false;
-        runtime.Profile.CollectionEnabled = false;
-        StopBrokerSchedule(runtime);
-        runtime.Profile.LastProcessId = null;
-        runtime.Radar = null;
-        runtime.Status = "Остановлен";
-        await SaveProfilesAsync();
-        Log($"{runtime.Profile.Name}: hook снят, клиент завершён");
-        runtime.IsBusy = false;
+        catch (Exception exception) { ShowModuleError(runtime, exception); return false; }
+        finally { runtime.IsBusy = false; }
+    }
+
+    private void ShowModuleError(ProfileRuntime runtime, Exception exception)
+    {
+        Log($"{runtime.Profile.Name}: {exception.GetBaseException().Message}");
+        MessageBox.Show(this, exception.GetBaseException().Message, "PriceCheck Collector", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    private async void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_closeReady) return;
+        e.Cancel = true;
+        if (_closing) return;
+        if (Runtimes.Any(runtime => runtime.IsBusy))
+        {
+            Log("Wait for the current module operation before closing.");
+            return;
+        }
+        _closing = true;
+        _refreshTimer.Stop();
+        try
+        {
+            foreach (var runtime in Runtimes) await _collection.DetachAsync(runtime);
+            _launcher.StopOwnedClients();
+            await SaveProfilesAsync();
+            _closeReady = true;
+            Close();
+        }
+        catch (Exception exception)
+        {
+            Log($"Close postponed: {exception.GetBaseException().Message}");
+            MessageBox.Show(this, "Reader cleanup is not finished. Clients remain open. Try closing again after the current operation completes.", "PriceCheck Collector");
+            _closing = false;
+            _refreshTimer.Start();
+        }
     }
 }

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using PriceCheck.Collector.Models;
+using PriceCheck.Collector.Services;
 
 namespace PriceCheck.Collector;
 
@@ -9,22 +10,67 @@ public partial class MainWindow
 {
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        var profiles = await _profileStore.LoadAsync();
+        IReadOnlyList<CollectorProfile> profiles;
+        List<LaunchTemplate> storedTemplates;
+        try
+        {
+            profiles = await _profileStore.LoadAsync();
+            storedTemplates = await _templateStore.LoadAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, $"Could not load settings: {exception.Message}",
+                "PriceCheck Collector", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        foreach (var template in storedTemplates)
+        {
+            if (template.Name.EndsWith(" · прежний запуск", StringComparison.Ordinal))
+                template.Name = ImportedTemplateName(template.Name[..^" · прежний запуск".Length],
+                    template.HardwareEnabled, template.ProxyEnabled);
+            else if (template.Name.EndsWith(" · случайный HWID", StringComparison.Ordinal))
+                template.Name = ImportedTemplateName(template.Name[..^" · случайный HWID".Length],
+                    template.HardwareEnabled, template.ProxyEnabled);
+            else if (template.Name == "Новый шаблон")
+                template.Name = "New template";
+            else if (template.Name.StartsWith("Шаблон ", StringComparison.Ordinal) &&
+                     int.TryParse(template.Name["Шаблон ".Length..], out var number))
+                template.Name = $"Template {number}";
+            LaunchTemplates.Add(template);
+        }
+        var restoredPids = new HashSet<int>();
         if (profiles.Count == 0)
             profiles = [new CollectorProfile { Name = "Gamma", City = "Giran", Role = CollectorRole.BrokerRadar }];
-        // The old two-role design used two profiles for one market. A single
-        // collector now owns radar, broker and exact prices, so retain the
-        // broker profile (and its saved center) for each market/city pair.
-        profiles = profiles
-            .GroupBy(profile => $"{profile.Name.Trim().ToUpperInvariant()}|{profile.City.Trim().ToUpperInvariant()}")
-            .Select(group => group.OrderBy(profile => profile.Role == CollectorRole.BrokerRadar ? 0 : 1).First())
-            .ToList();
-
         foreach (var profile in profiles)
         {
+            if (profile.LaunchTemplateId == Guid.Empty && (profile.GenerateHardwareIdentity || profile.ProxyEnabled))
+            {
+                var migrated = new LaunchTemplate
+                {
+                    Name = ImportedTemplateName(profile.Name, profile.GenerateHardwareIdentity, profile.ProxyEnabled),
+                    HardwareEnabled = profile.GenerateHardwareIdentity,
+                    RotateEachLaunch = profile.GenerateHardwareIdentity,
+                    Identity = ClientLaunchConfiguration.GenerateIdentity(),
+                    ProxyEnabled = profile.ProxyEnabled, ProxyHost = profile.ProxyHost,
+                    ProxyPort = profile.ProxyPort, ProxyUser = profile.ProxyUser,
+                    ProxyPassword = profile.ProxyPassword
+                };
+                LaunchTemplates.Add(migrated);
+                profile.LaunchTemplateId = migrated.Id;
+                profile.GenerateHardwareIdentity = false;
+                profile.ProxyEnabled = false;
+                profile.ProxyHost = "";
+                profile.ProxyPort = 0;
+                profile.ProxyUser = "";
+                profile.ProxyPassword = "";
+                profile.ProxyPasswordProtected = null;
+            }
+            if (!LaunchTemplates.Any(value => value.Id == profile.LaunchTemplateId))
+                profile.LaunchTemplateId = Guid.Empty;
             profile.Role = CollectorRole.BrokerRadar;
             var runtime = new ProfileRuntime { Profile = profile };
-            if (!MarketOptions.Contains(profile.Name)) profile.Name = "Gamma";
+            if (!LoginServerOptions.Contains(profile.LoginServerName)) profile.LoginServerName = "Gamma";
+            if (profile.CharacterSlot is < 0 or > 6) profile.CharacterSlot = 0;
             if (!CityOptions.Contains(profile.City)) profile.City = "Giran";
             profile.CenterZonesByCity ??= [];
             if (profile.CenterZoneX is double legacyX && profile.CenterZoneY is double legacyY &&
@@ -32,168 +78,45 @@ public partial class MainWindow
                 profile.CenterZonesByCity[profile.City] = new CenterZoneSettings { X = legacyX, Y = legacyY };
             profile.CenterZoneX = null;
             profile.CenterZoneY = null;
-            if (profile.LastProcessId is int pid && _processes.IsAlive(pid))
+            // Restore only a verified process reference, never reader hooks or proxy ownership.
+            if (profile.LastProcessId is int pid && profile.LastProcessStartUtc is DateTimeOffset started &&
+                PriceCheck.Windows.ClientProcessIdentity.Read(pid) is { } session &&
+                session.StartedAtUtc == started && restoredPids.Add(pid))
             {
-                try
-                {
-                    await _radarSessions.StartAsync(pid, GetCenterZone(profile), profile.CollectionEnabled, CancellationToken.None);
-                    runtime.ProcessId = pid;
-                    runtime.IsCollectionEnabled = profile.CollectionEnabled;
-                    runtime.Status = profile.CollectionEnabled ? "Сессия восстановлена · сбор активен" : "Сессия восстановлена";
-                }
-                catch
-                {
-                    profile.LastProcessId = null;
-                    profile.CollectionEnabled = false;
-                }
+                runtime.Session = session;
+                runtime.LaunchStatus = "Existing client · managed elsewhere";
             }
-            else
-            {
-                profile.LastProcessId = null;
-                profile.CollectionEnabled = false;
-            }
+            else { profile.LastProcessId = null; profile.LastProcessStartUtc = null; }
+            profile.CollectionEnabled = false;
+            runtime.Status = "Reader disconnected";
             Runtimes.Add(runtime);
         }
         SelectedRuntime = Runtimes.FirstOrDefault();
+        TemplatesView.SetTemplates(LaunchTemplates.Where(value => value.Id != Guid.Empty));
         _loaded = true;
+        await SaveTemplatesAsync();
         await SaveProfilesAsync();
+        RefreshClientList();
         _refreshTimer.Start();
-        Log("Интерфейс готов");
-    }
-
-    private async void AddProfile_Click(object sender, RoutedEventArgs e)
-    {
-        var profile = new CollectorProfile { Name = $"Рынок {Runtimes.Count + 1}" };
-        var runtime = new ProfileRuntime { Profile = profile };
-        Runtimes.Add(runtime);
-        SelectedRuntime = runtime;
-        await SaveProfilesAsync();
-        Log($"Добавлен профиль «{profile.Name}»");
-    }
-
-    private async void DeleteProfile_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is null) return;
-        var answer = MessageBox.Show($"Удалить профиль «{SelectedRuntime.Profile.Name}»?",
-            "PriceCheck Collector", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (answer != MessageBoxResult.Yes) return;
-        var index = Runtimes.IndexOf(SelectedRuntime);
-        if (SelectedRuntime.ProcessId is int pid)
+        Log("Interface ready");
+        if (!string.IsNullOrWhiteSpace(StartupLaunchProfileName))
         {
-            await _radarSessions.StopAsync(pid);
-            _processes.Terminate(pid);
+            var names = StartupLaunchProfileName.Split(',',
+                StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            for (var index = 0; index < names.Length; ++index)
+            {
+                var requested = Runtimes.FirstOrDefault(runtime =>
+                    runtime.Profile.Name.Equals(names[index], StringComparison.OrdinalIgnoreCase));
+                if (requested is null)
+                {
+                    Log($"Startup profile '{names[index]}' was not found");
+                    break;
+                }
+                SelectedRuntime = requested;
+                await LaunchProfileAsync(requested);
+                if (requested.Session is null) break;
+            }
         }
-        Runtimes.Remove(SelectedRuntime);
-        SelectedRuntime = Runtimes.Count == 0 ? null : Runtimes[Math.Clamp(index, 0, Runtimes.Count - 1)];
-        await SaveProfilesAsync();
     }
 
-    private async void BrowseFolder_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is null) return;
-        var currentFile = SelectedRuntime.Profile.LaunchFile;
-        var dialog = new OpenFileDialog
-        {
-            Title = "Файл запуска клиента Lineage 2",
-            Multiselect = false,
-            CheckFileExists = true,
-            Filter = "Клиент Lineage 2 (*.exe;*.bin)|*.exe;*.bin|Все файлы (*.*)|*.*",
-            InitialDirectory = File.Exists(currentFile)
-                ? Path.GetDirectoryName(currentFile)
-                : Directory.Exists(SelectedRuntime.Profile.ClientFolder)
-                    ? SelectedRuntime.Profile.ClientFolder
-                    : null
-        };
-        if (dialog.ShowDialog(this) != true) return;
-        SelectedRuntime.Profile.LaunchFile = dialog.FileName;
-        SelectedRuntime.Profile.ClientFolder = Path.GetDirectoryName(dialog.FileName) ?? "";
-        OnPropertyChanged(nameof(SelectedRuntime));
-        await SaveProfilesAsync();
-        Log($"Файл запуска: {dialog.FileName}");
-    }
-
-    private async void ProfileField_Changed(object sender, TextChangedEventArgs e)
-    {
-        if (!_loaded || SelectedRuntime is null) return;
-        SelectedRuntime.RefreshProfile();
-        await SaveProfilesAsync();
-    }
-
-    private async void MarkCenterZone_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime?.Radar is not RadarSnapshot radar) return;
-        SelectedRuntime.Profile.CenterZonesByCity[SelectedRuntime.Profile.City] = new CenterZoneSettings
-        {
-            X = radar.PlayerX,
-            Y = radar.PlayerY
-        };
-        SelectedRuntime.RefreshProfile();
-        await SaveProfilesAsync();
-        await RefreshSelectedAsync();
-        Log($"{SelectedRuntime.Profile.Name}: центр зоны отмечен ({radar.PlayerX:N0}, {radar.PlayerY:N0})");
-    }
-
-    private async void ClearCenterZone_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is null) return;
-        SelectedRuntime.IsCollectionEnabled = false;
-        SelectedRuntime.Profile.CollectionEnabled = false;
-        StopBrokerSchedule(SelectedRuntime);
-        SelectedRuntime.Profile.CenterZonesByCity.Remove(SelectedRuntime.Profile.City);
-        SelectedRuntime.RefreshProfile();
-        await SaveProfilesAsync();
-        await RefreshSelectedAsync();
-        Log($"{SelectedRuntime.Profile.Name}: центральная зона сброшена");
-    }
-
-    private async void ToggleCollection_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is null) return;
-        if (SelectedRuntime.IsCollectionEnabled)
-        {
-            SelectedRuntime.IsCollectionEnabled = false;
-            SelectedRuntime.Profile.CollectionEnabled = false;
-            StopBrokerSchedule(SelectedRuntime);
-            await CleanupPriceSessionAsync(SelectedRuntime);
-            await RefreshSelectedAsync();
-            await SaveProfilesAsync();
-            Log($"{SelectedRuntime.Profile.Name}: сбор остановлен, каталог заморожен");
-            return;
-        }
-        if (SelectedRuntime.ProcessId is not int || SelectedRuntime.Radar is null) return;
-        if (SelectedRuntime.Profile.Role == CollectorRole.BrokerRadar && GetCenterZone(SelectedRuntime.Profile) is null)
-        {
-            MessageBox.Show("Сначала отметьте центральную зону.", "PriceCheck Collector",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-        SelectedRuntime.IsCollectionEnabled = true;
-        SelectedRuntime.Profile.CollectionEnabled = true;
-        _nextBrokerRuns[SelectedRuntime.Profile.Id] = DateTimeOffset.MinValue;
-        await RefreshSelectedAsync();
-        await SaveProfilesAsync();
-        Log($"{SelectedRuntime.Profile.Name}: сбор запущен");
-    }
-
-    private async void Role_DropDownClosed(object sender, EventArgs e)
-    {
-        if (!_loaded || SelectedRuntime is null) return;
-        if (SelectedRuntime.IsCollectionEnabled)
-        {
-            SelectedRuntime.IsCollectionEnabled = false;
-            SelectedRuntime.Profile.CollectionEnabled = false;
-            StopBrokerSchedule(SelectedRuntime);
-        }
-        await CleanupPriceSessionAsync(SelectedRuntime);
-        SelectedRuntime.RefreshProfile();
-        await SaveProfilesAsync();
-        Log($"{SelectedRuntime.Profile.Name}: роль — {SelectedRuntime.RoleLabel}");
-    }
-
-    private async void ProfileSelection_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_loaded || SelectedRuntime is null) return;
-        SelectedRuntime.RefreshProfile();
-        await SaveProfilesAsync();
-    }
 }

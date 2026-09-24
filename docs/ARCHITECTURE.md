@@ -8,6 +8,17 @@ state or binaries from a separate research directory.
 
 ## Modules
 
+The implemented managed boundary now consists of two independent functional
+projects, `PriceCheck.Launching` and `PriceCheck.Collection`, composed by the
+existing WPF `PriceCheck.Collector` host. They share pure records in
+`PriceCheck.Contracts` and Windows transport in `PriceCheck.Windows`, with no
+reference between launch and collection. Launch owns game/proxy lifetime;
+collection owns attach/detach, radar, broker and price workers. Closing a reader
+does not close the game. Shared profile persistence remains in the host.
+See [module separation](analysis/module-separation/README.md) for API/lifecycle,
+validation, migration and live-test limits. The following diagram describes
+responsibilities; it is not a list of additional projects.
+
 ```text
 UI
   Windows, controls and presentation state only
@@ -74,12 +85,40 @@ enters the world, and failed hook setup terminates that owned client. Process
 paths are hints only because the protected client may deny `ExecutablePath`
 reads.
 
+Each collector profile owns a nullable launch-template ID. Reusable templates
+hold a fixed or rotating generated identity plus optional authenticated HTTP
+proxy settings; the special empty ID starts without either feature. The
+template values are snapshotted into the child process environment before
+`Process.Start`. For an enabled template, the launcher waits for the final
+client's GUI window and uses a thread-local Windows message hook to load its
+own agent DLL into that process. The agent pins itself after installing the
+identity/proxy hooks, reports readiness, and the launcher then removes the
+temporary message hook. It does not stage a DLL beside the game EXE. The
+agent reports readiness for the final `lu4.bin` PID before radar setup. It
+intercepts identity APIs and socket connection setup;
+the packet radar remains a separate driver-backed hook in the game image, and
+the broker worker keeps its own temporary hook lifetime. A LocalAppData
+deployment record identifies an older staged `version.dll` for hash-checked
+cleanup; unrelated files are left alone. The message-hook loader is independent
+of HardShift's unconfirmed driver injection primitive.
+
+The Templates tab scans local firmware, registry, network adapters, volumes,
+physical disks, monitor EDID and bounded PnP registry entries in memory. It
+separates agent-hooked fields from discovered-only fields. The user-mode agent
+currently patches 20 template values through SMBIOS, registry, volume, adapter,
+SendARP and storage-query APIs. The ARP MAC replacement is limited to the
+gateway IPv4 address detected on the machine at launch. WMI-provider and
+kernel reads remain outside its scope.
+
 ## Local configuration
 
-All persistent collector settings are stored in `profiles.json` beside
-`PriceCheck.Collector.exe`. On the first run after this change, the application
-copies the previous `%LOCALAPPDATA%\PriceCheck\CollectorNext\profiles.json` when
-the new file does not yet exist.
+Collector profiles and launch templates are stored in
+`%LOCALAPPDATA%\PriceCheckCollector\profiles.json` and
+`%LOCALAPPDATA%\PriceCheckCollector\launch-templates.json`. On first run after this
+change, the application copies the portable `profiles.json` beside
+`PriceCheck.Collector.exe`, or the older
+`%LOCALAPPDATA%\PriceCheck\CollectorNext\profiles.json` when available.
+Proxy passwords are encrypted for the current Windows user with DPAPI.
 
 Central-zone coordinates belong to a profile and city. Switching between
 `Giran` and `Gludio` selects that city's saved center automatically; marking or
@@ -122,6 +161,20 @@ the current actor knownlist is rebuilt and previously known traders that remain
 absent after a three-second packet-settle interval are confirmed gone. Broker
 epochs and the future SQLite writer will provide durable cross-session state.
 # Local market server integration
+
+For current LU4 same-world entry, the launch boundary also passes a 16-byte
+world identity when hardware identity is enabled. New generated identities
+persist a `WorldIdentitySeed`; hashing it with the durable profile ID keeps
+profiles distinct and makes Regenerate rotate the world value too. Existing
+fixed templates without a seed retain their earlier profile-ID value until
+regeneration. `world_identity.cpp` owns the protocol-specific
+operation. It verifies the supported Active Anticheat build and a shared
+encrypted envelope through read-only LU4Memory requests, then changes a copy
+of the initial 69-byte send. It never modifies driver globals or another
+profile's process. The UI/domain have no packet parsing or driver offsets.
+Per-PID status files contain only success/error names, not packet contents.
+This isolates the validated world-entry signal, not all Windows or driver
+state. Evidence is in `docs/analysis/two-client-isolation/HANDOFF.md`.
 
 The collector sends complete radar presence snapshots to
 `POST /ingest/market-snapshot` on the profile's `ServerUrl` (default

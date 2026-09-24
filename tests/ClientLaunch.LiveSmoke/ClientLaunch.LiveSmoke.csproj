@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PriceCheck.Collector\PriceCheck.Collector.csproj" />
+    <Compile Include="..\ClientLaunch.Smoke\ProxyServer.cs" Link="ProxyServer.cs" />
+    <Content Include="..\..\native\ClientLaunch\build\x64\PriceCheck.ClientAgent.dll"
+             Link="ClientLaunchRuntime\PriceCheck.ClientAgent.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\native\ClientLaunch\build\x64\PriceCheck.ClientLogin.dll"
+             Link="ClientLaunchRuntime\PriceCheck.ClientLogin.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

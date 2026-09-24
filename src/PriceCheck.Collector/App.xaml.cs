@@ -8,8 +8,14 @@ namespace PriceCheck.Collector;
 
 public partial class App : Application
 {
+    private readonly bool _enableRuntime;
+    public App() : this(true) { }
+    public App(bool enableRuntime) => _enableRuntime = enableRuntime;
+
     protected override void OnStartup(StartupEventArgs e)
     {
+        // WPF queues this callback even without Run(); visual tests pump that queue.
+        if (!_enableRuntime) { ShutdownMode = ShutdownMode.OnExplicitShutdown; return; }
         RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
         if (e.Args.Length >= 1 && e.Args[0].Equals("--upload-worker", StringComparison.OrdinalIgnoreCase))
         {
@@ -38,14 +44,25 @@ public partial class App : Application
         try
         {
             new DriverBootstrapper().EnsureReady();
-            MainWindow = new MainWindow();
+            const string launchProfilePrefix = "--launch-profile=";
+            const string launchProfilesPrefix = "--launch-profiles=";
+            var startupProfile = e.Args.FirstOrDefault(argument =>
+                argument.StartsWith(launchProfilePrefix, StringComparison.OrdinalIgnoreCase) ||
+                argument.StartsWith(launchProfilesPrefix, StringComparison.OrdinalIgnoreCase));
+            MainWindow = new MainWindow
+            {
+                StartupLaunchProfileName = startupProfile is null ? null :
+                    startupProfile.StartsWith(launchProfilesPrefix, StringComparison.OrdinalIgnoreCase)
+                        ? startupProfile[launchProfilesPrefix.Length..]
+                        : startupProfile[launchProfilePrefix.Length..]
+            };
             MainWindow.Show();
         }
         catch (Exception exception)
         {
             MessageBox.Show(
                 exception.Message,
-                "Не удалось загрузить LU4Memory",
+                    "Could not load LU4Memory",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
             Shutdown(1);

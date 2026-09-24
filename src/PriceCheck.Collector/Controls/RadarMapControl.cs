@@ -24,7 +24,7 @@ public sealed class RadarMapControl : FrameworkElement
             new Pen(new SolidColorBrush(Color.FromRgb(39, 48, 61)), 1), rect, 10, 10);
         if (Snapshot is null || Snapshot.Traders.Count == 0)
         {
-            DrawCentered(context, "Ожидание снимка радара", Brushes.Gray);
+        DrawCentered(context, "Waiting for radar snapshot", Brushes.Gray);
             return;
         }
 

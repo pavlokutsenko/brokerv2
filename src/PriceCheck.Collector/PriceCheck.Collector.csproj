@@ -9,10 +9,17 @@
     <RootNamespace>PriceCheck.Collector</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+  <ItemGroup><ProjectReference Include="..\PriceCheck.Launching\PriceCheck.Launching.csproj" /><ProjectReference Include="..\PriceCheck.Collection\PriceCheck.Collection.csproj" /></ItemGroup>
   <ItemGroup>
     <Content Include="BrokerRuntime\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\native\ClientLaunch\build\x64\PriceCheck.ClientAgent.dll"
+             Link="ClientLaunchRuntime\PriceCheck.ClientAgent.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\native\ClientLaunch\build\x64\PriceCheck.ClientLogin.dll"
+             Link="ClientLaunchRuntime\PriceCheck.ClientLogin.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\native\ClientLaunch\minhook\LICENSE.txt"
+             Link="ClientLaunchRuntime\MinHook.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\native\LU4Memory\artifacts\verified\lu4_memory.sys"
-             Link="DriverRuntime\lu4_memory.sys"
+             Link="DriverRuntime\lu4_memory_wfp.sys"
              CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\native\LU4Memory\loader\**\*"
              Link="DriverRuntime\%(RecursiveDir)%(Filename)%(Extension)"

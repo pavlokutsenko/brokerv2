@@ -1,0 +1,29 @@
+using PriceCheck.Collector.Models;
+
+namespace PriceCheck.Collector.Runtime.Radar;
+
+public sealed class RadarSessionManager : PriceCheck.Collection.IRadarSessions
+{
+    private readonly Dictionary<int, RadarSession> _sessions = [];
+
+    public async Task StartAsync(int pid, MarketZone? zone, bool collectionEnabled, CancellationToken cancellationToken)
+    {
+        if (_sessions.ContainsKey(pid)) return;
+        _sessions.Add(pid, await RadarSession.StartAsync(pid, zone, collectionEnabled, cancellationToken));
+    }
+
+    public RadarSnapshot? Snapshot(int pid, MarketZone? zone, bool collectionEnabled) =>
+        _sessions.TryGetValue(pid, out var session) ? session.Snapshot(zone, collectionEnabled) : null;
+
+    public async Task StopAsync(int pid)
+    {
+        if (!_sessions.Remove(pid, out var session)) return;
+        await session.DisposeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var session in _sessions.Values) await session.DisposeAsync();
+        _sessions.Clear();
+    }
+}

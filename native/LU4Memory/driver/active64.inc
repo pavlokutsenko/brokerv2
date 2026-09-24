@@ -140,3 +140,130 @@ static NTSTATUS HandleReadActive64(
     return status;
 }
 
+#ifdef LU4_PROBE_BUILD
+/* A disposable probe's only write path: two adjacent six-byte active64 data slots. */
+static NTSTATUS HandleProbeCasActive64Mac(
+    _Inout_updates_bytes_(BufferLength) PVOID Buffer,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength,
+    _Out_ PULONG_PTR Information)
+{
+    PLU4_PROBE_ACTIVE64_MAC_REQUEST request;
+    PVOID baseAddress;
+    ULONG imageSize;
+    UCHAR current[6];
+    MM_COPY_ADDRESS source;
+    SIZE_T copied = 0;
+    NTSTATUS status;
+    const ULONG dataOffset = 0x12ABD50u;
+    const ULONG macOffset = 0x12ABD56u;
+    ULONG targetOffset;
+
+    if (InputLength != sizeof(LU4_PROBE_ACTIVE64_MAC_REQUEST) ||
+        OutputLength < sizeof(LU4_PROBE_ACTIVE64_MAC_REQUEST)) {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+    request = (PLU4_PROBE_ACTIVE64_MAC_REQUEST)Buffer;
+    request->BytesWritten = 0;
+    if (request->Version != LU4_PROTOCOL_VERSION ||
+        (request->Offset != dataOffset && request->Offset != macOffset)) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    targetOffset = request->Offset;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    status = FindActive64Module(&baseAddress, &imageSize);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    if (imageSize <= targetOffset || imageSize - targetOffset < sizeof(current)) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    source.VirtualAddress = (PUCHAR)baseAddress + targetOffset;
+    status = MmCopyMemory(current, source, sizeof(current),
+        MM_COPY_MEMORY_VIRTUAL, &copied);
+    if (!NT_SUCCESS(status) || copied != sizeof(current)) {
+        return NT_SUCCESS(status) ? STATUS_PARTIAL_COPY : status;
+    }
+    if (RtlCompareMemory(current, request->Expected, sizeof(current)) != sizeof(current)) {
+        return STATUS_DATA_ERROR;
+    }
+    __try {
+        RtlCopyMemory((PUCHAR)baseAddress + targetOffset,
+            request->Replacement, sizeof(current));
+        if (RtlCompareMemory((PUCHAR)baseAddress + targetOffset,
+                request->Replacement, sizeof(current)) != sizeof(current)) {
+            return STATUS_DATA_ERROR;
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
+    request->BytesWritten = sizeof(current);
+    *Information = sizeof(*request);
+    return STATUS_SUCCESS;
+}
+
+/* Test-only guarded CAS for the eight-byte 0x222044 trailer source. */
+static NTSTATUS HandleProbeCasActive64Eight(
+    _Inout_updates_bytes_(BufferLength) PVOID Buffer,
+    _In_ ULONG InputLength,
+    _In_ ULONG OutputLength,
+    _Out_ PULONG_PTR Information)
+{
+    PLU4_PROBE_ACTIVE64_EIGHT_REQUEST request;
+    PVOID baseAddress;
+    ULONG imageSize;
+    UCHAR current[8];
+    MM_COPY_ADDRESS source;
+    SIZE_T copied = 0;
+    NTSTATUS status;
+    const ULONG targetOffset = 0x12ABD68u;
+
+    if (InputLength != sizeof(LU4_PROBE_ACTIVE64_EIGHT_REQUEST) ||
+        OutputLength < sizeof(LU4_PROBE_ACTIVE64_EIGHT_REQUEST)) {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+    request = (PLU4_PROBE_ACTIVE64_EIGHT_REQUEST)Buffer;
+    request->BytesWritten = 0;
+    if (request->Version != LU4_PROTOCOL_VERSION ||
+        request->Offset != targetOffset) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) {
+        return STATUS_INVALID_DEVICE_STATE;
+    }
+    status = FindActive64Module(&baseAddress, &imageSize);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+    if (imageSize <= targetOffset || imageSize - targetOffset < sizeof(current)) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    source.VirtualAddress = (PUCHAR)baseAddress + targetOffset;
+    status = MmCopyMemory(current, source, sizeof(current),
+        MM_COPY_MEMORY_VIRTUAL, &copied);
+    if (!NT_SUCCESS(status) || copied != sizeof(current)) {
+        return NT_SUCCESS(status) ? STATUS_PARTIAL_COPY : status;
+    }
+    if (RtlCompareMemory(current, request->Expected, sizeof(current)) != sizeof(current)) {
+        return STATUS_DATA_ERROR;
+    }
+    __try {
+        RtlCopyMemory((PUCHAR)baseAddress + targetOffset,
+            request->Replacement, sizeof(current));
+        if (RtlCompareMemory((PUCHAR)baseAddress + targetOffset,
+                request->Replacement, sizeof(current)) != sizeof(current)) {
+            return STATUS_DATA_ERROR;
+        }
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return GetExceptionCode();
+    }
+    request->BytesWritten = sizeof(current);
+    *Information = sizeof(*request);
+    return STATUS_SUCCESS;
+}
+#endif
+

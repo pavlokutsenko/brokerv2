@@ -6,34 +6,39 @@ using System.Windows.Threading;
 using PriceCheck.Collector.Models;
 using PriceCheck.Collector.Services;
 using PriceCheck.Collector.Contracts;
-using PriceCheck.Collector.Runtime.Radar;
 
 namespace PriceCheck.Collector;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private readonly IProfileStore _profileStore = new ProfileStore();
-    private readonly IClientProcessService _processes = new ClientProcessService();
-    private readonly RadarSessionManager _radarSessions = new();
-    private readonly ServerUploadOutbox _uploadOutbox = new();
-    private readonly LocalPriceQueue _localPriceQueue = new();
-    private readonly Dictionary<Guid, string> _lastUploadedRadarFingerprints = [];
-    private readonly Dictionary<Guid, DateTimeOffset> _lastRadarUploads = [];
-    private readonly SemaphoreSlim _brokerCycleGate = new(1, 1);
-    private readonly HashSet<Guid> _brokerRunningProfiles = [];
-    private readonly Dictionary<Guid, DateTimeOffset> _nextBrokerRuns = [];
-    private readonly HashSet<Guid> _priceWorkerProfiles = [];
-    private readonly HashSet<int> _preparedPricePids = [];
-    private readonly Dictionary<Guid, DateTimeOffset> _nextPriceClaims = [];
+    private readonly LaunchTemplateStore _templateStore = new();
+    private readonly PriceCheck.Launching.LaunchModule _launcher = new();
+    private readonly PriceCheck.Collection.CollectionModule _collection = new();
+    public ObservableCollection<PriceCheck.Contracts.ClientSession> AvailableClients { get; } = [];
+    public PriceCheck.Contracts.ClientSession? SelectedClient { get; set; }
+    private bool _closeReady;
+    private bool _closing;
     private readonly DispatcherTimer _refreshTimer;
     private ProfileRuntime? _selectedRuntime;
     private bool _loaded;
     private bool _refreshing;
+    private bool _syncingLoginPassword;
+
+    public string? StartupLaunchProfileName { get; init; }
 
     public ObservableCollection<ProfileRuntime> Runtimes { get; } = [];
+    public ObservableCollection<LaunchTemplate> LaunchTemplates { get; } =
+        [new LaunchTemplate { Id = Guid.Empty, Name = "No template", HardwareEnabled = false }];
+    public string SelectedTemplateSummary =>
+        LaunchTemplates.FirstOrDefault(value => value.Id == SelectedRuntime?.Profile.LaunchTemplateId)?.Summary ??
+        "No HWID override or proxy";
     public ObservableCollection<string> Events { get; } = [];
     public IReadOnlyList<CollectorRoleOption> RoleOptions => CollectorRoleOption.All;
     public IReadOnlyList<string> MarketOptions { get; } = ["Gamma", "Black", "White", "Carmine"];
+    public IReadOnlyList<string> LoginServerOptions { get; } = ["Gamma"];
+    public IReadOnlyList<CharacterSlotOption> CharacterOptions { get; } =
+        Enumerable.Range(0, 7).Select(slot => new CharacterSlotOption(slot, $"Slot {slot + 1}")).ToArray();
     public IReadOnlyList<string> CityOptions { get; } = ["Giran", "Gludio"];
 
     public ProfileRuntime? SelectedRuntime
@@ -44,23 +49,40 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (_selectedRuntime == value) return;
             _selectedRuntime = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(SelectedTemplateSummary));
+            SyncLoginPasswordField();
             _ = RefreshSelectedAsync();
         }
     }
 
-    public MainWindow()
+    public MainWindow() : this(true) { }
+
+    // Allows rendering the actual window with synthetic data and no application lifecycle.
+    public MainWindow(bool initializeRuntime)
     {
         InitializeComponent();
         DataContext = this;
-        UploadWorkerProcess.EnsureRunning();
+        TemplatesView.SaveRequested = ApplyTemplatesAsync;
+        _collection.Message += Log;
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _refreshTimer.Tick += async (_, _) => await RefreshAllAsync();
-        Loaded += MainWindow_Loaded;
-        Closed += (_, _) => ShutdownOwnedClients();
+        if (initializeRuntime)
+        {
+            Loaded += MainWindow_Loaded;
+            Closing += MainWindow_Closing;
+        }
     }
 
     private Task SaveProfilesAsync() =>
         _profileStore.SaveAsync(Runtimes.Select(runtime => runtime.Profile));
+
+    private void SyncLoginPasswordField()
+    {
+        if (LaunchPanel.LoginPasswordBox is null) return;
+        _syncingLoginPassword = true;
+        try { LaunchPanel.LoginPasswordBox.Password = SelectedRuntime?.Profile.LoginPassword ?? ""; }
+        finally { _syncingLoginPassword = false; }
+    }
 
     private static MarketZone? GetCenterZone(CollectorProfile profile) =>
         profile.CenterZonesByCity.TryGetValue(profile.City, out var center) &&
@@ -74,15 +96,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         while (Events.Count > 100) Events.RemoveAt(Events.Count - 1);
     }
 
-    private void ShutdownOwnedClients()
-    {
-        _refreshTimer.Stop();
-        _radarSessions.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        foreach (var pid in Runtimes.Select(value => value.ProcessId).OfType<int>().Distinct())
-            _processes.Terminate(pid);
-    }
-
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
+
+public sealed record CharacterSlotOption(int Slot, string Label);

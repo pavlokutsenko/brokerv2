@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PriceCheck.Launching\PriceCheck.Launching.csproj" />
+    <ProjectReference Include="..\..\src\PriceCheck.Collection\PriceCheck.Collection.csproj" />
+    <Content Include="..\..\native\ClientLaunch\build\x64\PriceCheck.ClientLogin.dll" Link="ClientLaunchRuntime\PriceCheck.ClientLogin.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

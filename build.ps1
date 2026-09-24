@@ -1,6 +1,7 @@
 param(
     [switch]$ForceBroker,
-    [switch]$SkipBroker
+    [switch]$SkipBroker,
+    [string]$OutputDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,8 +32,30 @@ if (-not $SkipBroker) {
     }
 }
 
-$release = Join-Path $repo 'release\PriceCheckCollector'
+$clientLaunchBuild = Join-Path $repo 'native\ClientLaunch\build.ps1'
+$clientLaunchRuntime = Join-Path $repo 'native\ClientLaunch\build\x64\PriceCheck.ClientAgent.dll'
+$clientLaunchProxy = Join-Path $repo 'native\ClientLaunch\build\x64\version.dll'
+$clientLoginRuntime = Join-Path $repo 'native\ClientLaunch\build\x64\PriceCheck.ClientLogin.dll'
+$clientLaunchSources = @(Get-ChildItem -LiteralPath (Join-Path $repo 'native\ClientLaunch') -Recurse -File |
+    Where-Object { $_.FullName -notmatch '\\build\\' -and $_.Extension -in @('.c', '.cpp', '.h', '.def', '.vcxproj') })
+if (-not (Test-Path -LiteralPath $clientLaunchRuntime) -or -not (Test-Path -LiteralPath $clientLaunchProxy) -or
+    -not (Test-Path -LiteralPath $clientLoginRuntime) -or
+    ($clientLaunchSources | Where-Object { $_.LastWriteTimeUtc -gt (Get-Item -LiteralPath $clientLaunchRuntime).LastWriteTimeUtc } | Select-Object -First 1)) {
+    & $clientLaunchBuild
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+$release = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
+    Join-Path $repo 'release\PriceCheckCollector'
+} else {
+    [System.IO.Path]::GetFullPath($OutputDirectory, $repo)
+}
 New-Item -ItemType Directory -Force -Path $release | Out-Null
 & $dotnet publish (Join-Path $repo 'src\PriceCheck.Collector\PriceCheck.Collector.csproj') `
     -c Release -r win-x64 --self-contained true -o $release --nologo
-exit $LASTEXITCODE
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$obsoleteProxy = Join-Path $release 'ClientLaunchRuntime\version.dll'
+if (Test-Path -LiteralPath $obsoleteProxy) {
+    Remove-Item -LiteralPath $obsoleteProxy
+}
+exit 0
