@@ -24,9 +24,15 @@ internal sealed class ClientLaunchGuard : IDisposable
         _ = Task.Run(RunAsync);
     }
     public void Bind(int pid) { _mapping.Bind(pid); Volatile.Write(ref _pid, pid); }
+    public bool IsAgentReady(PriceCheck.Contracts.ClientSession session)
+    {
+        var status = Status;
+        return Volatile.Read(ref _pid) == session.ProcessId && status.HardwareReady &&
+            !status.Failed && _mapping.IsAgentReady(session);
+    }
     public async Task RequireAsync(bool world, CancellationToken token)
     {
-        var deadline = Environment.TickCount64 + (world ? 20000 : 15000);
+        var deadline = Environment.TickCount64 + (world ? LaunchTimeouts.WorldReadyMilliseconds : LaunchTimeouts.AgentReadyMilliseconds);
         for (;;)
         {
             token.ThrowIfCancellationRequested();
@@ -76,7 +82,7 @@ internal sealed class ClientLaunchGuard : IDisposable
                 }
                 var blocked = _alive(_root) ? CheckRoute(_root) : 0UL;
                 if (pid != 0 && _alive(pid)) blocked = Math.Max(blocked, CheckRoute(pid));
-                if (state.Hardware && Environment.TickCount64 - state.Tick > 5000)
+                if (state.Hardware && Environment.TickCount64 - state.Tick > LaunchTimeouts.HeartbeatMilliseconds)
                     throw new LaunchProtectionException("HWID: агент перестал подтверждать подмену.");
                 // The driver route and actual CONNECT/pumps are checked continuously.
                 // A separate idle CONNECT can time out or hit provider limits while
@@ -85,7 +91,7 @@ internal sealed class ClientLaunchGuard : IDisposable
                 // Match each native HWID handshake to its relay generation;
                 // an old world's confirmation cannot authorize a new connection.
                 var applied = state.World && state.WorldCount == _broker.WorldConnections && _broker.WorldOpenedAt is not null;
-                if (_broker.WorldOpenedAt is long started && Environment.TickCount64 - started > 20000 &&
+                if (_broker.WorldOpenedAt is long started && Environment.TickCount64 - started > LaunchTimeouts.WorldReadyMilliseconds &&
                     !(applied && _broker.WorldTrafficConfirmed))
                     throw new LaunchProtectionException("HWID: подмена и обмен данными текущего мира не подтверждены.");
                 _broker.AllowLogin = state.Hardware;

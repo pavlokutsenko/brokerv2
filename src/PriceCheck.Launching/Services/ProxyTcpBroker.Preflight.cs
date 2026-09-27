@@ -13,20 +13,20 @@ internal sealed partial class ProxyTcpBroker
         try
         {
             await client.ConnectAsync(template.ProxyHost.Trim(), template.ProxyPort, cancellationToken)
-                .AsTask().WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                .AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), cancellationToken);
             var network = client.GetStream();
             var authorization = Convert.ToBase64String(Encoding.UTF8.GetBytes(
                 template.ProxyUser + ":" + template.ProxyPassword));
             var request = Encoding.ASCII.GetBytes($"CONNECT {LoginProbeDestination} HTTP/1.1\r\n" +
                 $"Host: {LoginProbeDestination}\r\nProxy-Authorization: Basic {authorization}\r\n\r\n");
             await network.WriteAsync(request, cancellationToken)
-                .AsTask().WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                .AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), cancellationToken);
             var response = new byte[512];
             var used = 0;
             while (used < response.Length && response.AsSpan(0, used).IndexOf("\r\n"u8) < 0)
             {
                 var read = await network.ReadAsync(response.AsMemory(used), cancellationToken)
-                    .AsTask().WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+                    .AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), cancellationToken);
                 if (read == 0) break;
                 used += read;
             }

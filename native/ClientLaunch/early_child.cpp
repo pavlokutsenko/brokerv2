@@ -1,3 +1,4 @@
+#include "launch_timeouts.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tlhelp32.h>
@@ -499,7 +500,7 @@ bool load_agent(HANDLE process) {
     if (!loader) { TraceEvent("early_loader_missing"); VirtualFreeEx(process, remote, 0, MEM_RELEASE); return false; }
     HANDLE thread = CreateRemoteThread(process, nullptr, 0, loader, remote, 0, nullptr);
     if (!thread) { TraceEvent("early_thread_error", GetLastError()); VirtualFreeEx(process, remote, 0, MEM_RELEASE); return false; }
-    DWORD wait = WaitForSingleObject(thread, 10000);
+    DWORD wait = WaitForSingleObject(thread, launch_timeouts::agent_ready_ms);
     DWORD result = 0;
     okay = wait == WAIT_OBJECT_0 && GetExitCodeThread(thread, &result) && result != 0;
     TraceEvent("early_loader_result", okay ? 1 : 0);

@@ -50,9 +50,11 @@ int main(int argc, char** argv) {
         require(false, "Watchdog allowed the unprotected process to survive");
     }
     require(!LaunchGuardAllowsLogin(false) && !LaunchGuardAllowsNetwork(), "Unconfirmed HWID accepted");
+    require(!LaunchGuardAgentReady(), "Unconfirmed HWID declared its agent ready");
     state->flags = 1;
     state->required = 1;
     require(LaunchGuardAllowsLogin(false) && LaunchGuardAllowsNetwork(), "HWID-only lease rejected");
+    require(LaunchGuardAgentReady() && (state->flags & 4), "Completed agent did not acknowledge readiness in its lease");
     for (auto invalid : {0, 2, 4, 7}) {
         state->required = invalid;
         require(!LaunchGuardAllowsLogin(false) && !LaunchGuardAllowsNetwork(), "Invalid required flags accepted");
@@ -65,6 +67,8 @@ int main(int argc, char** argv) {
     state->world_opened_tick = state->applied_tick + 1;
     require(!LaunchGuardAllowsLogin(true), "Stale world application accepted");
     state->heartbeat = GetTickCount64() - 6000;
+    require(LaunchGuardAllowsLogin(false), "Slow controller within the new heartbeat grace was rejected");
+    state->heartbeat = GetTickCount64() - launch_timeouts::heartbeat_ms - 1000;
     require(!LaunchGuardAllowsLogin(false) && !LaunchGuardAllowsNetwork(), "Stale controller accepted");
     state->heartbeat = GetTickCount64(); state->controller_ready = 0;
     require(!LaunchGuardAllowsLogin(false) && !LaunchGuardAllowsNetwork(), "Revoked controller accepted");

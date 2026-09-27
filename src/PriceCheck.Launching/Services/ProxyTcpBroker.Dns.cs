@@ -18,7 +18,7 @@ internal sealed partial class ProxyTcpBroker
             UseProxy = false, AllowAutoRedirect = false,
             ConnectCallback = (_, cancellation) => OpenDnsTunnelAsync(records, cancellation)
         };
-        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15), MaxResponseContentBufferSize = ushort.MaxValue };
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(LaunchTimeouts.DnsSeconds), MaxResponseContentBufferSize = ushort.MaxValue };
         await RelayDnsAsync(game, async (query, cancellation) =>
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, "https://cloudflare-dns.com/dns-query");
@@ -44,7 +44,7 @@ internal sealed partial class ProxyTcpBroker
         try
         {
             socket.IOControl(SetRecords, records, null);
-            await socket.ConnectAsync(_host, _port, token).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token);
+            await socket.ConnectAsync(_host, _port, token).AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), token);
             stream = new NetworkStream(socket, ownsSocket: true);
             var request = Encoding.ASCII.GetBytes("CONNECT 1.1.1.1:443 HTTP/1.1\r\nHost: 1.1.1.1:443\r\n" +
                 $"Proxy-Authorization: Basic {_authorization}\r\n\r\n");
@@ -55,7 +55,7 @@ internal sealed partial class ProxyTcpBroker
             do
             {
                 if (used == header.Length) throw new IOException("DNS через прокси: слишком большой ответ CONNECT.");
-                await stream.ReadExactlyAsync(header.AsMemory(used++, 1), token).AsTask().WaitAsync(TimeSpan.FromSeconds(10), token);
+                await stream.ReadExactlyAsync(header.AsMemory(used++, 1), token).AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), token);
             } while (used < 4 || !header.AsSpan(used - 4, 4).SequenceEqual("\r\n\r\n"u8));
             if (!IsConnectSuccess(header.AsSpan(0, used))) throw new IOException("DNS через прокси: CONNECT к HTTPS-резолверу отклонён.");
             Interlocked.Increment(ref _connections);

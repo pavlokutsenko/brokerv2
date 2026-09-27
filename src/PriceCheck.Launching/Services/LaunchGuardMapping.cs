@@ -31,6 +31,17 @@ internal sealed class LaunchGuardMapping : IDisposable
     }
     public void Heartbeat() => _view.Write(16, Environment.TickCount64);
     public void ControllerReady(bool ready) => _view.Write(84, ready ? 1 : 0);
+    public bool IsAgentReady(PriceCheck.Contracts.ClientSession session)
+    {
+        var now = Environment.TickCount64;
+        var heartbeat = _view.ReadInt64(16);
+        var agentTick = _view.ReadInt64(72);
+        return _view.ReadInt32(8) == session.ProcessId &&
+            _view.ReadInt64(64) == session.StartedAtUtc.UtcDateTime.ToFileTimeUtc() &&
+            (_view.ReadInt32(24) & 5) == 5 && _view.ReadInt32(12) == 0 &&
+            _view.ReadInt32(84) == 1 && heartbeat > 0 && agentTick > 0 &&
+            now - heartbeat >= 0 && now - heartbeat < LaunchTimeouts.HeartbeatMilliseconds && now - agentTick >= 0 && now - agentTick < LaunchTimeouts.HeartbeatMilliseconds;
+    }
     public (bool Hardware, bool World, long Tick, int WorldCount, int Error) Read()
     {
         var flags = _view.ReadInt32(24);

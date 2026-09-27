@@ -80,7 +80,7 @@ try {
         & sc.exe stop $ServiceName | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Не удалось остановить прежний LU4Memory.' }
         $stopped = $false
-        for ($attempt = 0; $attempt -lt 50; $attempt++) {
+        for ($attempt = 0; $attempt -lt 150; $attempt++) {
             $current = Get-CimInstance Win32_SystemDriver -Filter "Name='$ServiceName'" -ErrorAction Stop
             if ($current.State -eq 'Stopped') { $stopped = $true; break }
             Start-Sleep -Milliseconds 200

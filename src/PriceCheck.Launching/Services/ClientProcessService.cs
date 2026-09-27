@@ -54,7 +54,7 @@ public sealed partial class ClientProcessService : IClientProcessService
                 if (candidate != 0) KillCurrent(candidate, candidateStarted);
             });
             suspended.Resume();
-            var deadline = DateTime.UtcNow.AddSeconds(90);
+            var deadline = DateTime.UtcNow.AddSeconds(LaunchTimeouts.GameStartupSeconds);
             while (DateTime.UtcNow < deadline)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -84,7 +84,7 @@ public sealed partial class ClientProcessService : IClientProcessService
                     throw new ClientStartupException($"The launcher exited with code {root.ExitCode} before creating lu4.bin.");
                 await Task.Delay(100, cancellationToken);
             }
-            throw new TimeoutException("Защищённый lu4.bin не появился в течение 90 секунд.");
+            throw new TimeoutException("Защищённый lu4.bin не появился в течение 5 минут.");
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException ||
             error is InvalidOperationException and not LaunchProtectionException)
@@ -105,7 +105,7 @@ public sealed partial class ClientProcessService : IClientProcessService
 
     public async Task WaitForGameWindowAsync(int pid, CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddMinutes(3);
+        var deadline = DateTime.UtcNow.AddSeconds(LaunchTimeouts.GameStartupSeconds);
         var stableLargeWindowSamples = 0;
         while (DateTime.UtcNow < deadline)
         {
@@ -124,7 +124,7 @@ public sealed partial class ClientProcessService : IClientProcessService
             }
             await Task.Delay(500, cancellationToken);
         }
-        throw new TimeoutException("The game window did not appear within 3 minutes.");
+        throw new TimeoutException("The game window did not appear within 5 minutes.");
     }
 
     private static IEnumerable<int> CurrentClientPids() =>
@@ -135,27 +135,22 @@ public sealed partial class ClientProcessService : IClientProcessService
 
     private async Task WaitForAgentReadyAsync(int pid, ClientAgentHookLoader.HookLease? hook, CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(15);
-        while (DateTime.UtcNow < deadline)
+        // Slow machines may still be installing hooks after the window appears.
+        // Initialization can wait; a reported protection fault is always immediate.
+        var deadline = Environment.TickCount64 + LaunchTimeouts.AgentReadyMilliseconds;
+        while (Environment.TickCount64 < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (Protection(pid).Error is { } error) throw new LaunchProtectionException(error);
-            if (!IsProcessAlive(pid)) throw new InvalidOperationException("The client exited before the HWID agent started.");
-            try
-            {
-                using var ready = EventWaitHandle.OpenExisting($@"Local\PriceCheckAgentReady_{pid}");
-                if (ready.WaitOne(0)) return;
-            }
-            catch (WaitHandleCannotBeOpenedException) { }
+            var session = PriceCheck.Windows.ClientProcessIdentity.Read(pid)
+                ?? throw new InvalidOperationException("The client exited before the HWID agent started.");
+            // A named event or stale text log cannot authorize another PID.
+            // Require the agent's own bound lease and fresh verified heartbeat.
+            if (_guards.TryGetValue(pid, out var guard) && guard.IsAgentReady(session)) return;
             hook?.Pulse();
             await Task.Delay(100, cancellationToken);
         }
-        throw new LaunchProtectionException("HWID: агент не подтвердил готовность в течение 15 секунд.");
-    }
-
-    private static bool IsProcessAlive(int pid)
-    {
-        return PriceCheck.Windows.ClientProcessIdentity.Read(pid) is not null;
+        throw new LaunchProtectionException($"HWID: агент PID {pid} не подтвердил готовность в течение 60 секунд.");
     }
 
     private static DateTime ProcessStartTime(int pid)

@@ -16,7 +16,7 @@ internal sealed partial class ProxyTcpBroker
         while (used < response.Length && end < 0)
         {
             var read = await network.ReadAsync(response.AsMemory(used), token)
-                .AsTask().WaitAsync(TimeSpan.FromSeconds(10), token);
+                .AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), token);
             if (read == 0) throw new IOException("Прокси закрыл соединение до CONNECT 200.");
             used += read;
             end = response.AsSpan(0, used).IndexOf("\r\n\r\n"u8);

@@ -1,3 +1,4 @@
+#include "launch_timeouts.h"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <cstdint>
@@ -198,7 +199,7 @@ extern "C" __declspec(dllexport) LRESULT CALLBACK PriceCheckHookProc(int code, W
                     __try { result = select_server(shared); }
                     __except (EXCEPTION_EXECUTE_HANDLER) { result = -16; }
                     if (result == 3) server_tick = GetTickCount();
-                    else if (result == -15 && GetTickCount() - login_tick < 15000) {
+                    else if (result == -15 && GetTickCount() - login_tick < launch_timeouts::server_selection_ms) {
                         InterlockedExchange(&stage, 1);
                         result = 2;
                     }
@@ -206,7 +207,7 @@ extern "C" __declspec(dllexport) LRESULT CALLBACK PriceCheckHookProc(int code, W
                 } else {
                     __try { result = select_character(shared); }
                     __except (EXCEPTION_EXECUTE_HANDLER) { result = -25; }
-                    if (result == -24 && GetTickCount() - server_tick < 20000) {
+                    if (result == -24 && GetTickCount() - server_tick < launch_timeouts::character_selection_ms) {
                         InterlockedExchange(&stage, 2);
                         result = 3;
                     } else InterlockedExchange(&stage, 4);

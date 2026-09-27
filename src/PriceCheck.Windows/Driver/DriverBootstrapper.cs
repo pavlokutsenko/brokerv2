@@ -5,7 +5,7 @@ namespace PriceCheck.Collector.Runtime.Driver;
 
 public sealed class DriverBootstrapper
 {
-    private static readonly TimeSpan LoadTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(PriceCheck.Windows.LaunchTimeouts.DriverLoadSeconds);
 
     public void EnsureReady()
     {
@@ -28,7 +28,7 @@ public sealed class DriverBootstrapper
         if (!process.WaitForExit((int)LoadTimeout.TotalMilliseconds))
         {
             TryTerminate(process);
-            throw new TimeoutException("LU4Memory loading did not finish within 2 minutes.");
+            throw new TimeoutException("LU4Memory loading did not finish within 5 minutes.");
         }
 
         if (process.ExitCode != 0)
@@ -39,7 +39,7 @@ public sealed class DriverBootstrapper
             throw new InvalidOperationException(ReadFailure(logPath, process.ExitCode, processError));
         }
 
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var deadline = DateTime.UtcNow.AddSeconds(PriceCheck.Windows.LaunchTimeouts.DriverReadySeconds);
         while (DateTime.UtcNow < deadline)
         {
             if (IsDeviceReady() && IsProxyCapable()) return;

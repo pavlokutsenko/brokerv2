@@ -121,7 +121,7 @@ public partial class MainWindow
         _refreshTimer.Stop();
         try
         {
-            var refreshDeadline=DateTimeOffset.UtcNow.AddMinutes(2);
+            var refreshDeadline=DateTimeOffset.UtcNow.AddMinutes(5);
             while(_refreshing)
             {
                 if(DateTimeOffset.UtcNow>=refreshDeadline) throw new TimeoutException("Module refresh has not finished before closing.");

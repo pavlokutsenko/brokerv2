@@ -147,6 +147,7 @@ DWORD WINAPI start_agent(void*) {
     }
     if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK) { log_status(L"MH_EnableHook failed"); return 6; }
     if (!early_root && !StartLaunchGuard()) { log_status(L"HWID protection verification failed"); return 11; }
+    if (!early_root && !LaunchGuardAgentReady()) { log_status(L"HWID agent readiness not confirmed"); return 11; }
     std::wstring name = L"Local\\PriceCheckAgentReady_" + std::to_wstring(GetCurrentProcessId());
     ready_event = CreateEventW(nullptr, TRUE, FALSE, name.c_str());
     if (ready_event) SetEvent(ready_event);

@@ -40,7 +40,7 @@ public sealed class ClientLoginService
         {
             using var hook = await ClientAgentHookLoader.InstallAsync(pid, dll, cancellationToken);
             var deadline = Stopwatch.StartNew();
-            while (deadline.Elapsed < TimeSpan.FromSeconds(28))
+            while (deadline.Elapsed < TimeSpan.FromSeconds(LaunchTimeouts.LoginSeconds))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var status = view.ReadInt32(8);
@@ -61,7 +61,7 @@ public sealed class ClientLoginService
                 hook.Pulse();
                 await Task.Delay(150, cancellationToken);
             }
-        throw new TimeoutException($"Auto login did not finish within 28 seconds (stage: {StageLabel(view.ReadInt32(8))}"+
+        throw new TimeoutException($"Auto login did not finish within 180 seconds (stage: {StageLabel(view.ReadInt32(8))}"+
             (rosterView is null ? "" : $"; character count: {rosterView.ReadInt32(4)}")+").");
         }
         finally

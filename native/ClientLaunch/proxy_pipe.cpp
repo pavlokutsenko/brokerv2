@@ -1,3 +1,4 @@
+#include "launch_timeouts.h"
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -70,7 +71,7 @@ int pipe_connect(SOCKET socket, const sockaddr* address, int length) {
     }
     const auto* dest = reinterpret_cast<const sockaddr_in*>(address);
     if (dest->sin_port == 0 || dest->sin_addr.s_addr == 0) { WSASetLastError(WSAEINVAL); return SOCKET_ERROR; }
-    if (!WaitNamedPipeW(pipe_path.c_str(), 5000)) { TraceEvent("pipe_wait_error", GetLastError()); WSASetLastError(WSAENETDOWN); return SOCKET_ERROR; }
+    if (!WaitNamedPipeW(pipe_path.c_str(), launch_timeouts::network_ms)) { TraceEvent("pipe_wait_error", GetLastError()); WSASetLastError(WSAENETDOWN); return SOCKET_ERROR; }
     HANDLE pipe = CreateFileW(pipe_path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (pipe == INVALID_HANDLE_VALUE) { TraceEvent("pipe_open_error", GetLastError()); WSASetLastError(WSAENETDOWN); return SOCKET_ERROR; }
     BYTE header[10]{'P', 'C', 'P', 'X'};

@@ -3,6 +3,13 @@ using PriceCheck.Contracts;
 using PriceCheck.Launching;
 using PriceCheck.Collector.Models;
 
+if (args.Contains("--recovery-only"))
+{
+    await ClientRecoveryTests.Run();
+    Console.WriteLine("ModuleIsolation.Smoke recovery: PASS");
+    return;
+}
+
 static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 static async Task Reject(Func<Task> action)
 {

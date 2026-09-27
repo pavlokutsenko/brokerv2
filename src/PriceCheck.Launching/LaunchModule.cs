@@ -123,7 +123,7 @@ public sealed class LaunchModule
     {
         if(!Owns(profileId,session)) throw new InvalidOperationException("This profile does not own the client to be replaced.");
         Stop(profileId);
-        var deadline=DateTimeOffset.UtcNow.AddSeconds(10);
+        var deadline=DateTimeOffset.UtcNow.AddSeconds(LaunchTimeouts.StopSeconds);
         while(_identity(session.ProcessId)==session)
         {
             cancellationToken.ThrowIfCancellationRequested();

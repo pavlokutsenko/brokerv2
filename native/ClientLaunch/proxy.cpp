@@ -1,3 +1,4 @@
+#include "launch_timeouts.h"
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -88,7 +89,7 @@ DWORD WINAPI relay_thread(void* raw) {
     fd_set set;
     FD_ZERO(&set);
     FD_SET(relay->listener, &set);
-    timeval accept_timeout{15, 0};
+    timeval accept_timeout{launch_timeouts::relay_accept_ms / 1000, 0};
     if (select(0, &set, nullptr, nullptr, &accept_timeout) != 1) {
         TraceEvent("relay_accept_timeout");
         closesocket(relay->listener);
@@ -100,7 +101,7 @@ DWORD WINAPI relay_thread(void* raw) {
 
     SOCKET upstream = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (upstream == INVALID_SOCKET) { closesocket(client); return 0; }
-    DWORD timeout = 15000;
+    DWORD timeout = launch_timeouts::network_ms;
     setsockopt(upstream, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
     setsockopt(upstream, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
     bypass = true;
@@ -211,7 +212,7 @@ unsigned probe_remote_connectivity(const sockaddr_in& target) {
         fd_set writable;
         FD_ZERO(&writable);
         FD_SET(client, &writable);
-        timeval timeout{2, 0};
+        timeval timeout{10, 0};
         int ready = select(0, nullptr, &writable, nullptr, &timeout);
         if (ready == 1) {
             int so_error = 0, size = sizeof(so_error);

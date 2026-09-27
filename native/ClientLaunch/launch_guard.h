@@ -1,4 +1,5 @@
 #pragma once
+#include "launch_timeouts.h"
 #include <windows.h>
 #include <cstdint>
 
@@ -16,6 +17,7 @@ struct LaunchGuardState {
 static_assert(sizeof(LaunchGuardState) == 104);
 constexpr unsigned launch_guard_magic = 0x50434744;
 bool StartLaunchGuard();
+bool LaunchGuardAgentReady();
 LaunchGuardState* GetLaunchGuardState();
 bool LaunchGuardLeaseValid();
 void LaunchGuardBeginWorld();

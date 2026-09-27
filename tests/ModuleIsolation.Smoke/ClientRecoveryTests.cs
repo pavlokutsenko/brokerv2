@@ -21,7 +21,7 @@ internal static class ClientRecoveryTests
         Check(Observe(healthy,at) is null,"Healthy idle client must not restart.");
         var lost=new ClientHealth(true,true,false,false);
         Check(Observe(lost,at.AddSeconds(1)) is null && Observe(lost,at.AddSeconds(20)) is null,"Connection loss requires sustained confirmation.");
-        var request=Observe(lost,at.AddSeconds(22))!;
+        var request=Observe(lost,at.AddSeconds(62))!;
         Check(request.Reason=="Game connection closed" && request.Reader && request.Collection,"Confirmed disconnect keeps reader/collection intent.");
         var drain=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var resumes=0;
@@ -46,13 +46,13 @@ internal static class ClientRecoveryTests
         var hanging=new ClientHealth(true,false,false,true);
         Check(Observe(hanging,at.AddSeconds(1)) is null && Observe(hanging,at.AddSeconds(60)) is null,
             "Short loading/native activity is not a hung client.");
-        Check(Observe(hanging,at.AddSeconds(62))!.Reason.Contains("60 seconds"),"Sustained unresponsive client is detected.");
+        Check(Observe(hanging,at.AddSeconds(182))!.Reason.Contains("180 seconds"),"Sustained unresponsive client is detected.");
         Observe(healthy,at.AddMinutes(2));
         Check(Observe(healthy,at.AddMinutes(3),world:false) is null && Observe(healthy,at.AddMinutes(4),world:false) is null,
             "World transition has a loading grace period.");
-        Check(Observe(healthy,at.AddMinutes(5),world:false) is not null,"Long world loss triggers recovery.");
+        Check(Observe(healthy,at.AddMinutes(9),world:false) is not null,"Long world loss triggers recovery.");
         var drainCalls=0;
-        request=Observe(healthy,at.AddMinutes(6),"Reader failure")!;
+        request=Observe(healthy,at.AddMinutes(10),"Reader failure")!;
         session=await recovery.RestartAsync(profile,request,null,()=>++drainCalls==1?Task.FromException(new IOException("Cleanup fault")):Task.CompletedTask,
             _=>Task.CompletedTask,_=>{},CancellationToken.None);
         Check(drainCalls==2,"Failed cleanup closes owned client before retrying teardown.");
@@ -61,7 +61,7 @@ internal static class ClientRecoveryTests
         session=await launcher.LaunchAsync(profile,null,_=>{},CancellationToken.None);
         Check(recovery.Observe(profile,session,false,false,healthy,null,null,at) is null,"Launcher health requires no reader.");
         Check(recovery.Observe(profile,session,false,false,lost,null,null,at.AddSeconds(1)) is null,"Launcher disconnect has a grace period.");
-        var launcherRequest=recovery.Observe(profile,session,false,false,lost,null,null,at.AddSeconds(22));
+        var launcherRequest=recovery.Observe(profile,session,false,false,lost,null,null,at.AddSeconds(62));
         Check(launcherRequest is { Reader:false,Collection:false,Reason:"Game connection closed" },"Launcher detects connection loss without collection or world reads.");
         recovery.Forget(profile.Id);launcher.Stop(profile.Id);
         Console.WriteLine("CLIENT_RECOVERY_OK disconnect_grace crash same_slot drain retry_backoff manual_stop");

@@ -66,7 +66,7 @@ internal static class EarlyClientAgentLoader
             if (thread == 0) throw new InvalidOperationException($"CreateRemoteThread: {Marshal.GetLastWin32Error()}");
             try
             {
-                var wait = WaitForSingleObject(thread, 10_000);
+                var wait = WaitForSingleObject(thread, LaunchTimeouts.AgentReadyMilliseconds);
                 token.ThrowIfCancellationRequested();
                 if (wait != 0 || !GetExitCodeThread(thread, out var result) || result == 0)
             throw new InvalidOperationException("Early agent did not load into the launcher process.");
@@ -78,7 +78,7 @@ internal static class EarlyClientAgentLoader
 
     private static void WaitForReady(int pid, CancellationToken token)
     {
-        var deadline = Environment.TickCount64 + 10_000;
+        var deadline = Environment.TickCount64 + LaunchTimeouts.AgentReadyMilliseconds;
         while (Environment.TickCount64 < deadline)
         {
             token.ThrowIfCancellationRequested();

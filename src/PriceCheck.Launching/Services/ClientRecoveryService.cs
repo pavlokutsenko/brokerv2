@@ -45,9 +45,9 @@ public sealed class ClientRecoveryService(LaunchModule launcher)
         s.Disconnected=s.SeenConnection && health.Connected==false ? s.Disconnected??now : null;
         s.MissingWorld=reader && liveWorld==false ? s.MissingWorld??now : null;
         string? reason=!health.Current?"Client exited or crashed":health.FatalWindow?"Fatal error window":fault;
-        if(reason is null && s.Disconnected is { } disconnected && now-disconnected>=TimeSpan.FromSeconds(20)) reason="Game connection closed";
-        if(reason is null && s.Unresponsive is { } stuck && now-stuck>=TimeSpan.FromSeconds(60)) reason="Client has not responded for 60 seconds";
-        if(reason is null && s.MissingWorld is { } missing && now-missing>=TimeSpan.FromSeconds(90)) reason="Player world unavailable for 90 seconds";
+        if(reason is null && s.Disconnected is { } disconnected && now-disconnected>=TimeSpan.FromSeconds(LaunchTimeouts.DisconnectedSeconds)) reason="Game connection closed";
+        if(reason is null && s.Unresponsive is { } stuck && now-stuck>=TimeSpan.FromSeconds(LaunchTimeouts.UnresponsiveSeconds)) reason="Client has not responded for 180 seconds";
+        if(reason is null && s.MissingWorld is { } missing && now-missing>=TimeSpan.FromSeconds(LaunchTimeouts.MissingWorldSeconds)) reason="Player world unavailable for 300 seconds";
         if(reason is null)
         {
             s.Healthy??=now;
@@ -70,7 +70,7 @@ public sealed class ClientRecoveryService(LaunchModule launcher)
         {
             progress($"Restarting client: {request.Reason}");
             var draining=drain();
-            try { await draining.WaitAsync(TimeSpan.FromSeconds(30),token); }
+            try { await draining.WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.DrainSeconds),token); }
             catch(Exception e) when(e is not OperationCanceledException)
             {
                 // Destroy a dead/stuck owned client before abandoning its hooks.
@@ -78,9 +78,9 @@ public sealed class ClientRecoveryService(LaunchModule launcher)
                 ClientLoginService.Validate(profile);
                 progress($"Reader drain failed: {e.GetBaseException().Message}; closing the owned client");
                 if(launcher.Owns(profile.Id,request.Session)) await launcher.StopAndWaitAsync(profile.Id,request.Session,token);
-                try { await draining.WaitAsync(TimeSpan.FromSeconds(30),token); }
+                try { await draining.WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.DrainSeconds),token); }
                 catch(Exception cleanup) when(draining.IsCompleted && cleanup is not OperationCanceledException) { }
-                await drain().WaitAsync(TimeSpan.FromSeconds(30),token);
+                await drain().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.DrainSeconds),token);
             }
             token.ThrowIfCancellationRequested();ClientLoginService.Validate(profile);
             if(launcher.Owns(profile.Id,request.Session)) await launcher.StopAndWaitAsync(profile.Id,request.Session,token);

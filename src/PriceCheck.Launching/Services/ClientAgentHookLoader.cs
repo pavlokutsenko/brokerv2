@@ -13,7 +13,7 @@ internal static class ClientAgentHookLoader
 
     public static async Task<HookLease> InstallAsync(int pid, string agentPath, CancellationToken cancellationToken)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(90);
+        var deadline = DateTime.UtcNow.AddSeconds(LaunchTimeouts.GameStartupSeconds);
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -51,7 +51,7 @@ internal static class ClientAgentHookLoader
             }
             await Task.Delay(250, cancellationToken);
         }
-        throw new TimeoutException("The client window did not appear within 90 seconds; the HWID agent was not loaded.");
+        throw new TimeoutException("The client window did not appear within 5 minutes; the HWID agent was not loaded.");
     }
 
     private static nint FindWindow(int pid)

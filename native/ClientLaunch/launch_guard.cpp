@@ -67,10 +67,17 @@ bool open_state() {
 LaunchGuardState* GetLaunchGuardState() { return open_state() ? state : nullptr; }
 bool LaunchGuardLeaseValid() {
     return state && (state->required == 1 || state->required == 3) && !state->error && state->controller_ready == 1 &&
-        GetTickCount64() - static_cast<ULONGLONG>(InterlockedCompareExchange64(&state->heartbeat, 0, 0)) < 5000;
+        GetTickCount64() - static_cast<ULONGLONG>(InterlockedCompareExchange64(&state->heartbeat, 0, 0)) < launch_timeouts::heartbeat_ms;
 }
 void LaunchGuardFail(LONG error) {
     if (state && InterlockedCompareExchange(&state->error, error, 0) == 0) denied(20 + error);
+}
+bool LaunchGuardAgentReady() {
+    auto current = GetLaunchGuardState();
+    if (!current) return !required();
+    if (!LaunchGuardLeaseValid() || !(current->flags & 1)) return false;
+    InterlockedOr(&current->flags, 4); // Initialization complete, separate from HWID/world flags.
+    return true;
 }
 bool LaunchGuardAllowsLogin(bool character) {
     if (!open_state()) return false;

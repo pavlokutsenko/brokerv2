@@ -89,7 +89,7 @@ internal static class GuardMonitorChecks
                 continue;
             }
             if (failure == "native") view.Write(12, 8);
-            if (failure == "heartbeat") { heartbeat.Cancel(); await pulse; view.Write(72, Environment.TickCount64 - 6000); }
+            if (failure == "heartbeat") { heartbeat.Cancel(); await pulse; view.Write(72, Environment.TickCount64 - PriceCheck.Windows.LaunchTimeouts.HeartbeatMilliseconds - 1000); }
             if (failure == "route") { using var device = new Lu4Device(); device.SetProxyRedirect(child.Id, broker.ListenerPort, false); }
             if (failure == "proxy") {
                 fixture.Reject = true;

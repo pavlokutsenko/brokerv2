@@ -74,7 +74,7 @@ internal sealed class ProxyPipeBroker : IDisposable
 
                 using var upstream = new TcpClient(AddressFamily.InterNetwork);
                 await upstream.ConnectAsync(_host, _port, session.Token).AsTask()
-                    .WaitAsync(TimeSpan.FromSeconds(10), session.Token);
+                    .WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), session.Token);
                 Trace("proxy_tcp", port);
                 if (port == 7782 && upstream.Client.LocalEndPoint is IPEndPoint localEndpoint &&
                     localEndpoint.Address.AddressFamily == AddressFamily.InterNetwork)
@@ -91,7 +91,7 @@ internal sealed class ProxyPipeBroker : IDisposable
                 while (used < response.Length && end < 0)
                 {
                     var read = await network.ReadAsync(response.AsMemory(used), session.Token)
-                        .AsTask().WaitAsync(TimeSpan.FromSeconds(10), session.Token);
+                        .AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), session.Token);
                     if (read == 0) return;
                     used += read;
                     end = response.AsSpan(0, used).IndexOf("\r\n\r\n"u8);
@@ -151,7 +151,7 @@ internal sealed class ProxyPipeBroker : IDisposable
     public void Dispose()
     {
         _stop.Cancel();
-        try { _acceptLoop.Wait(TimeSpan.FromSeconds(2)); }
+        try { _acceptLoop.Wait(TimeSpan.FromSeconds(6)); }
         catch (AggregateException) { }
         _stop.Dispose();
     }

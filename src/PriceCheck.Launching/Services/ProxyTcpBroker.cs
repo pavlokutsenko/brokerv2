@@ -118,7 +118,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
                 using var upstream = new TcpClient(AddressFamily.InterNetwork);
                 upstream.Client.IOControl(SetRecords, records.AsSpan(0, recordsLength).ToArray(), null);
                 await upstream.ConnectAsync(ProxyEnabled ? _host : address.ToString(), ProxyEnabled ? _port : port, session.Token).AsTask()
-                    .WaitAsync(TimeSpan.FromSeconds(10), session.Token);
+                    .WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), session.Token);
                 Trace(ProxyEnabled ? "proxy_tcp" : "direct_tcp", ProxyEnabled ? _port : port);
                 var network = upstream.GetStream();
                 var extra = ProxyEnabled ? await OpenConnectAsync(network, destination, session.Token) : [];
@@ -174,7 +174,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
         }
         _stop.Cancel();
         _listener.Stop();
-        try { _acceptLoop.Wait(TimeSpan.FromSeconds(2)); }
+        try { _acceptLoop.Wait(TimeSpan.FromSeconds(6)); }
         catch (AggregateException) { }
         _stop.Dispose();
     }
