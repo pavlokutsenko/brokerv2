@@ -33,6 +33,22 @@ public sealed class Lu4Device : IDisposable
         return BinaryPrimitives.ReadUInt64LittleEndian(response.AsSpan(8));
     }
 
+    public ClientProcessStatus QueryProcessStatus(int pid)
+    {
+        var request = new byte[24];
+        BinaryPrimitives.WriteUInt32LittleEndian(request, Version);
+        BinaryPrimitives.WriteInt32LittleEndian(request.AsSpan(4), pid);
+        var response = Ioctl(Code(0x811, ReadAccess), request, request.Length);
+        Validate(response, request.Length);
+        if (BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(4)) != pid)
+            throw new IOException("LU4Memory process status belongs to another PID.");
+        var created = BinaryPrimitives.ReadInt64LittleEndian(response.AsSpan(8));
+        var active = BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(16)) == 1;
+        if (active && created <= 0) throw new IOException("LU4Memory process creation time is missing.");
+        return new(pid, created > 0 ? new DateTimeOffset(DateTime.FromFileTimeUtc(created)) : null,
+            active, BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(20)));
+    }
+
     public byte[] Read(int pid, ulong address, int size)
     {
         if (size <= 0 || size > 1024 * 1024) throw new ArgumentOutOfRangeException(nameof(size));
@@ -98,6 +114,25 @@ public sealed class Lu4Device : IDisposable
     }
 
     public void Dispose() => _handle.Dispose();
+
+    public ProxyGuardStatus QueryProxyGuard(int pid = 0)
+    {
+        var request = new byte[32];
+        BinaryPrimitives.WriteUInt32LittleEndian(request, Version);
+        BinaryPrimitives.WriteInt32LittleEndian(request.AsSpan(4), pid);
+        var response = Ioctl(Code(0x810, ReadAccess), request, 48);
+        if (response.Length is not (32 or 48)) throw new IOException("Invalid LU4Memory guard response.");
+        Validate(response, response.Length);
+        return new(pid, BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(8)),
+            BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(12)),
+            BinaryPrimitives.ReadUInt32LittleEndian(response.AsSpan(16)),
+            BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(20)) == 1,
+            BinaryPrimitives.ReadUInt64LittleEndian(response.AsSpan(24)),
+            response.Length >= 48 ? BinaryPrimitives.ReadUInt32LittleEndian(response.AsSpan(32)) : 0,
+            response.Length >= 48 ? BinaryPrimitives.ReadUInt32LittleEndian(response.AsSpan(36)) : 0,
+            response.Length >= 48 ? BinaryPrimitives.ReadUInt32LittleEndian(response.AsSpan(40)) : 0,
+            response.Length >= 48 ? BinaryPrimitives.ReadUInt32LittleEndian(response.AsSpan(44)) : 0);
+    }
 
     private byte[] Ioctl(uint code, byte[] input, int outputSize)
     {

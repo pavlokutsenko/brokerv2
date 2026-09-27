@@ -29,7 +29,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SelectedRuntime?.Profile.RotationCharacterSlots is { Length: > 0 } slots
             ? slots.Select(slot => new CharacterSlotOption(slot, $"Slot {slot}")).ToArray()
             : [new(0, "Slot 0 · список после входа")];
-    public string SelectedTemplateSummary => LaunchTemplates.FirstOrDefault(value => value.Id == SelectedRuntime?.Profile.LaunchTemplateId)?.Summary ?? "No HWID override or proxy";
+    public string SelectedTemplateSummary => LaunchTemplates.FirstOrDefault(value => value.Id == SelectedRuntime?.Profile.LaunchTemplateId)?.Summary ?? "Запуск запрещён: выберите шаблон HWID и прокси";
     public LaunchRuntime? SelectedRuntime
     {
         get => _selected;

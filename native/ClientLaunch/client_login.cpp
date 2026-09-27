@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cwchar>
 #include "character_roster.h"
+#include "launch_guard.h"
 
 namespace {
 constexpr std::uint32_t magic = 0x50434C47;
@@ -42,6 +43,7 @@ void* object_at(std::uintptr_t chunks, int index) {
 }
 
 LONG call_login(Shared* shared) {
+    if (!LaunchGuardAllowsLogin(false)) return -30;
     if (shared->magic != magic || shared->user_length == 0 || shared->password_length == 0 ||
         shared->user_length > 120 || shared->password_length > 120 ||
         shared->user_length + shared->password_length + 2 > 256) return -1;
@@ -91,6 +93,7 @@ LONG call_login(Shared* shared) {
 }
 
 LONG select_server(Shared* shared) {
+    if (!LaunchGuardAllowsLogin(false)) return -30;
     if (shared->server_id < 0 || shared->server_id > 1000) return -11;
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(L"lu4.bin"));
     if (!base) return -12;
@@ -124,6 +127,8 @@ LONG select_server(Shared* shared) {
 }
 
 LONG select_character(Shared* shared) {
+    if (!LaunchGuardAllowsLogin(false)) return -30;
+    if (!LaunchGuardAllowsLogin(true)) return -24;
     int slot = shared->character_slot;
     if (slot < 0 || slot > 10) return -20;
     const int count=CharacterRosterCount();

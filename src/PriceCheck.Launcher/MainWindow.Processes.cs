@@ -22,13 +22,15 @@ public partial class MainWindow
             CharacterRotationSchedule.Validate(runtime.Profile);
             _recovery.Forget(runtime.Profile.Id); runtime.ClientFault = null;
             if (runtime.Profile.CharacterRotationEnabled) runtime.Profile.CharacterSlot = 0;
-            SetSession(runtime, await _launcher.LaunchAsync(runtime.Profile, template, status => runtime.LaunchStatus = status, CancellationToken.None));
+            SetSession(runtime, await _launcher.LaunchAsync(runtime.Profile, template,
+                status => { runtime.LaunchStatus = status; runtime.Protection = _launcher.Protection(runtime.Profile.Id); }, CancellationToken.None));
             _rotation.Started(runtime.Profile, runtime.Session!, DateTimeOffset.UtcNow);
             Log($"{runtime.Profile.Name}: {runtime.ProcessLabel} · ready");
         }
         catch (Exception exception) { runtime.LaunchStatus = "Launch failed"; ClearExited(runtime); Error(exception); }
         finally
         {
+            runtime.Protection = _launcher.Protection(runtime.Profile.Id);
             runtime.IsBusy = false;
             try { await SaveProfilesAsync(); await SaveRotatedTemplateAsync(template); }
             catch (Exception exception) { Error(exception); }
@@ -57,6 +59,7 @@ public partial class MainWindow
         {
             _recovery.Forget(runtime.Profile.Id); _rotation.Forget(runtime.Profile.Id);
             _launcher.Stop(runtime.Profile.Id); runtime.Session = null;
+            runtime.Protection = _launcher.Protection(runtime.Profile.Id);
             runtime.Profile.LastProcessId = null; runtime.Profile.LastProcessStartUtc = null;
             runtime.LaunchStatus = "Stopped"; await SaveProfilesAsync();
         }

@@ -42,7 +42,7 @@ $clientLaunchRuntime = Join-Path $repo 'native\ClientLaunch\build\x64\PriceCheck
 $clientLaunchProxy = Join-Path $repo 'native\ClientLaunch\build\x64\version.dll'
 $clientLoginRuntime = Join-Path $repo 'native\ClientLaunch\build\x64\PriceCheck.ClientLogin.dll'
 $clientLaunchSources = @(Get-ChildItem -LiteralPath (Join-Path $repo 'native\ClientLaunch') -Recurse -File |
-    Where-Object { $_.FullName -notmatch '\\build\\' -and $_.Extension -in @('.c', '.cpp', '.h', '.def', '.vcxproj') })
+    Where-Object { $_.FullName -notmatch '\\build\\' -and $_.Extension -in @('.c', '.cpp', '.h', '.inc', '.def', '.vcxproj') })
 if (-not (Test-Path -LiteralPath $clientLaunchRuntime) -or -not (Test-Path -LiteralPath $clientLaunchProxy) -or
     -not (Test-Path -LiteralPath $clientLoginRuntime) -or
     ($clientLaunchSources | Where-Object { $_.LastWriteTimeUtc -gt (Get-Item -LiteralPath $clientLaunchRuntime).LastWriteTimeUtc } | Select-Object -First 1)) {

@@ -14,6 +14,31 @@
       </StackPanel>
       <StackPanel><TextBlock Text="{Binding Profile.Name, TargetNullValue=Select a profile}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{Binding LaunchStatus}" Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}"/></StackPanel>
      </DockPanel>
+     <Border Background="#0E131A" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+             CornerRadius="7" Padding="11" Margin="0,0,0,12" ToolTip="{Binding Protection.Detail}">
+      <StackPanel>
+        <TextBlock x:Name="HardwareProtectionIndicator" Text="{Binding Protection.HardwareLabel}" FontWeight="SemiBold" TextWrapping="Wrap">
+        <TextBlock.Style><Style TargetType="TextBlock">
+         <Setter Property="Foreground" Value="#E6B75A"/>
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding Protection.WorldIdentityApplied}" Value="True"><Setter Property="Foreground" Value="#65D4A6"/></DataTrigger>
+          <DataTrigger Binding="{Binding Protection.Failed}" Value="True"><Setter Property="Foreground" Value="#FF7B7B"/></DataTrigger>
+         </Style.Triggers>
+        </Style></TextBlock.Style>
+       </TextBlock>
+        <TextBlock x:Name="ProxyProtectionIndicator" Text="{Binding Protection.ProxyLabel}" Margin="0,6,0,0" FontWeight="SemiBold" TextWrapping="Wrap">
+        <TextBlock.Style><Style TargetType="TextBlock">
+         <Setter Property="Foreground" Value="#E6B75A"/>
+         <Style.Triggers>
+          <DataTrigger Binding="{Binding Protection.ProxyReady}" Value="True"><Setter Property="Foreground" Value="#65D4A6"/></DataTrigger>
+          <DataTrigger Binding="{Binding Protection.Failed}" Value="True"><Setter Property="Foreground" Value="#FF7B7B"/></DataTrigger>
+         </Style.Triggers>
+        </Style></TextBlock.Style>
+       </TextBlock>
+       <TextBlock Text="{Binding Protection.Detail}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                  FontSize="11" Margin="0,7,0,0"/>
+      </StackPanel>
+     </Border>
      <TextBlock Text="Client executable" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,6"/>
      <DockPanel><Button DockPanel.Dock="Right" Content="Browse…" Click="BrowseFolder_Click" Margin="8,0,0,0"/><TextBox Text="{Binding Profile.LaunchFile, UpdateSourceTrigger=PropertyChanged}" TextChanged="ProfileField_Changed"/></DockPanel>
                     <Border  Background="#0E131A" BorderBrush="{StaticResource BorderBrush}"

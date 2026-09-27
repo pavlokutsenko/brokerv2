@@ -36,7 +36,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         [new LaunchTemplate { Id = Guid.Empty, Name = "No template", HardwareEnabled = false }];
     public string SelectedTemplateSummary =>
         LaunchTemplates.FirstOrDefault(value => value.Id == SelectedRuntime?.Profile.LaunchTemplateId)?.Summary ??
-        "No HWID override or proxy";
+        "Запуск запрещён: выберите шаблон HWID и прокси";
     public ObservableCollection<string> Events { get; } = [];
     public IReadOnlyList<CollectorRoleOption> RoleOptions => CollectorRoleOption.All;
     public IReadOnlyList<string> MarketOptions { get; } = ["Gamma", "Black", "White", "Carmine"];

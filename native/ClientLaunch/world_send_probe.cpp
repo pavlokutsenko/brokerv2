@@ -8,6 +8,7 @@
 #include "trace.h"
 #include "world_send_probe.h"
 #include "world_identity.h"
+#include "launch_guard.h"
 
 namespace {
 using SendFn = int (WSAAPI*)(SOCKET, const char*, int, int);
@@ -37,6 +38,7 @@ void inspect(SOCKET socket, unsigned length) {
 }
 
 int WSAAPI hooked_send(SOCKET socket, const char* data, int length, int flags) {
+    if (!LaunchGuardAllowsNetwork()) { LaunchGuardFail(6); WSASetLastError(WSAEACCES); return SOCKET_ERROR; }
     if (data && length == 37) {
         unsigned hash = 2166136261u;
         for (int index = 0; index < length; ++index)
@@ -47,7 +49,9 @@ int WSAAPI hooked_send(SOCKET socket, const char* data, int length, int flags) {
             int peer_length = sizeof(peer);
             if (getpeername(socket, reinterpret_cast<sockaddr*>(&peer), &peer_length) == 0 &&
                 peer.sin_family == AF_INET && ntohs(peer.sin_port) == 7782)
+            {
                 pending_world_source = data;
+            }
         }
     }
     if (data && length > 0) inspect(socket, static_cast<unsigned>(length));
@@ -59,6 +63,7 @@ int WSAAPI hooked_send(SOCKET socket, const char* data, int length, int flags) {
 int WSAAPI hooked_wsa_send(SOCKET socket, LPWSABUF buffers, DWORD count,
                            LPDWORD sent, DWORD flags, LPWSAOVERLAPPED overlapped,
                            LPWSAOVERLAPPED_COMPLETION_ROUTINE completion) {
+    if (!LaunchGuardAllowsNetwork()) { LaunchGuardFail(6); WSASetLastError(WSAEACCES); return SOCKET_ERROR; }
     unsigned total = 0;
     if (buffers) for (DWORD index = 0; index < count && total <= 69; ++index)
         total += buffers[index].len;
@@ -70,9 +75,10 @@ int WSAAPI hooked_lower_send(SOCKET socket, const char* data, int length, int fl
     char isolated[69]{};
     const int previous_error = WSAGetLastError();
     const bool isolate = pending_world_source && length == 69 && WorldIdentityEnabled();
+    if (isolate) LaunchGuardBeginWorld();
     const bool rewritten = isolate && RewriteWorldIdentity(data, length, isolated);
     WSASetLastError(previous_error);
-    if (isolate && !rewritten) { WSASetLastError(WSAEOPNOTSUPP); return SOCKET_ERROR; }
+    if (isolate && !rewritten) { LaunchGuardFail(7); WSASetLastError(WSAEOPNOTSUPP); return SOCKET_ERROR; }
     if (data && length > 0 && length <= 100) TraceEvent("world_lower_send_length", length);
     if (data && (length == 32 || length == 37 || length == 69) &&
         InterlockedCompareExchange(&lower_captured, 0, 0) == 0) {
@@ -144,7 +150,9 @@ int WSAAPI hooked_lower_send(SOCKET socket, const char* data, int length, int fl
             }
         }
     }
-    return lower_real_send(socket, rewritten ? isolated : data, length, flags);
+    const int result = lower_real_send(socket, rewritten ? isolated : data, length, flags);
+    if (rewritten && result == length) LaunchGuardWorldApplied();
+    return result;
 }
 }
 
@@ -158,7 +166,7 @@ bool InstallWorldSendProbeHooks() {
     auto* body = winsock ? reinterpret_cast<unsigned char*>(GetProcAddress(winsock, "send")) : nullptr;
     if (!body || body[0] != 0xE9) {
         TraceEvent("world_lower_hook_available", 0);
-        return true;
+        return !WorldIdentityEnabled();
     }
     const bool lower = MH_CreateHook(body + 5, hooked_lower_send,
         reinterpret_cast<void**>(&lower_real_send)) == MH_OK;

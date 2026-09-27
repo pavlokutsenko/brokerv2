@@ -19,6 +19,7 @@ using GetSockOptFn = int (WSAAPI*)(SOCKET, int, int, char*, int*);
 using GetSockNameFn = int (WSAAPI*)(SOCKET, sockaddr*, int*);
 using IoctlSocketFn = int (WSAAPI*)(SOCKET, long, u_long*);
 ConnectFn real_connect = nullptr;
+ConnectFn real_bind = nullptr;
 SendFn real_send = nullptr;
 RecvFn real_recv = nullptr;
 SendFn lower_real_send = nullptr;
@@ -48,15 +49,27 @@ unsigned peer_port(SOCKET socket) {
 }
 int WSAAPI hooked_connect(SOCKET socket, const sockaddr* address, int length) {
     TraceEvent("observe_connect_port", port_of(address, length));
+    TraceEvent("observe_connect_family", address ? address->sa_family : 0);
+    if (address && address->sa_family == AF_INET && length >= sizeof(sockaddr_in))
+        TraceEvent("observe_connect_ipv4", ntohl(reinterpret_cast<const sockaddr_in*>(address)->sin_addr.s_addr));
     int result = real_connect(socket, address, length);
-    TraceEvent("observe_connect_error", result == 0 ? 0 : WSAGetLastError());
+    const int error = WSAGetLastError();
+    TraceEvent("observe_connect_error", result == 0 ? 0 : error);
     if (result == 0 && port_of(address, length) == 7782) {
         sockaddr_in local{};
         int local_size = sizeof(local);
         if (getsockname(socket, reinterpret_cast<sockaddr*>(&local), &local_size) == 0)
             TraceEvent("world_local_ipv4", ntohl(local.sin_addr.s_addr));
     }
-    return result;
+    WSASetLastError(error); return result;
+}
+int WSAAPI hooked_bind(SOCKET socket, const sockaddr* address, int length) {
+    const int result = real_bind(socket, address, length);
+    const int error = WSAGetLastError();
+    TraceEvent("observe_bind_family", address ? address->sa_family : 0);
+    TraceEvent("observe_bind_port", port_of(address, length));
+    TraceEvent("observe_bind_error", result == 0 ? 0 : error);
+    WSASetLastError(error); return result;
 }
 int WSAAPI hooked_send(SOCKET socket, const char* data, int size, int flags) {
     TraceEvent("observe_send", (peer_port(socket) << 16) | (static_cast<unsigned>(size) & 0xffff));
@@ -71,6 +84,7 @@ int WSAAPI hooked_send(SOCKET socket, const char* data, int size, int flags) {
 }
 int WSAAPI hooked_recv(SOCKET socket, char* data, int size, int flags) {
     int result = real_recv(socket, data, size, flags);
+    const int error = WSAGetLastError();
     TraceEvent("observe_recv", (peer_port(socket) << 16) | (static_cast<unsigned>(result) & 0xffff));
     if (result == 13 && peer_port(socket) == 7782 && data) {
         unsigned word = 0;
@@ -79,7 +93,8 @@ int WSAAPI hooked_recv(SOCKET socket, char* data, int size, int flags) {
         memcpy(&word, data + 8, 4); TraceEvent("world_reply_2", word);
         TraceEvent("world_reply_3", static_cast<unsigned char>(data[12]));
     }
-    return result;
+    TraceEvent("observe_recv_error", result == SOCKET_ERROR ? error : 0);
+    WSASetLastError(error); return result;
 }
 int WSAAPI lower_send(SOCKET socket, const char* data, int size, int flags) {
     if (peer_port(socket) == 7782 && size == 15 && data) {
@@ -139,6 +154,13 @@ int WSAAPI hooked_ioctlsocket(SOCKET socket, long command, u_long* argument) {
     TraceEvent("observe_ioctlsocket", static_cast<unsigned>(command));
     return real_ioctlsocket(socket, command, argument);
 }
+}
+
+bool InstallConnectionObserveHooks() {
+    // The world protection owns send/WSASend and send+5. Never replace those.
+    return MH_CreateHookApi(L"ws2_32.dll", "connect", hooked_connect, reinterpret_cast<void**>(&real_connect)) == MH_OK &&
+        MH_CreateHookApi(L"ws2_32.dll", "bind", hooked_bind, reinterpret_cast<void**>(&real_bind)) == MH_OK &&
+        MH_CreateHookApi(L"ws2_32.dll", "recv", hooked_recv, reinterpret_cast<void**>(&real_recv)) == MH_OK;
 }
 
 bool InstallNetworkObserveHooks() {

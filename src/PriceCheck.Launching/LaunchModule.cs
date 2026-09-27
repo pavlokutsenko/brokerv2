@@ -15,6 +15,18 @@ public sealed class LaunchModule
     private readonly Func<CancellationToken,Task> _restartPause;
     private readonly Dictionary<Guid, ClientSession> _owned = [];
     private readonly HashSet<Guid> _launching = [];
+    private readonly Dictionary<Guid, ClientProtectionStatus> _lastProtection = [];
+
+    public ClientProtectionStatus Protection(Guid profileId) =>
+        _owned.TryGetValue(profileId, out var session) ? _processes.Protection(session.ProcessId) :
+        _lastProtection.GetValueOrDefault(profileId, ClientProtectionStatus.Pending);
+
+    public Task ValidateProtectionAsync(Guid profileId, bool requireWorld, CancellationToken token)
+    {
+        if (!_owned.TryGetValue(profileId, out var session) || _identity(session.ProcessId) != session)
+            throw new LaunchProtectionException("Проверка невозможна: запустите клиент через это приложение с HWID и прокси.");
+        return _processes.ValidateProtectionAsync(session.ProcessId, requireWorld, token);
+    }
 
     public LaunchModule(IClientProcessService? processes = null,
         Func<int, CollectorProfile, CancellationToken, Task>? login = null,
@@ -32,11 +44,17 @@ public sealed class LaunchModule
     {
         if (!_launching.Add(profile.Id)) throw new InvalidOperationException("Profile is already launching.");
         ClientSession? session = null;
+        _lastProtection[profile.Id] = ClientProtectionStatus.Pending;
         try
         {
             if (_owned.TryGetValue(profile.Id, out var current))
             {
-                if (_identity(current.ProcessId) == current) return current;
+                if (_identity(current.ProcessId) == current)
+                {
+                    session = current;
+                    await _processes.ValidateProtectionAsync(current.ProcessId, false, cancellationToken);
+                    return current;
+                }
                 ReleaseExited(profile.Id);
             }
             if (profile.AutoLoginEnabled) ClientLoginService.Validate(profile);
@@ -52,18 +70,24 @@ public sealed class LaunchModule
             progress("Waiting for game window…");
             await _processes.WaitForGameWindowAsync(pid, cancellationToken);
             await _processes.ActivateLateAgentAsync(pid, cancellationToken);
+            progress("Проверка HWID и защиты прокси…");
+            await _processes.ValidateProtectionAsync(pid, false, cancellationToken);
             if(beforeLogin is not null) await beforeLogin(session,cancellationToken);
             if (profile.AutoLoginEnabled)
             {
                 progress("Logging in…");
                 await _login(pid, profile, cancellationToken);
+                progress("Подтверждение HWID и прокси после входа персонажа…");
+                await _processes.ValidateProtectionAsync(pid, true, cancellationToken);
             }
             progress(profile.AutoLoginEnabled ? "Character selected" : "Client ready · log in manually");
             return session;
         }
-        catch
+        catch (Exception error)
         {
             if (session is not null) Stop(profile.Id);
+            var protection = Protection(profile.Id);
+            _lastProtection[profile.Id] = protection with { Error = protection.Error ?? error.GetBaseException().Message };
             throw;
         }
         finally { _launching.Remove(profile.Id); }
@@ -89,6 +113,8 @@ public sealed class LaunchModule
     public void Stop(Guid profileId)
     {
         if (!_owned.Remove(profileId, out var session)) return;
+        var protection = _processes.Protection(session.ProcessId);
+        _lastProtection[profileId] = protection.Failed ? protection : ClientProtectionStatus.Pending;
         if (_identity(session.ProcessId) == session) _processes.Terminate(session.ProcessId);
         else _processes.Release(session.ProcessId);
     }
@@ -111,6 +137,8 @@ public sealed class LaunchModule
     {
         if (_owned.TryGetValue(profileId, out var session) && _identity(session.ProcessId) != session)
         {
+            var protection = _processes.Protection(session.ProcessId);
+            _lastProtection[profileId] = protection.Failed ? protection : ClientProtectionStatus.Pending;
             _owned.Remove(profileId);
             _processes.Release(session.ProcessId);
         }

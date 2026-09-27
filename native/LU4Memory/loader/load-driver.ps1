@@ -50,7 +50,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $LogPath) | Out-Null
     Set-Content -LiteralPath $LogPath -Value '' -Encoding UTF8
     Assert-Administrator
-    Assert-FileHash $DriverPath 'C7228FD5D285C29268A64707B3062FEEEFCCB76BEB5332CB8BF5B4E52CCC64DA'
+    Assert-FileHash $DriverPath '7DDB36E3C6201093F8A3471EC757E9BDA0C760DDCEE33D58AA0B75CF32703F11'
     Assert-FileHash $KduPath 'EA626A9FF0F0A6FD0BB8377AFA93C6ECBFB388204C3ED4E90D7000CDEDC25B1D'
     Assert-FileHash (Join-Path $Root 'drv64.dll') '155E357D76874EA8D203643F63C9066A3DFD3DAB3E150E4735FBAD673EF06F7F'
     Assert-FileHash (Join-Path $Root 'Taigei64.dll') '8A48F93D2A8121A8E4F4BF76378D54EC40184987EB16B795614142C8E3E2BDA1'
@@ -63,7 +63,10 @@ try {
         if (-not $normalized -or -not (Test-Path -LiteralPath $normalized) -or
             (Get-Sha256File $normalized) -notin @(
                 '2393EEE0E77E03A3C5D4640CE16F0A6AC1B6DE1E1A3D7887B1635AE6186AE766',
-                'C7228FD5D285C29268A64707B3062FEEEFCCB76BEB5332CB8BF5B4E52CCC64DA')) {
+                'C7228FD5D285C29268A64707B3062FEEEFCCB76BEB5332CB8BF5B4E52CCC64DA',
+                'A962250F6087AC03FB2D69491162C1835308E2895C37CC809A90AD6AE2793142',
+                '690F28E316978DDEEF83694EBFC95047FF1F40C2F152E9686780E606A01E37C0',
+                '7DDB36E3C6201093F8A3471EC757E9BDA0C760DDCEE33D58AA0B75CF32703F11')) {
             throw 'Служба LU4Memory уже запущена из другого или повреждённого бинарника. Закройте игровые клиенты и перезагрузите Windows.'
         }
         if (-not $ForceReload) {

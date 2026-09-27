@@ -26,7 +26,7 @@ public partial class MainWindow
                         runtime.Profile.LastProcessStartUtc=replacement.StartedAtUtc;
                         if(resumeReader) await _collection.AttachAsync(runtime,CancellationToken.None);
                         if(resumeCollection) await _collection.SetCollectionAsync(runtime,true);
-                    },status=>runtime.CharacterRotationStatus=runtime.LaunchStatus=status,CancellationToken.None,
+                    },status=> { runtime.CharacterRotationStatus=runtime.LaunchStatus=status; runtime.Protection=_launcher.Protection(runtime.Profile.Id); },CancellationToken.None,
                     resumeReader ? CaptureReaderBeforeLogin(runtime) : null);
                 runtime.RefreshProfile();
                 OnPropertyChanged(nameof(CharacterOptions));
@@ -34,7 +34,9 @@ public partial class MainWindow
             }
             catch(Exception e)
             {
-                if(!ClientProcessIdentity.IsCurrent(session))
+                if (e is PriceCheck.Collector.Services.LaunchProtectionException)
+                    _clientRecovery.Forget(runtime.Profile.Id);
+                else if(!ClientProcessIdentity.IsCurrent(session))
                 {
                     _clientRecovery.Arm(runtime.Profile,session,resumeReader,resumeCollection);
                     if(_clientRecovery.Pending(runtime.Profile.Id,session))
@@ -44,6 +46,7 @@ public partial class MainWindow
             }
             finally
             {
+                runtime.Protection=_launcher.Protection(runtime.Profile.Id);
                 if(runtime.Session is { } old && !ClientProcessIdentity.IsCurrent(old) && !_clientRecovery.Pending(runtime.Profile.Id,old))
                 { runtime.Session=null;runtime.Profile.LastProcessId=null;runtime.Profile.LastProcessStartUtc=null; }
                 runtime.IsBusy=false;

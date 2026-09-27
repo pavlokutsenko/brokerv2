@@ -1,6 +1,6 @@
 /* Per-PID IPv4 TCP connect redirect. Registered only after an explicit IOCTL. */
 
-#define LU4_PROXY_MAX_ROUTES 16
+#define LU4_PROXY_MAX_ROUTES 64
 #define LU4_PROXY_POOL_TAG '4PcL'
 
 DEFINE_GUID(g_ProxyCalloutKey, 0x87846dc1, 0x4e8a, 0x40b9, 0x91, 0x9b, 0x8e, 0xaa, 0x84, 0x36, 0xe1, 0x11);
@@ -10,6 +10,9 @@ typedef struct _LU4_PROXY_ROUTE {
     ULONG ProcessId;
     ULONG HostProcessId;
     USHORT ListenerPort;
+    ULONG RootProcessId;
+    ULONGLONG Blocked;
+    ULONG BlockedProtocol, BlockedLayer, BlockedAddress, BlockedPort;
 } LU4_PROXY_ROUTE;
 
 static KSPIN_LOCK g_ProxyRouteLock;
@@ -28,21 +31,9 @@ static VOID ProxyRedirectInitialize(VOID)
     RtlZeroMemory(g_ProxyRoutes, sizeof(g_ProxyRoutes));
 }
 
-static VOID ProxyProcessNotify(_Inout_ PEPROCESS Process, _In_ HANDLE ProcessId,
-    _Inout_opt_ PPS_CREATE_NOTIFY_INFO CreateInfo)
-{
-    KIRQL irql;
-    ULONG index;
-    ULONG pid = HandleToULong(ProcessId);
-    UNREFERENCED_PARAMETER(Process);
-    if (CreateInfo != NULL) return;
-    KeAcquireSpinLock(&g_ProxyRouteLock, &irql);
-    for (index = 0; index < LU4_PROXY_MAX_ROUTES; ++index) {
-        if (g_ProxyRoutes[index].ProcessId == pid || g_ProxyRoutes[index].HostProcessId == pid)
-            RtlZeroMemory(&g_ProxyRoutes[index], sizeof(g_ProxyRoutes[index]));
-    }
-    KeReleaseSpinLock(&g_ProxyRouteLock, irql);
-}
+static NTSTATUS NTAPI ProxyNotify(FWPS_CALLOUT_NOTIFY_TYPE notifyType,
+    const GUID* filterKey, FWPS_FILTER1* filter);
+#include "proxy_policy.inc"
 
 static VOID NTAPI ProxyClassify(
     _In_ const FWPS_INCOMING_VALUES0* fixedValues,
@@ -82,7 +73,7 @@ static VOID NTAPI ProxyClassify(
         }
     }
     KeReleaseSpinLock(&g_ProxyRouteLock, irql);
-    if (route.ProcessId == 0 || g_ProxyRedirectHandle == NULL) return;
+    if (route.ProcessId == 0 || !route.ListenerPort || g_ProxyRedirectHandle == NULL) return;
 
     redirectState = FwpsQueryConnectionRedirectState0(metadata->redirectRecords,
         g_ProxyRedirectHandle, NULL);
@@ -148,6 +139,7 @@ static VOID ProxyRedirectShutdown(VOID)
         FwpmEngineClose0(g_ProxyEngine);
         g_ProxyEngine = NULL;
     }
+    ProxyAuthShutdown();
     if (g_ProxyCalloutId != 0) {
         FwpsCalloutUnregisterById0(g_ProxyCalloutId);
         g_ProxyCalloutId = 0;
@@ -220,12 +212,14 @@ static NTSTATUS ProxyRedirectRegister(_In_ PDEVICE_OBJECT deviceObject)
     filter.weight.type = FWP_EMPTY;
     g_ProxyRegisterStage = 7;
     status = FwpmFilterAdd0(g_ProxyEngine, &filter, NULL, NULL);
+    if (NT_SUCCESS(status)) status = ProxyAuthRegister(deviceObject);
 Done:
     if (!NT_SUCCESS(status)) {
         if (g_ProxyEngine != NULL) {
             FwpmEngineClose0(g_ProxyEngine);
             g_ProxyEngine = NULL;
         }
+        ProxyAuthShutdown();
         if (g_ProxyCalloutId != 0) {
             FwpsCalloutUnregisterById0(g_ProxyCalloutId);
             g_ProxyCalloutId = 0;
@@ -260,6 +254,22 @@ static NTSTATUS HandleProxyRedirect(_In_ PDEVICE_OBJECT deviceObject, _Inout_ PV
     if (request->Version != LU4_PROTOCOL_VERSION || request->ProcessId == 0 ||
         request->Enable > 1 || request->ListenerPort > 65535 ||
         (request->Enable && request->ListenerPort == 0)) return STATUS_INVALID_PARAMETER;
+    if (!request->Enable) {
+        KeAcquireSpinLock(&g_ProxyRouteLock, &irql);
+        for (index = 0; index < LU4_PROXY_MAX_ROUTES; ++index) {
+            if (g_ProxyRoutes[index].ProcessId == request->ProcessId ||
+                g_ProxyRoutes[index].RootProcessId == request->ProcessId) {
+                if (request->ListenerPort && g_ProxyRoutes[index].ListenerPort != request->ListenerPort) continue;
+                if (g_ProxyRoutes[index].HostProcessId != owner) {
+                    KeReleaseSpinLock(&g_ProxyRouteLock, irql); return STATUS_ACCESS_DENIED;
+                }
+                g_ProxyRoutes[index].ListenerPort = 0;
+            }
+        }
+        KeReleaseSpinLock(&g_ProxyRouteLock, irql);
+        request->HostProcessId = owner; request->Status = STATUS_SUCCESS; request->Stage = 0;
+        *information = sizeof(*request); return STATUS_SUCCESS;
+    }
     if (request->Enable) {
         status = PsLookupProcessByProcessId(ULongToHandle(request->ProcessId), &target);
         if (!NT_SUCCESS(status)) return status;
@@ -292,10 +302,11 @@ static NTSTATUS HandleProxyRedirect(_In_ PDEVICE_OBJECT deviceObject, _Inout_ PV
     }
     if (index < LU4_PROXY_MAX_ROUTES) {
         if (request->Enable) {
+            if (!g_ProxyRoutes[index].RootProcessId) g_ProxyRoutes[index].RootProcessId = request->ProcessId;
             g_ProxyRoutes[index].ProcessId = request->ProcessId;
             g_ProxyRoutes[index].HostProcessId = owner;
             g_ProxyRoutes[index].ListenerPort = (USHORT)request->ListenerPort;
-        } else RtlZeroMemory(&g_ProxyRoutes[index], sizeof(g_ProxyRoutes[index]));
+        } else g_ProxyRoutes[index].ListenerPort = 0; /* Never revert a live protected PID to direct traffic. */
     }
     KeReleaseSpinLock(&g_ProxyRouteLock, irql);
     request->HostProcessId = owner;
@@ -304,3 +315,5 @@ static NTSTATUS HandleProxyRedirect(_In_ PDEVICE_OBJECT deviceObject, _Inout_ PV
     *information = sizeof(*request);
     return STATUS_SUCCESS;
 }
+
+#include "proxy_guard_query.inc"

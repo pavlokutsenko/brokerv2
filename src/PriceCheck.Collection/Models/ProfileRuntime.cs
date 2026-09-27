@@ -16,6 +16,8 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
     private MarketCycleStatus _cycle = new();
     private string _uploadStatus = "Локальный outbox · ожидание данных";
     private string _characterRotationStatus = "Character rotation is off";
+    private PriceCheck.Contracts.ClientProtectionStatus _protection = PriceCheck.Contracts.ClientProtectionStatus.Pending;
+    public PriceCheck.Contracts.ClientProtectionStatus Protection { get => _protection; set => Set(ref _protection, value); }
 
     public required CollectorProfile Profile { get; init; }
     public string? ClientFault { get; set; }

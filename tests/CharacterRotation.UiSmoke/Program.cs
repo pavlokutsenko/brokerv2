@@ -18,6 +18,11 @@ internal static class Program
         window.Runtimes.Add(runtime);window.SelectedRuntime=runtime;
         window.Show();app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
         var view=(LaunchPanelView)window.FindName("LaunchPanel")!;
+        runtime.Protection=new(true,true,true,2,69,13,"FIXTURE123",null);
+        app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
+        if(!((TextBlock)view.FindName("HardwareProtectionIndicator")!).Text.Contains("FIXTURE123") ||
+            !((TextBlock)view.FindName("ProxyProtectionIndicator")!).Text.Contains("2 CONNECT"))
+            throw new Exception("Collector protection indicators did not bind to the selected runtime.");
         var toggle=(CheckBox)view.FindName("RotationToggle")!;
         var interval=(TextBox)view.FindName("RotationIntervalInput")!;
         var jitter=(TextBox)view.FindName("RotationJitterInput")!;

@@ -21,6 +21,7 @@ public partial class MainWindow
             runtime.IsBusy = true;
             try
             {
+                await _launcher.ValidateProtectionAsync(runtime.Profile.Id, true, CancellationToken.None);
                 await _collection.AttachAsync(runtime, CancellationToken.None);
                 await _collection.SetCollectionAsync(runtime, true);
                 await SaveProfilesAsync();

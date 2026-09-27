@@ -110,8 +110,7 @@ public sealed class DriverBootstrapper
         try
         {
             using var device = new Lu4Device();
-            device.SetProxyRedirect(Environment.ProcessId, 0, false);
-            return true;
+            return device.QueryProxyGuard().Capabilities == 31;
         }
         catch { return false; }
     }

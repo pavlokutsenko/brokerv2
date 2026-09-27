@@ -25,7 +25,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary></ClCompile>
     <Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation></Link>
   </ItemDefinitionGroup>
-  <ItemGroup><ClCompile Include="client_login.cpp" /><ClCompile Include="character_roster.cpp" />
+  <ItemGroup><ClCompile Include="launch_guard.cpp" /><ClCompile Include="client_login.cpp" /><ClCompile Include="character_roster.cpp" />
     <ClCompile Include="minhook\src\buffer.c" /><ClCompile Include="minhook\src\hook.c" /><ClCompile Include="minhook\src\trampoline.c" />
     <ClCompile Include="minhook\src\hde\hde32.c" /><ClCompile Include="minhook\src\hde\hde64.c" />
   </ItemGroup>

@@ -121,16 +121,21 @@ bool read_middle(BYTE (&middle)[16]) {
     memcpy(plain, envelope + 40, sizeof(plain));
     bool valid = sha1(plain, sizeof(plain), digest);
     rc4(key, digest, sizeof(digest));
-    valid = valid && memcmp(digest, envelope, sizeof(digest)) == 0;
+    const bool integrity = valid && memcmp(digest, envelope, sizeof(digest)) == 0;
+    valid = integrity;
     rc4(key, plain, sizeof(plain));
-    valid = valid && plain[0] == 1;
-    for (unsigned index = 33; index < 38; ++index) valid = valid && plain[index] == 0xAA;
+    const bool prefix = plain[0] == 1;
+    bool suffix = true, empty = true;
+    for (unsigned index = 33; index < 38; ++index) suffix = suffix && plain[index] == 0xAA;
+    for (BYTE value : envelope) empty = empty && value == 0;
+    valid = valid && prefix && suffix;
+    const unsigned diagnostic = (integrity ? 1u : 0u) | (prefix ? 2u : 0u) | (suffix ? 4u : 0u) | (empty ? 8u : 0u);
     if (valid) memcpy(middle, plain + 9, sizeof(middle));
     SecureZeroMemory(key, sizeof(key));
     SecureZeroMemory(digest, sizeof(digest));
     SecureZeroMemory(plain, sizeof(plain));
     SecureZeroMemory(envelope, sizeof(envelope));
-    if (!valid) status("world_identity_envelope_error", 1);
+    if (!valid) status("world_identity_envelope_error", diagnostic);
     return valid;
 }
 }
@@ -151,6 +156,28 @@ bool ConfigureWorldIdentity() {
 
 bool WorldIdentityEnabled() { return enabled; }
 
+bool ValidateWorldIdentityLayout() {
+    if (!enabled) return false;
+    HANDLE device = CreateFileW(L"\\\\.\\LU4Memory", GENERIC_READ, 0, nullptr,
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (device == INVALID_HANDLE_VALUE) return false;
+    const bool valid = supported_driver(device);
+    CloseHandle(device);
+    return valid;
+}
+
+bool ValidateWorldIdentity() {
+    BYTE original[16]{};
+    const bool valid = enabled && read_middle(original) && memcmp(original, replacement, 16) != 0;
+    SecureZeroMemory(original, sizeof(original));
+    return valid;
+}
+
+bool CopyWorldIdentity(BYTE (&value)[16]) {
+    if (!enabled) return false;
+    memcpy(value, replacement, sizeof(value)); return true;
+}
+
 bool RewriteWorldIdentity(const char* source, size_t size, char (&output)[69]) {
     if (!enabled || !source || size != sizeof(output)) return false;
     const HMODULE clmods = GetModuleHandleW(L"clmods64.dll");
@@ -161,6 +188,10 @@ bool RewriteWorldIdentity(const char* source, size_t size, char (&output)[69]) {
     }
     BYTE middle[16]{};
     if (!read_middle(middle)) return false;
+    if (memcmp(middle, replacement, sizeof(middle)) == 0) {
+        SecureZeroMemory(middle, sizeof(middle));
+        status("world_identity_not_new", 1); return false;
+    }
     memcpy(output, source, sizeof(output));
     // The driver's keyed XOR recurrence precedes RC4. Its ciphertext delta is
     // the prefix XOR of plaintext deltas; neither cipher state depends on data.

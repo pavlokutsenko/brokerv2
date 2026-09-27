@@ -24,6 +24,7 @@ public partial class MainWindow
         {
             var session = runtime.Session is { } current && ClientProcessIdentity.IsCurrent(current) ? current : SelectedClient;
             if (session is null) throw new InvalidOperationException("Launch a client or select an existing process.");
+            await _launcher.ValidateProtectionAsync(runtime.Profile.Id, false, CancellationToken.None);
             if (Runtimes.Count(other => other != runtime && other.ReaderAttached) >= 4)
                 throw new InvalidOperationException("Одновременно поддерживаются от 1 до 4 коллекторов.");
             if (Runtimes.Any(other => other != runtime && other.Session == session))
@@ -60,6 +61,7 @@ public partial class MainWindow
             foreach (var runtime in runtimes)
             {
                 if (runtime.IsBusy) continue;
+                if (await TickProtectionAsync(runtime)) continue;
                 if(await TickClientRecoveryAsync(runtime)) continue;
                 if(await TickCharacterRotationAsync(runtime)) continue;
                 await _collection.RefreshAsync(runtime);

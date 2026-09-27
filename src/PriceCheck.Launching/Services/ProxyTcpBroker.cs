@@ -9,7 +9,7 @@ namespace PriceCheck.Collector.Services;
 
 // WFP redirects only the selected client's outgoing TCP connects here. The
 // client keeps its own Winsock receive path, including its receive transform.
-internal sealed class ProxyTcpBroker : IDisposable
+internal sealed partial class ProxyTcpBroker : IDisposable
 {
     private const string LoginProbeDestination = "194.180.209.45:2108";
     private const int QueryRecords = unchecked((int)0x980000DC);
@@ -30,9 +30,12 @@ internal sealed class ProxyTcpBroker : IDisposable
     private int _pid;
     private bool _bound;
 
-    public ProxyTcpBroker(LaunchTemplate template)
+    public ProxyTcpBroker(LaunchTemplate template, bool guarded = false)
     {
         ClientLaunchConfiguration.ValidateProxy(template);
+        _guarded = guarded;
+        _probeTemplate = new LaunchTemplate { ProxyEnabled = true, ProxyHost = template.ProxyHost, ProxyPort = template.ProxyPort,
+            ProxyUser = template.ProxyUser, ProxyPassword = template.ProxyPassword };
         _host = template.ProxyHost.Trim();
         _port = template.ProxyPort;
         _authorization = Convert.ToBase64String(Encoding.UTF8.GetBytes(
@@ -43,45 +46,6 @@ internal sealed class ProxyTcpBroker : IDisposable
     }
 
     public int ListenerPort { get; }
-
-    public static async Task VerifyUpstreamAsync(LaunchTemplate template, CancellationToken cancellationToken)
-    {
-        ClientLaunchConfiguration.ValidateProxy(template);
-        using var client = new TcpClient(AddressFamily.InterNetwork);
-        try
-        {
-            await client.ConnectAsync(template.ProxyHost.Trim(), template.ProxyPort, cancellationToken)
-                .AsTask().WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
-            var network = client.GetStream();
-            var authorization = Convert.ToBase64String(Encoding.UTF8.GetBytes(
-                template.ProxyUser + ":" + template.ProxyPassword));
-            var request = Encoding.ASCII.GetBytes($"CONNECT {LoginProbeDestination} HTTP/1.1\r\n" +
-                $"Host: {LoginProbeDestination}\r\nProxy-Authorization: Basic {authorization}\r\n\r\n");
-            await network.WriteAsync(request, cancellationToken)
-                .AsTask().WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
-            var response = new byte[512];
-            var used = 0;
-            while (used < response.Length && response.AsSpan(0, used).IndexOf("\r\n"u8) < 0)
-            {
-                var read = await network.ReadAsync(response.AsMemory(used), cancellationToken)
-                    .AsTask().WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
-                if (read == 0) break;
-                used += read;
-            }
-            var lineEnd = response.AsSpan(0, used).IndexOf("\r\n"u8);
-            var statusLine = lineEnd >= 0 ? Encoding.ASCII.GetString(response, 0, lineEnd) : "";
-            if (statusLine.StartsWith("HTTP/1.1 200 ", StringComparison.Ordinal) ||
-                statusLine.StartsWith("HTTP/1.0 200 ", StringComparison.Ordinal)) return;
-            if (statusLine.StartsWith("HTTP/1.1 407 ", StringComparison.Ordinal) ||
-                statusLine.StartsWith("HTTP/1.0 407 ", StringComparison.Ordinal))
-                throw new InvalidOperationException("HTTP proxy rejected the username or password (407). Check this launch template.");
-            throw new InvalidOperationException($"HTTP proxy could not reach the LU4 login server: {statusLine.Trim()}.");
-        }
-        catch (Exception error) when (error is SocketException or TimeoutException or IOException)
-        {
-            throw new InvalidOperationException("Could not connect through the HTTP proxy. Check its host, port, and availability.", error);
-        }
-    }
 
     public void Bind(int pid)
     {
@@ -98,6 +62,7 @@ internal sealed class ProxyTcpBroker : IDisposable
             throw;
         }
         _bound = true;
+        _boundPids.TryAdd(pid, 0);
         Trace("bound", ListenerPort);
     }
 
@@ -120,12 +85,13 @@ internal sealed class ProxyTcpBroker : IDisposable
         using (client)
         using (var session = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token))
         {
+            var worldSession = false;
             try
             {
                 var context = new byte[16];
                 if (client.Client.IOControl(QueryContext, null, context) != context.Length ||
                     BinaryPrimitives.ReadUInt32LittleEndian(context) != ContextMagic ||
-                    BinaryPrimitives.ReadInt32LittleEndian(context.AsSpan(4)) != Volatile.Read(ref _pid))
+                    !OwnsRedirect(BinaryPrimitives.ReadInt32LittleEndian(context.AsSpan(4))))
                     return;
                 Trace("accepted", 1);
 
@@ -134,11 +100,21 @@ internal sealed class ProxyTcpBroker : IDisposable
                 if (port == 0) return;
                 Trace("destination_port", port);
                 var destination = $"{address}:{port}";
+                Trace("destination_ipv4", BinaryPrimitives.ReadInt32BigEndian(context.AsSpan(8, 4)));
+                if (_guarded && port is 2108 or 7782)
+                {
+                    while (!AllowLogin) await Task.Delay(100, session.Token);
+                }
 
                 var records = new byte[4096];
                 var recordsLength = client.Client.IOControl(QueryRecords, null, records);
                 if (recordsLength <= 0) return;
                 Trace("redirect_records", recordsLength);
+                if (_guarded && port == 53)
+                {
+                    await ServeDnsAsync(client.GetStream(), records.AsSpan(0, recordsLength).ToArray(), session.Token);
+                    return;
+                }
 
                 using var upstream = new TcpClient(AddressFamily.InterNetwork);
                 upstream.Client.IOControl(SetRecords, records.AsSpan(0, recordsLength).ToArray(), null);
@@ -158,77 +134,57 @@ internal sealed class ProxyTcpBroker : IDisposable
                 {
                     var read = await network.ReadAsync(response.AsMemory(used), session.Token)
                         .AsTask().WaitAsync(TimeSpan.FromSeconds(10), session.Token);
-                    if (read == 0) return;
+                    if (read == 0) { SetError("Прокси закрыл соединение до CONNECT 200."); return; }
                     used += read;
                     end = response.AsSpan(0, used).IndexOf("\r\n\r\n"u8);
                 }
-                if (end < 0 || !IsConnectSuccess(response.AsSpan(0, used))) return;
+                if (end < 0 || !IsConnectSuccess(response.AsSpan(0, used)))
+                {
+                    var statusEnd = response.AsSpan(0, used).IndexOf("\r\n"u8);
+                    var status = statusEnd >= 0 ? Encoding.ASCII.GetString(response, 0, statusEnd) : "неполный ответ";
+                    SetError($"Прокси отклонил CONNECT к {destination}: {status}.");
+                    return;
+                }
+                Interlocked.Increment(ref _connections);
+                if (port == 7782) {
+                    Interlocked.Increment(ref _worldConnections);
+                    Interlocked.Increment(ref _worldActive); worldSession = true;
+                    Interlocked.Exchange(ref _worldOpenedAt, Environment.TickCount64);
+                    Interlocked.Exchange(ref _worldSent, 0); Interlocked.Exchange(ref _worldReceived, 0);
+                }
                 Trace("proxy_http_200", port);
+                Trace("connect_response_bytes", used);
+                Trace("connect_extra_bytes", used - end - 4);
 
                 var game = client.GetStream();
+                Trace("game_stream_ready", port);
                 if (used > end + 4)
+                {
                     await game.WriteAsync(response.AsMemory(end + 4, used - end - 4), session.Token);
+                    CountTraffic("proxy_to_client", port, used - end - 4);
+                }
                 var outgoing = PumpAsync(game, network, "client_to_proxy", port, session.Token);
                 var incoming = PumpAsync(network, game, "proxy_to_client", port, session.Token);
                 await Task.WhenAny(outgoing, incoming);
+                if (!_stop.IsCancellationRequested && (outgoing.IsFaulted || incoming.IsFaulted))
+                    SetError("Обмен игровыми данными через прокси прерван ошибкой сети.");
                 Trace("tunnel_ended", port);
                 session.Cancel();
                 upstream.Dispose();
                 try { await Task.WhenAll(outgoing, incoming); }
                 catch (Exception error) when (error is IOException or OperationCanceledException or ObjectDisposedException) { }
             }
-            catch (Exception error) when (error is IOException or SocketException or OperationCanceledException or
-                TimeoutException or ObjectDisposedException) { Trace("tunnel_error", error.HResult); }
+            catch (Exception error) {
+                if (!_stop.IsCancellationRequested && (error is not OperationCanceledException || !session.IsCancellationRequested))
+                    SetError("Соединение через прокси не прошло проверку или было прервано.");
+                Trace("tunnel_error", error.HResult);
+            }
+            finally { if (worldSession && Interlocked.Decrement(ref _worldActive) == 0) Interlocked.Exchange(ref _worldOpenedAt, 0); }
         }
     }
 
     private static bool IsConnectSuccess(ReadOnlySpan<byte> response) =>
         response.StartsWith("HTTP/1.1 200 "u8) || response.StartsWith("HTTP/1.0 200 "u8);
-
-    private async Task PumpAsync(Stream source, Stream destination, string category, int port,
-        CancellationToken token)
-    {
-        var buffer = new byte[8192];
-        var prefix = _captureWorldPrefix && port == 7782
-            ? new byte[category == "client_to_proxy" ? 84 : 13] : null;
-        var prefixLength = 0;
-        while (true)
-        {
-            var read = await source.ReadAsync(buffer, token);
-            if (read == 0)
-            {
-                Trace(category + "_eof", 0);
-                return;
-            }
-            await destination.WriteAsync(buffer.AsMemory(0, read), token);
-            Trace(category, read);
-            if (prefix is null || prefixLength == prefix.Length) continue;
-            var toCopy = Math.Min(read, prefix.Length - prefixLength);
-            buffer.AsSpan(0, toCopy).CopyTo(prefix.AsSpan(prefixLength));
-            prefixLength += toCopy;
-            if (prefixLength == prefix.Length) TraceWorldPrefix(category, prefix);
-        }
-    }
-
-    private void TraceWorldPrefix(string category, byte[] prefix)
-    {
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PriceCheckCollector", "logs");
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, $"world-prefix-{_pid}.csv");
-        lock (_traceGate)
-            File.AppendAllText(path, $"{DateTimeOffset.UtcNow:O},{category},{Convert.ToHexString(prefix)}\n");
-    }
-
-    private void Trace(string category, int detail)
-    {
-        if (!_trace || _pid == 0) return;
-        var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PriceCheckCollector", "logs");
-        Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, $"proxy-tcp-{_pid}.csv");
-        lock (_traceGate) File.AppendAllText(path, $"{DateTimeOffset.UtcNow:O},{category},{detail}\n");
-    }
 
     public void Dispose()
     {
@@ -237,7 +193,7 @@ internal sealed class ProxyTcpBroker : IDisposable
             try
             {
                 using var device = new Lu4Device();
-                device.SetProxyRedirect(_pid, 0, false);
+                foreach (var pid in _boundPids.Keys) device.SetProxyRedirect(pid, ListenerPort, false);
             }
             catch (Exception error) when (error is IOException or System.ComponentModel.Win32Exception) { }
         }

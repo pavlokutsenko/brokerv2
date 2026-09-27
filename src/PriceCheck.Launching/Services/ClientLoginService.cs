@@ -96,6 +96,7 @@ public sealed class ClientLoginService
     private static string ErrorMessage(int status) => status switch
     {
             -3 => "This LU4 build differs from the validated build; programmatic login is not supported yet.",
+            -30 => "Вход остановлен: защита HWID или прокси не подтверждена.",
             -15 => "The server selection screen did not appear in time.",
             -24 => "The character selection screen did not appear in time.",
             -26 => "The client returned an invalid character list.",
@@ -106,8 +107,7 @@ public sealed class ClientLoginService
 
     private static bool IsAlive(int pid)
     {
-        try { using var process = Process.GetProcessById(pid); return !process.HasExited; }
-        catch (ArgumentException) { return false; }
+        return PriceCheck.Windows.ClientProcessIdentity.Read(pid) is not null;
     }
 
     private static string StageLabel(int status) => status switch

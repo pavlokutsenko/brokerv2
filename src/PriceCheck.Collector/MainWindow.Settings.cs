@@ -120,6 +120,8 @@ public partial class MainWindow
             if (!runtime.IsCollectionEnabled && Runtimes.Any(other => other != runtime && other.IsCollectionEnabled &&
                 other.Profile.Name.Equals(runtime.Profile.Name, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("На этом рынке уже работает другой профиль.");
+            if (!runtime.IsCollectionEnabled)
+                await _launcher.ValidateProtectionAsync(runtime.Profile.Id, true, CancellationToken.None);
             await _collection.SetCollectionAsync(runtime, !runtime.IsCollectionEnabled);
             _clientRecovery.Forget(runtime.Profile.Id);
             await SaveProfilesAsync();

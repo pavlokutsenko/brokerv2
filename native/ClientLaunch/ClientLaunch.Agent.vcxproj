@@ -27,7 +27,12 @@
     <ClCompile><WarningLevel>Level3</WarningLevel><LanguageStandard>stdcpp17</LanguageStandard><PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions><RuntimeLibrary>MultiThreaded</RuntimeLibrary></ClCompile>
     <Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation><AdditionalDependencies>ws2_32.lib;iphlpapi.lib;ole32.lib;advapi32.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(GuardProbeStage)' != ''">
+    <ClCompile><PreprocessorDefinitions>PRICECHECK_GUARD_PROBE_STAGE=$(GuardProbeStage);%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="launch_guard.cpp" />
+    <ClCompile Include="agent_guard.cpp" />
     <ClCompile Include="world_identity.cpp" />
     <ClCompile Include="agent.cpp" /><ClCompile Include="early_child.cpp" /><ClCompile Include="early_smart.cpp" /><ClCompile Include="early_registry.cpp" /><ClCompile Include="anticheat_registry_trace.cpp" /><ClCompile Include="firmware_snapshot.cpp" /><ClCompile Include="identity.cpp" /><ClCompile Include="disk_identity.cpp" /><ClCompile Include="disk_serial.cpp" /><ClCompile Include="router_identity.cpp" /><ClCompile Include="proxy.cpp" /><ClCompile Include="proxy_pipe.cpp" /><ClCompile Include="trace.cpp" /><ClCompile Include="network_observe.cpp" /><ClCompile Include="world_send_probe.cpp" />
     <ClCompile Include="minhook\src\buffer.c" /><ClCompile Include="minhook\src\hook.c" /><ClCompile Include="minhook\src\trampoline.c" />

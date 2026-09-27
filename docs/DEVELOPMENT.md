@@ -71,11 +71,17 @@ dotnet run --project tests/Launcher.Smoke -c Release -- workspace\launcher-ui
 dotnet run --project tests/CollectorUi.Smoke -c Release -- workspace\collector-ui\templates.png
 dotnet run --project tests/ModuleIsolation.Smoke -c Release
 dotnet run --project tests/StorageRecovery.Smoke -c Release
+dotnet run --project tests/LaunchProtection.Smoke/LaunchProtection.Smoke.csproj -c Release
+.\tests\LaunchProtection.Smoke\test-native.ps1
 ```
 
 UI smoke использует изолированные настройки и проверяет неизменность
 пользовательских JSON. Проверка готовых ZIP и manifests:
 tests/DesktopPackages.Smoke.ps1 (оба ZIP передаются явно).
+Опциональный --wfp в LaunchProtection.Smoke требует загруженный новый LU4Memory
+и elevated PowerShell; использует только тестовые процессы и локальные endpoint.
+Native watchdog probe проверяет завершение тестового процесса. Полный охват
+и отдельная игровая приёмка: [LAUNCH_PROTECTION.md](LAUNCH_PROTECTION.md).
 Текущие выполненные проверки и ограничения перечислены в
 [DESKTOP_PACKAGES.md](DESKTOP_PACKAGES.md).
 

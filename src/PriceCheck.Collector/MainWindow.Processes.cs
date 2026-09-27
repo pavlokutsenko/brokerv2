@@ -32,7 +32,7 @@ public partial class MainWindow
                 runtime.Profile.CharacterSlot = 0;
             if (runtime.ReaderAttached) await _collection.DetachAsync(runtime);
             runtime.Session = await _launcher.LaunchAsync(runtime.Profile, template,
-                status => runtime.LaunchStatus = status, CancellationToken.None,
+                status => { runtime.LaunchStatus = status; runtime.Protection = _launcher.Protection(runtime.Profile.Id); }, CancellationToken.None,
                 CaptureReaderBeforeLogin(runtime));
             _characterRotation.Started(runtime.Profile,runtime.Session,DateTimeOffset.UtcNow);
             OnPropertyChanged(nameof(CharacterOptions));
@@ -54,6 +54,7 @@ public partial class MainWindow
         }
         finally
         {
+            runtime.Protection = _launcher.Protection(runtime.Profile.Id);
             runtime.IsBusy = false;
             if (template?.RotateEachLaunch == true)
             {
@@ -94,7 +95,7 @@ public partial class MainWindow
             return true;
         }
         catch (Exception exception) { ShowModuleError(runtime, exception); return false; }
-        finally { runtime.IsBusy = false; }
+        finally { runtime.Protection = _launcher.Protection(runtime.Profile.Id); runtime.IsBusy = false; }
     }
 
     private void ShowModuleError(ProfileRuntime runtime, Exception exception)

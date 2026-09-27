@@ -352,3 +352,4 @@ bool InstallIdentityHooks() {
 }
 
 const wchar_t* IdentityHookError() { return failure; }
+#include "identity_verify.inc"

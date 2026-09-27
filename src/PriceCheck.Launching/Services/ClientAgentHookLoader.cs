@@ -17,15 +17,8 @@ internal static class ClientAgentHookLoader
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                using var process = Process.GetProcessById(pid);
-        if (process.HasExited) throw new InvalidOperationException("The client exited before agent loading.");
-            }
-            catch (ArgumentException)
-            {
-            throw new InvalidOperationException("The client exited before agent loading.");
-            }
+            if (PriceCheck.Windows.ClientProcessIdentity.Read(pid) is null)
+                throw new InvalidOperationException("The client exited before agent loading.");
 
             var window = FindWindow(pid);
             if (window != nint.Zero)

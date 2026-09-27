@@ -27,7 +27,7 @@ public partial class MainWindow
                     if(request.Collection) await _collection.SetCollectionAsync(runtime,true);
                     runtime.ClientFault=null;
                     _characterRotation.Started(runtime.Profile,replacement,DateTimeOffset.UtcNow);
-                },status=>runtime.LaunchStatus=runtime.Status=status,CancellationToken.None,
+                },status=> { runtime.LaunchStatus=runtime.Status=status; runtime.Protection=_launcher.Protection(runtime.Profile.Id); },CancellationToken.None,
                 request.Reader ? CaptureReaderBeforeLogin(runtime) : null);
             runtime.RefreshProfile();
             Log($"{runtime.Profile.Name}: restarted PID {runtime.ProcessId}, character {runtime.Profile.CharacterSlot}; collection {runtime.IsCollectionEnabled}");
@@ -41,6 +41,7 @@ public partial class MainWindow
         }
         finally
         {
+            runtime.Protection=_launcher.Protection(runtime.Profile.Id);
             runtime.IsBusy=false;
             await SaveProfilesAsync();
             if(template?.RotateEachLaunch==true) await SaveTemplatesAsync();

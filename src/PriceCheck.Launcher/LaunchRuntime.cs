@@ -11,6 +11,8 @@ public sealed class LaunchRuntime : INotifyPropertyChanged
     private ClientSession? _session;
     private string _launchStatus = "Stopped", _rotationStatus = "Character rotation is off";
     private bool _busy;
+    private ClientProtectionStatus _protection = ClientProtectionStatus.Pending;
+    public ClientProtectionStatus Protection { get => _protection; set { _protection = value; Changed(); } }
     public ClientSession? Session { get => _session; set { _session = value; Changed(); Changed(nameof(ProcessLabel)); } }
     public string ProcessLabel => Session is { } session ? $"PID {session.ProcessId}" : "No process";
     public string LaunchStatus { get => _launchStatus; set { _launchStatus = value; Changed(); } }

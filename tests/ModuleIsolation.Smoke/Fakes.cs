@@ -21,6 +21,8 @@ internal sealed class FakeProcesses : IClientProcessService
     }
     public Task WaitForGameWindowAsync(int pid, CancellationToken token) => Task.CompletedTask;
     public Task ActivateLateAgentAsync(int pid, CancellationToken token) => Task.CompletedTask;
+    public ClientProtectionStatus Protection(int pid) => new(true, true, true, 2, 64, 64, "TEST", null);
+    public Task ValidateProtectionAsync(int pid, bool requireWorld, CancellationToken token) => Task.CompletedTask;
     public void Terminate(int pid) { Terminations++; _sessions.Remove(pid); Proxies.Remove(pid); }
     public void Release(int? pid) { Releases++; if (pid is int value) Proxies.Remove(value); }
     public void ReusePid(int pid) => _sessions[pid] = new(pid, _sessions[pid].StartedAtUtc.AddSeconds(1));

@@ -2,10 +2,10 @@
   "artifact": "lu4_memory.sys",
   "protocolVersion": 3,
   "architecture": "x64",
-  "length": 30720,
-  "sha256": "C7228FD5D285C29268A64707B3062FEEEFCCB76BEB5332CB8BF5B4E52CCC64DA",
-  "status": "verified-wfp-proxy-live",
+  "length": 33280,
+  "sha256": "7DDB36E3C6201093F8A3471EC757E9BDA0C760DDCEE33D58AA0B75CF32703F11",
+  "status": "verified-wfp-guard-and-lu4-live",
   "serviceName": "LU4Memory",
   "devicePath": "\\\\.\\LU4Memory",
-  "source": "Built from native/LU4Memory on 2026-09-23; benign WFP redirect and LU4 local/external HTTP CONNECT live smokes passed."
+  "source": "Built and verified 2026-09-27. Capabilities 31; kernel PID lifetime/birth; authenticated CONNECT; direct IPv4/IPv6 TCP, connected UDP/sendto IPv4/IPv6 zero delivery; raw ICMP bind denial; descendant inheritance; route/controller revocation; suspended startup; managed/native watchdogs. Live Gamma slots 0 and 1, HWID rewrite, no-reader login, continuous checks and route-revocation termination passed. See docs/analysis/launch-protection/RESUME.md."
 }

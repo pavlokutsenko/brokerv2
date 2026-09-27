@@ -91,6 +91,12 @@ static NTSTATUS DispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ 
         status = HandleProxyRedirect(
             DeviceObject, buffer, inputLength, outputLength, &information);
         break;
+    case IOCTL_LU4_QUERY_PROXY_GUARD:
+        status = HandleProxyGuard(DeviceObject, buffer, inputLength, outputLength, &information);
+        break;
+    case IOCTL_LU4_QUERY_PROCESS_STATUS:
+        status = HandleProcessStatus(buffer, inputLength, outputLength, &information);
+        break;
     default:
         status = STATUS_INVALID_DEVICE_REQUEST;
         break;

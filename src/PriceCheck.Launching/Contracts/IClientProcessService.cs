@@ -10,4 +10,6 @@ public interface IClientProcessService
     Task<int> LaunchAndBindAsync(CollectorProfile profile, LaunchTemplate? template, CancellationToken cancellationToken);
     Task WaitForGameWindowAsync(int pid, CancellationToken cancellationToken);
     Task ActivateLateAgentAsync(int pid, CancellationToken cancellationToken);
+    PriceCheck.Contracts.ClientProtectionStatus Protection(int pid);
+    Task ValidateProtectionAsync(int pid, bool requireWorld, CancellationToken cancellationToken);
 }

@@ -92,21 +92,35 @@ paths are hints only because the protected client may deny `ExecutablePath`
 reads.
 
 Each collector profile owns a nullable launch-template ID. Reusable templates
-hold a fixed or rotating generated identity plus optional authenticated HTTP
-proxy settings; the special empty ID starts without either feature. The
+hold a fixed or rotating generated identity plus authenticated HTTP
+proxy settings. Both HWID and proxy are mandatory for game launch; an empty
+template ID is a configuration state that cannot launch a client. The
 template values are snapshotted into the child process environment before
-`Process.Start`. For an enabled template, the launcher waits for the final
+`CreateProcessW(CREATE_SUSPENDED)`. WFP is bound before resume and inherited by
+descendants before their first thread runs. The launcher waits for the final
 client's GUI window and uses a thread-local Windows message hook to load its
 own agent DLL into that process. The agent pins itself after installing the
 identity/proxy hooks, reports readiness, and the launcher then removes the
 temporary message hook. It does not stage a DLL beside the game EXE. The
 agent reports readiness for the final `lu4.bin` PID before radar setup. It
-intercepts identity APIs and socket connection setup;
+intercepts identity APIs and gates socket sends;
 the packet radar remains a separate driver-backed hook in the game image, and
 the broker worker keeps its own temporary hook lifetime. A LocalAppData
 deployment record identifies an older staged `version.dll` for hash-checked
 cleanup; unrelated files are left alone. The message-hook loader is independent
 of HardShift's unconfirmed driver injection primitive.
+
+ClientLaunchGuard owns a random per-launch shared memory lease identified by
+PID and process birth time. Native checks read the installed hooks back,
+validate the supported layout before login and the envelope at actual world
+send, and report each successful HWID rewrite. Driver process metadata supplies
+PID lifetime and creation time without requiring an external user-mode handle.
+The broker independently counts CONNECT generations and bidirectional traffic;
+an old world's confirmation cannot authorize a new world. Native login/send
+checks and continuous monitors stop the client on failure. WFP permits only
+the exact IPv4/TCP relay endpoint and denies other outbound protocols/routes,
+including after controller exit. UI reads ClientProtectionStatus through the
+launch module. See [protection checks and limits](LAUNCH_PROTECTION.md).
 
 The Templates tab scans local firmware, registry, network adapters, volumes,
 physical disks, monitor EDID and bounded PnP registry entries in memory. It

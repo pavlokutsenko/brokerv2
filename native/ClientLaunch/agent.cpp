@@ -10,6 +10,7 @@
 #include "network_observe.h"
 #include "world_send_probe.h"
 #include "world_identity.h"
+#include "launch_guard.h"
 #include "proxy_pipe.h"
 #include "early_child.h"
 #include "anticheat_registry_trace.h"
@@ -135,13 +136,17 @@ DWORD WINAPI start_agent(void*) {
     if (proxy && !early_root && !(pipe_proxy ? InstallProxyPipeHooks() : InstallProxyHooks())) {
         log_status(L"proxy hook installation failed"); return 4;
     }
-    if (observe_network && !proxy && !early_root && !InstallNetworkObserveHooks()) { log_status(L"network observation hook installation failed"); return 7; }
+    if (observe_network && !proxy && !early_root &&
+        !(WorldIdentityEnabled() ? InstallConnectionObserveHooks() : InstallNetworkObserveHooks())) {
+        log_status(L"network observation hook installation failed"); return 7;
+    }
     HMODULE self = nullptr;
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
                             reinterpret_cast<LPCWSTR>(&start_agent), &self)) {
         log_status(L"agent pin failed"); return 5;
     }
     if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK) { log_status(L"MH_EnableHook failed"); return 6; }
+    if (!early_root && !StartLaunchGuard()) { log_status(L"HWID protection verification failed"); return 11; }
     std::wstring name = L"Local\\PriceCheckAgentReady_" + std::to_wstring(GetCurrentProcessId());
     ready_event = CreateEventW(nullptr, TRUE, FALSE, name.c_str());
     if (ready_event) SetEvent(ready_event);

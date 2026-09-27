@@ -55,6 +55,8 @@
     <None Include="driver\packet_crypto.inc" />
     <None Include="driver\virtual_memory.inc" />
     <None Include="driver\proxy_redirect.inc" />
+    <None Include="driver\proxy_policy.inc" />
+    <None Include="driver\proxy_guard_query.inc" />
     <None Include="driver\dispatch.inc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

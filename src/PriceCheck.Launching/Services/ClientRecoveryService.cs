@@ -90,6 +90,11 @@ public sealed class ClientRecoveryService(LaunchModule launcher)
             s.Unresponsive=s.Disconnected=s.MissingWorld=s.Healthy=null;s.SeenConnection=false;
             return replacement;
         }
+        catch (LaunchProtectionException)
+        {
+            Forget(profile.Id);
+            throw;
+        }
         catch
         {
             if(_states.TryGetValue(profile.Id,out var s))
