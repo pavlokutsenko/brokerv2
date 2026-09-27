@@ -13,8 +13,6 @@ internal sealed class ClientLaunchGuard : IDisposable
     private readonly int _root;
     private int _pid;
     private readonly object _gate = new();
-    private Task? _probe;
-    private long _lastProbe;
     private ClientProtectionStatus _status = ClientProtectionStatus.Pending;
     public ClientProtectionStatus Status { get { lock (_gate) return _status; } }
     public ClientLaunchGuard(LaunchGuardMapping mapping, ProxyTcpBroker broker, int root,
@@ -23,7 +21,6 @@ internal sealed class ClientLaunchGuard : IDisposable
         _mapping = mapping; _broker = broker; _root = root; _alive = alive; _terminate = terminate;
         _status = ClientProtectionStatus.Pending with { ProxyRequired = broker.ProxyEnabled };
         CheckRoute(root); mapping.ControllerReady(true);
-        _lastProbe = Environment.TickCount64;
         _ = Task.Run(RunAsync);
     }
     public void Bind(int pid) { _mapping.Bind(pid); Volatile.Write(ref _pid, pid); }
@@ -81,11 +78,9 @@ internal sealed class ClientLaunchGuard : IDisposable
                 if (pid != 0 && _alive(pid)) blocked = Math.Max(blocked, CheckRoute(pid));
                 if (state.Hardware && Environment.TickCount64 - state.Tick > 5000)
                     throw new LaunchProtectionException("HWID: агент перестал подтверждать подмену.");
-                if (_broker.ProxyEnabled && Environment.TickCount64 - _lastProbe > 10000 && (_probe is null || _probe.IsCompleted))
-                {
-                    _lastProbe = Environment.TickCount64;
-                    _probe = ProbeAsync();
-                }
+                // The driver route and actual CONNECT/pumps are checked continuously.
+                // A separate idle CONNECT can time out or hit provider limits while
+                // existing game tunnels are healthy; it must not revoke their lease.
                 // send() can finish into the local TCP buffer before HTTP CONNECT.
                 // Match each native HWID handshake to its relay generation;
                 // an old world's confirmation cannot authorize a new connection.
@@ -104,16 +99,9 @@ internal sealed class ClientLaunchGuard : IDisposable
         finally
         {
             _stop.Cancel();
-            if (_probe is not null) await _probe;
             _mapping.Dispose();
             _stop.Dispose();
         }
-    }
-    private async Task ProbeAsync()
-    {
-        try { await _broker.VerifyUpstreamAsync(_stop.Token); }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
-        catch (Exception exception) when (!_stop.IsCancellationRequested) { Fail(exception.GetBaseException().Message); }
     }
     private static string NativeError(int code) => code switch
     {

@@ -50,6 +50,7 @@ public partial class MainWindow
                 runtime.Profile.LastProcessId = null;
                 runtime.Profile.LastProcessStartUtc = null;
             }
+            runtime.Protection = _launcher.Protection(runtime.Profile.Id);
             ShowModuleError(runtime, exception);
         }
         finally

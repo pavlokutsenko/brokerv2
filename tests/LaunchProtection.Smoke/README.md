@@ -25,9 +25,13 @@ revocation/controller exit, suspended startup, continuous failure termination,
 and independent world generations even when send() precedes CONNECT 200.
 They do not use production proxy credentials, game login or user configuration.
 OptionalProxyChecks passes invalid unused proxy fields with ProxyEnabled=false,
-checks direct TCP echo without CONNECT, waits beyond the periodic probe interval,
+checks direct TCP echo without CONNECT, waits beyond the former periodic probe interval,
 and confirms a HWID failure still terminates the child. Native gates accept
 only required flags 1 (HWID) and 3 (HWID plus proxy).
+GuardMonitorChecks refuses new CONNECT requests while an existing protected
+world stays open for 11 seconds. No extra connection may be opened and the
+healthy client must survive. A rejected actual game CONNECT still terminates
+the client. Route, native heartbeat and hardware failures remain fatal.
 Driver build/promotion remains manual; see native/LU4Memory/README.md.
 
 The UI fixtures in Launcher.Smoke and CharacterRotation.UiSmoke check both

@@ -1,7 +1,8 @@
 # Launcher и Collector — портативные поставки
 
 Финальные ZIP от 27 сентября собраны из чистых выходов проверенной сборки
-`d013b2d8cda841608edae1fd680d25a5` и содержат текущие проверки HWID/маршрута.
+`4ececef595fc4fb5b7b3f6a0df3625a4` и содержат исправление остановки клиента
+из-за лишнего периодического CONNECT, текущие проверки HWID/маршрута.
 В корне каждого ZIP один EXE и папка `runtime`; DLL, локализации, драйвер,
 README и проверочные скрипты находятся внутри `runtime`.
 В `release/packages` два финальных ZIP и их `.sha256`; ранняя пользовательская
@@ -131,18 +132,20 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\runtime\Verify-Package
 
 ## Готовая сборка 27 сентября 2026
 
-BuildId обоих приложений: `d013b2d8cda841608edae1fd680d25a5`.
-Приложения пересобраны с новым расположением файлов и необязательным прокси.
+BuildId обоих приложений: `4ececef595fc4fb5b7b3f6a0df3625a4`.
+Приложения пересобраны с новым расположением файлов, необязательным прокси
+и исправлением периодических upstream-проверок. Preflight и контроль настоящих
+соединений сохранены; лишний CONNECT не может остановить здоровый туннель.
 Agent/автовход поддерживают HWID-only lease (flags 1) и HWID+proxy (flags 3).
 Драйвер и BrokerWorker не менялись. HWID из шаблона проверяется в обоих режимах.
 
 | Архив в release/packages | Размер | Manifest-файлы |
 | --- | ---: | ---: |
-| PriceCheckLauncher-win-x64-20260927-151939.zip | 75 045 566 байт | 479 |
-| PriceCheckCollector-win-x64-20260927-151945.zip | 102 015 946 байт | 729 |
+| PriceCheckLauncher-win-x64-20260927-162013.zip | 75 047 105 байт | 479 |
+| PriceCheckCollector-win-x64-20260927-162019.zip | 102 017 577 байт | 729 |
 
-SHA256 Launcher: `F3ECF3E4B6701B7AE83C0FD2E550D8FA58C25F0EC4817B3061F5BB56844018F7`.
-SHA256 Collector: `4BE9EB19796B9318E8641E789BB1D59A4E1892D722EC75797BFF02EBC8EE31C0`.
+SHA256 Launcher: `332FFE9659C4F463DD073F1EA4169D2BB9664DAA168B0C61015134398DB9829F`.
+SHA256 Collector: `B68375329E91F818C4FD7055575BA18D15C80DB4E45388AF9E0A638214DFFDAD`.
 
 Текущая защита проверена через Launcher.Smoke, CharacterRotation.UiSmoke,
 ModuleIsolation.Smoke, LaunchProtection.Smoke --wfp и native guard probes.
@@ -166,3 +169,10 @@ PortableHost.Smoke запустил каждый корневой EXE с тес�
 сохранение старых архивов при неверном checksum и удаление только прежних
 ZIP/sha256 после успешной проверки. Проверка упаковки не запускала игры;
 полные входы проверены отдельно. Запуск на втором ПК/чистой Windows не проверялся.
+
+После исправления --wfp и native guard probes прошли повторно, включая отказ
+настоящего CONNECT и сохранение уже открытого мира без idle-проверок.
+Оба новых ZIP прошли DesktopPackages.Smoke/PortableHost.Smoke с проверкой
+SHA256, повреждения DLL, WPF через корневой EXE и сохранности настроек.
+Длительный запуск через настоящий Launcher с пользовательским шаблоном и
+отдельным проверенным аккаунтом: [launcher-soak/RESUME.md](analysis/launcher-soak/RESUME.md).

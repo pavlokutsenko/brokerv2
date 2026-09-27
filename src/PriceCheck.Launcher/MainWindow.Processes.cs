@@ -27,7 +27,13 @@ public partial class MainWindow
             _rotation.Started(runtime.Profile, runtime.Session!, DateTimeOffset.UtcNow);
             Log($"{runtime.Profile.Name}: {runtime.ProcessLabel} · ready");
         }
-        catch (Exception exception) { runtime.LaunchStatus = "Launch failed"; ClearExited(runtime); Error(exception); }
+        catch (Exception exception)
+        {
+            runtime.LaunchStatus = "Launch failed"; ClearExited(runtime);
+            // Show the retained failure before the modal error starts its message loop.
+            runtime.Protection = _launcher.Protection(runtime.Profile.Id);
+            Error(exception);
+        }
         finally
         {
             runtime.Protection = _launcher.Protection(runtime.Profile.Id);

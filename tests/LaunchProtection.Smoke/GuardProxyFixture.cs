@@ -8,6 +8,8 @@ internal sealed class GuardProxyFixture : IDisposable
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _loop;
     public bool Reject { get; set; }
+    private int _requests;
+    public int Requests => Volatile.Read(ref _requests);
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
     public GuardProxyFixture() { _listener.Start(); _loop = AcceptAsync(); }
     private async Task AcceptAsync()
@@ -30,6 +32,7 @@ internal sealed class GuardProxyFixture : IDisposable
             }
             var text = Encoding.ASCII.GetString(header.ToArray());
             if (!text.Contains("Proxy-Authorization: Basic ")) throw new Exception("Missing proxy authentication");
+            Interlocked.Increment(ref _requests);
             var world = text.StartsWith("CONNECT 198.51.100.99:7782 ");
             if (world) await Task.Delay(250, _stop.Token); // send() completes before CONNECT 200.
             var response = Encoding.ASCII.GetBytes(Reject ? "HTTP/1.1 407 rejected\r\n\r\n" : "HTTP/1.1 200 OK\r\n\r\n");

@@ -34,8 +34,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
     {
         if (template.ProxyEnabled) ClientLaunchConfiguration.ValidateProxy(template);
         _guarded = guarded;
-        _probeTemplate = new LaunchTemplate { ProxyEnabled = template.ProxyEnabled, ProxyHost = template.ProxyHost, ProxyPort = template.ProxyPort,
-            ProxyUser = template.ProxyUser, ProxyPassword = template.ProxyPassword };
+        ProxyEnabled = template.ProxyEnabled;
         _host = template.ProxyEnabled ? template.ProxyHost.Trim() : "";
         _port = template.ProxyEnabled ? template.ProxyPort : 0;
         _authorization = template.ProxyEnabled ? Convert.ToBase64String(Encoding.UTF8.GetBytes(

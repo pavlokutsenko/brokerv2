@@ -68,9 +68,9 @@ internal static class GuardMonitorChecks
         foreach (var failure in new[] { "native", "heartbeat", "route", "proxy", "exit" })
         {
             fixture.Reject = false;
-            using var child = Process.Start(StartInfo("--child-wait"))!;
-            using var broker = new ProxyTcpBroker(template, true); broker.Bind(child.Id);
             using var mapping = new LaunchGuardMapping("11223344556677889900AABBCCDDEEFF");
+            using var child = Process.Start(failure == "proxy" ? StartInfo("--child-world", mapping.Name) : StartInfo("--child-wait"))!;
+            using var broker = new ProxyTcpBroker(template, true); broker.Bind(child.Id);
             mapping.Bind(child.Id);
             using var viewMap = MemoryMappedFile.OpenExisting(mapping.Name);
             using var view = viewMap.CreateViewAccessor();
@@ -91,27 +91,39 @@ internal static class GuardMonitorChecks
             if (failure == "native") view.Write(12, 8);
             if (failure == "heartbeat") { heartbeat.Cancel(); await pulse; view.Write(72, Environment.TickCount64 - 6000); }
             if (failure == "route") { using var device = new Lu4Device(); device.SetProxyRedirect(child.Id, broker.ListenerPort, false); }
-            if (failure == "proxy") fixture.Reject = true;
-            await UntilAsync(() => guard.Status.Failed && child.HasExited, failure == "proxy" ? 15000 : 4000);
+            if (failure == "proxy") {
+                fixture.Reject = true;
+                await child.StandardInput.WriteLineAsync("go"); // Reject an actual game CONNECT.
+            }
+            await UntilAsync(() => guard.Status.Failed && child.HasExited);
             heartbeat.Cancel(); await pulse;
             Console.WriteLine("CONTINUOUS_GUARD_OK " + failure + " failure terminated client");
         }
         fixture.Reject = false;
-        await WorldAsync(template);
+        await WorldAsync(template, fixture);
     }
-    private static async Task WorldAsync(LaunchTemplate template)
+    private static async Task WorldAsync(LaunchTemplate template, GuardProxyFixture fixture)
     {
         using var mapping = new LaunchGuardMapping("11223344556677889900AABBCCDDEEFF");
         using var child = Process.Start(StartInfo("--child-world", mapping.Name))!;
         using var broker = new ProxyTcpBroker(template, true); broker.Bind(child.Id); mapping.Bind(child.Id);
         using var viewMap = MemoryMappedFile.OpenExisting(mapping.Name); using var view = viewMap.CreateViewAccessor();
         view.Write(24, 1); view.Write(72, Environment.TickCount64);
+        using var pulseStop = new CancellationTokenSource();
+        var pulse = Task.Run(async () => { try { for (;;) { view.Write(72, Environment.TickCount64); await Task.Delay(100, pulseStop.Token); } } catch (OperationCanceledException) { } });
         using var guard = new ClientLaunchGuard(mapping, broker, child.Id, _ => !child.HasExited, () => child.Kill());
         guard.Bind(child.Id); await guard.RequireAsync(false, CancellationToken.None);
         await child.StandardInput.WriteLineAsync("go");
         if (await child.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(4)) != "WORLD")
             throw new Exception("World tunnel failed: " + await child.StandardError.ReadToEndAsync());
         await guard.RequireAsync(true, CancellationToken.None);
+        var requests = fixture.Requests;
+        fixture.Reject = true;
+        await Task.Delay(11000);
+        await guard.RequireAsync(true, CancellationToken.None);
+        if (fixture.Requests != requests || child.HasExited) throw new Exception("An idle CONNECT revoked a healthy game tunnel");
+        fixture.Reject = false;
+        Console.WriteLine("NO_IDLE_CONNECT_OK existing protected world survives refusal of unrelated new connections");
         await child.StandardInput.WriteLineAsync("close");
         if (await child.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(4)) != "CLOSED") throw new Exception("World close failed");
         await UntilAsync(() => !guard.Status.WorldIdentityApplied);
@@ -123,6 +135,7 @@ internal static class GuardMonitorChecks
         view.Write(88, Environment.TickCount64); view.Write(28, 2);
         await guard.RequireAsync(true, CancellationToken.None);
         child.Kill(); await child.WaitForExitAsync();
+        pulseStop.Cancel(); await pulse;
         Console.WriteLine("WORLD_GENERATION_OK application before CONNECT accepted; prior world cannot authorize reconnect");
     }
     internal static ProcessStartInfo StartInfo(params string[] args)
