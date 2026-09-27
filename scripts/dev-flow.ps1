@@ -89,6 +89,7 @@ function Start-DevCollector {
     if (-not (Test-DevTaskCurrent)) {
         Install-DevTask
     }
+    & (Join-Path $script:RepoRoot 'scripts\publish-durable.ps1') -Destination $script:ReleaseDirectory -Restore
     Start-ScheduledTask -TaskName $script:DevTaskName
     Write-Host 'Collector: starting and checking driver bootstrap...'
 

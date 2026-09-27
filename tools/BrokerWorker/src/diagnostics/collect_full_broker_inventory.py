@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import csv
 import io
+import os
 import json
 import struct
 import sys
@@ -21,6 +22,14 @@ from broker_query import send_market  # noqa: E402
 from lu4_memory_client import Lu4MemoryClient  # noqa: E402
 from lu4_target_controller import select_target  # noqa: E402
 from process_event_broker_capture import load_state, read_capture, read_history  # noqa: E402
+from worker_progress import publish
+from broker_response_policy import validated_responses
+
+
+def check_stop():
+    path=os.environ.get('PRICECHECK_STOP_FILE')
+    if path and Path(path).exists():
+        raise InterruptedError('Broker pass stopped; partial results are not authoritative')
 
 
 def quiet_search(item_id: int, store_type: int) -> None:
@@ -46,22 +55,12 @@ def wait_for_sequence(
     deadline = time.monotonic() + timeout
     current = 0
     while time.monotonic() < deadline:
+        check_stop()
         current = int(read_capture(client, state)["sequence"])
         if current >= target:
             return current
         time.sleep(0.001)
     raise TimeoutError(f"broker sequence stopped at {current}, expected {target}")
-
-
-def loaded_trader_names() -> dict[int, str]:
-    path = ROOT / "diagnostics" / "latest_actor_snapshot.json"
-    if not path.exists():
-        return {}
-    snapshot = json.loads(path.read_text(encoding="utf-8"))
-    return {
-        int(item["object_id"]): str(item.get("name", ""))
-        for item in snapshot.get("traders", [])
-    }
 
 
 def main() -> int:
@@ -81,27 +80,65 @@ def main() -> int:
         raise RuntimeError("broker capture history is smaller than the batch")
     markets: dict[int, list[int]] = {}
     market_timings: dict[int, float] = {}
+    warnings = []
+    # Bind names immediately around this pass. A trader may close/reopen while
+    # its item queries are running, invalidating its old runtime ObjectID.
+    from bind_broker_actors import capture
+    before_bindings=capture(int(state['pid']))
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.with_suffix('.actors-before.json').write_text(json.dumps(before_bindings,ensure_ascii=False),encoding='utf-8')
     started = time.monotonic()
+    started_at=datetime.now(timezone.utc).isoformat()
     for store_type in store_types:
+        check_stop()
+        publish(f'Requesting item catalogue: shop type {store_type}')
         phase = time.monotonic()
-        with contextlib.redirect_stdout(io.StringIO()):
-            response = send_market(store_type, args.timeout)
-        markets[store_type] = [int(value) for value in response["rows"]]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                response = send_market(store_type, args.timeout)
+        except TimeoutError as error:
+            # Only the response wait is recoverable. A native command timeout
+            # has a different message and must retain its fatal recovery path.
+            if not str(error).startswith('no broker response after sequence '):
+                raise
+            warnings.append(f'catalogue type={store_type}: {error}')
+            markets[store_type] = []
+            continue
+        if response['function_name'] != 'BrokerMarketItemsList':
+            warnings.append(f'catalogue type={store_type}: unexpected response')
+            markets[store_type] = []
+            continue
+        if int(response['copied_count']) != int(response['count']):
+            warnings.append(f"catalogue type={store_type}: items={response['copied_count']}/{response['count']}")
+        markets[store_type] = list(dict.fromkeys(int(value) for value in response["rows"]))
         market_timings[store_type] = round(time.monotonic() - phase, 3)
 
     records: list[dict[str, object]] = []
     batch_metrics: list[dict[str, object]] = []
+    total_requests = sum(len(values) for values in markets.values())
+    completed_requests = 0
+    during_bindings=[]
+    observed_ids=set()
+    next_binding=time.monotonic()+5
     with Lu4MemoryClient() as client:
         for store_type in store_types:
+            response_timeout = False
             item_ids = markets[store_type]
             for offset in range(0, len(item_ids), args.batch_size):
+                check_stop()
                 batch = item_ids[offset : offset + args.batch_size]
                 before = int(read_capture(client, state)["sequence"])
                 batch_started = time.monotonic()
                 for item_id in batch:
                     quiet_search(item_id, store_type)
                 target = before + len(batch)
-                reached = wait_for_sequence(client, state, target, args.timeout)
+                response_timeout = False
+                try:
+                    reached = wait_for_sequence(client, state, target, args.timeout)
+                except TimeoutError as error:
+                    warnings.append(str(error))
+                    reached = int(read_capture(client, state)['sequence'])
+                    response_timeout = True
                 history = read_history(client, state, len(batch))
                 fresh = sorted(
                     (
@@ -113,21 +150,13 @@ def main() -> int:
                     key=lambda record: int(record["sequence"]),
                 )
                 expected = {(int(item_id), store_type) for item_id in batch}
-                actual = {(int(row["arg0"]), int(row["arg1"])) for row in fresh}
-                if len(fresh) != len(batch) or actual != expected:
-                    raise RuntimeError(
-                        f"incomplete batch type={store_type} offset={offset}: "
-                        f"records={len(fresh)}/{len(batch)}, missing={sorted(expected-actual)[:8]}"
-                    )
-                for response in fresh:
-                    if int(response["copied_count"]) != int(response["count"]):
-                        raise RuntimeError(
-                            f"truncated broker response item={response['arg0']} "
-                            f"{response['copied_count']}/{response['count']}"
-                        )
+                valid, batch_warnings = validated_responses(fresh, expected)
+                warnings.extend(f'type={store_type} offset={offset}: {warning}' for warning in batch_warnings)
+                for response in valid:
                     query_item_id = int(response["arg0"])
                     query_store_type = int(response["arg1"])
                     for row in response["rows"]:
+                        observed_ids.add(int(row['object_id']))
                         records.append(
                             {
                                 "store_type": query_store_type,
@@ -142,15 +171,29 @@ def main() -> int:
                     "store_type": store_type,
                     "offset": offset,
                     "requests": len(batch),
-                    "responses": len(fresh),
+                    "responses": len(valid),
                     "elapsed_seconds": round(elapsed, 3),
                     "requests_per_second": round(len(batch) / elapsed, 3),
                 }
                 batch_metrics.append(metric)
+                completed_requests += len(batch)
+                if time.monotonic()>=next_binding:
+                    check_stop()
+                    during_bindings.append(capture(int(state['pid']),observed_ids))
+                    next_binding=time.monotonic()+5
+                publish(f'Broker: {completed_requests}/{total_requests} items checked · {len(records)} listing rows',
+                    completed=completed_requests, total=total_requests, listingRows=len(records))
                 if args.progress:
                     print(json.dumps(metric), flush=True)
+                if response_timeout:
+                    # Do not issue further queries into a stalled response
+                    # stream. Already validated data is finalized below.
+                    break
+            if response_timeout:
+                break
 
-    names = loaded_trader_names()
+    args.output.with_suffix('.actors-during.json').write_text(json.dumps(during_bindings,ensure_ascii=False),encoding='utf-8')
+    names = {int(t['object_id']):t['name'] for t in before_bindings['bindings']}
     for row in records:
         row["trader_name"] = names.get(int(row["trader_object_id"]), "")
 
@@ -184,6 +227,9 @@ def main() -> int:
     elapsed = time.monotonic() - started
     output = {
         "schema": 1,
+        "complete": not warnings,
+        "warnings": warnings,
+        "started_at": started_at,
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "store_types": store_types,
         "batch_size": args.batch_size,
@@ -191,6 +237,7 @@ def main() -> int:
         "market_timings_seconds": market_timings,
         "summary": {
             "market_item_requests": sum(len(values) for values in markets.values()),
+            "market_item_responses": sum(batch['responses'] for batch in batch_metrics),
             "unique_market_items": len(unique_market_items),
             "items_with_rows": len(unique_items),
             "unique_traders": len(unique_traders),

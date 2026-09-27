@@ -9,7 +9,7 @@ public partial class MainWindow
 {
     private async void Launch_Click(object sender, RoutedEventArgs e) => await LaunchProfileAsync(SelectedRuntime);
 
-    private async Task LaunchProfileAsync(ProfileRuntime? runtime)
+    private async Task LaunchProfileAsync(ProfileRuntime? runtime, bool resumeCharacter = false)
     {
         if (runtime is null || runtime.IsBusy || _closing) return;
         if (runtime.Session is { } current && ClientProcessIdentity.IsCurrent(current))
@@ -21,13 +21,25 @@ public partial class MainWindow
         var template = LaunchTemplates.FirstOrDefault(value => value.Id == runtime.Profile.LaunchTemplateId && value.Id != Guid.Empty);
         try
         {
+            if (Runtimes.Count(other => other.Session is { } active && ClientProcessIdentity.IsCurrent(active)) >= 4)
+                throw new InvalidOperationException("Одновременно поддерживаются от 1 до 4 игровых клиентов.");
+            if (Runtimes.Any(other => other != runtime && other.Session is not null &&
+                ClientProcessIdentity.IsCurrent(other.Session) &&
+                other.Profile.Name.Equals(runtime.Profile.Name, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("На этом рынке уже работает другой профиль.");
+            PriceCheck.Launching.CharacterRotationSchedule.Validate(runtime.Profile);
+            if (runtime.Profile.CharacterRotationEnabled && !resumeCharacter)
+                runtime.Profile.CharacterSlot = 0;
             if (runtime.ReaderAttached) await _collection.DetachAsync(runtime);
             runtime.Session = await _launcher.LaunchAsync(runtime.Profile, template,
-                status => runtime.LaunchStatus = status, CancellationToken.None);
+                status => runtime.LaunchStatus = status, CancellationToken.None,
+                CaptureReaderBeforeLogin(runtime));
+            _characterRotation.Started(runtime.Profile,runtime.Session,DateTimeOffset.UtcNow);
+            OnPropertyChanged(nameof(CharacterOptions));
             runtime.Profile.LastProcessId = runtime.Session.ProcessId;
             runtime.Profile.LastProcessStartUtc = runtime.Session.StartedAtUtc;
             await SaveProfilesAsync();
-            Log($"{runtime.Profile.Name}: PID {runtime.ProcessId} · launcher ready; reader disconnected");
+            Log($"{runtime.Profile.Name}: PID {runtime.ProcessId} · launcher ready; reader {(runtime.ReaderAttached?"connected":"disconnected")}");
         }
         catch (Exception exception)
         {
@@ -59,6 +71,8 @@ public partial class MainWindow
 
     private async Task<bool> StopProfileAsync(ProfileRuntime runtime)
     {
+        _clientRecovery.Forget(runtime.Profile.Id);
+        _characterRotation.Forget(runtime.Profile.Id);
         runtime.IsBusy = true;
         try
         {
@@ -85,7 +99,9 @@ public partial class MainWindow
 
     private void ShowModuleError(ProfileRuntime runtime, Exception exception)
     {
-        Log($"{runtime.Profile.Name}: {exception.GetBaseException().Message}");
+        _journal.Append(new(DateTimeOffset.UtcNow, "ERROR", runtime.Profile.Name, runtime.Profile.Name, "",
+            PriceCheck.Collector.Services.CollectorJournal.Redact(exception.ToString())));
+        Log($"ERROR {runtime.Profile.Name}: {exception.GetBaseException().Message}");
         MessageBox.Show(this, exception.GetBaseException().Message, "PriceCheck Collector", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
@@ -103,16 +119,25 @@ public partial class MainWindow
         _refreshTimer.Stop();
         try
         {
+            var refreshDeadline=DateTimeOffset.UtcNow.AddMinutes(2);
+            while(_refreshing)
+            {
+                if(DateTimeOffset.UtcNow>=refreshDeadline) throw new TimeoutException("Module refresh has not finished before closing.");
+                await Task.Delay(50);
+            }
             foreach (var runtime in Runtimes) await _collection.DetachAsync(runtime);
             _launcher.StopOwnedClients();
             await SaveProfilesAsync();
+            await _journal.FlushAsync();
             _closeReady = true;
-            Close();
+            // Cleanup may complete synchronously for an idle window. Close
+            // only after WPF has unwound this canceled Closing notification.
+            _ = Dispatcher.BeginInvoke(new Action(Close));
         }
         catch (Exception exception)
         {
-            Log($"Close postponed: {exception.GetBaseException().Message}");
-            MessageBox.Show(this, "Reader cleanup is not finished. Clients remain open. Try closing again after the current operation completes.", "PriceCheck Collector");
+            Log($"Close postponed: {exception}");
+            MessageBox.Show(this, $"Reader cleanup is not finished: {exception.GetBaseException().Message}\nClients remain open. Try closing again after the current operation completes.", "PriceCheck Collector");
             _closing = false;
             _refreshTimer.Start();
         }

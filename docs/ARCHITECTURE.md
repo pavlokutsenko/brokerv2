@@ -9,12 +9,18 @@ state or binaries from a separate research directory.
 ## Modules
 
 The implemented managed boundary now consists of two independent functional
-projects, `PriceCheck.Launching` and `PriceCheck.Collection`, composed by the
-existing WPF `PriceCheck.Collector` host. They share pure records in
+projects, `PriceCheck.Launching` and `PriceCheck.Collection`. The WPF
+`PriceCheck.Launcher` host composes launching only; `PriceCheck.Collector`
+composes both modules. `PriceCheck.Launching.UI` owns the common launch/template
+views and desktop styles, referencing launching only. They share pure records in
 `PriceCheck.Contracts` and Windows transport in `PriceCheck.Windows`, with no
 reference between launch and collection. Launch owns game/proxy lifetime;
 collection owns attach/detach, radar, broker and price workers. Closing a reader
-does not close the game. Shared profile persistence remains in the host.
+does not close the game. Profile persistence is implemented in launching;
+each host owns its settings directory and is its sole writer. Legacy public
+namespaces and the pure `CollectorProfile` JSON contract remain compatible.
+The launcher does not reference collection or the collector host.
+See [desktop packages](DESKTOP_PACKAGES.md) for the two portable entry points.
 See [module separation](analysis/module-separation/README.md) for API/lifecycle,
 validation, migration and live-test limits. The following diagram describes
 responsibilities; it is not a list of additional projects.
@@ -119,6 +125,13 @@ change, the application copies the portable `profiles.json` beside
 `PriceCheck.Collector.exe`, or the older
 `%LOCALAPPDATA%\PriceCheck\CollectorNext\profiles.json` when available.
 Proxy passwords are encrypted for the current Windows user with DPAPI.
+Launcher uses the same serializer and encryption under
+`%LOCALAPPDATA%\PriceCheckLauncher`, with no automatic import or modification of
+the collector store. A named per-product desktop lease prevents concurrent UI
+writers, including copies launched from different extracted directories. The
+collector upload worker does not claim that UI lease. Copy both configuration
+files deliberately to migrate; durable profile/template IDs and world seeds
+are preserved, and machine-bound passwords must be entered on the destination.
 
 Central-zone coordinates belong to a profile and city. Switching between
 `Giran` and `Gludio` selects that city's saved center automatically; marking or

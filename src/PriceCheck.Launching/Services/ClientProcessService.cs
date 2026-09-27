@@ -141,6 +141,8 @@ public sealed class ClientProcessService : IClientProcessService
                     profile.LastProcessId = candidate;
                     return candidate;
                 }
+                if(root.HasExited && root.ExitCode!=0)
+                    throw new ClientStartupException($"The launcher exited with code {root.ExitCode} before creating lu4.bin.");
                 await Task.Delay(500, cancellationToken);
             }
             if (ClientLaunchConfiguration.IsEnabled(template)) Terminate(root.Id);

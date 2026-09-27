@@ -1,5 +1,14 @@
 # Локальная разработка Collector
 
+С 27 сентября `build.ps1` собирает **Launcher и Collector**, публикует их в
+`release\PriceCheckLauncher` и `release\PriceCheckCollector`, затем автоматически
+создаёт два портативных ZIP с EXE в корне и SHA-256 в `release\packages`.
+Для проверки без запуска игр используйте `.\build.ps1`; `-SkipPackages`
+пропускает только архивацию. `dev.ps1` по-прежнему управляет запуском Collector.
+Устройство поставок и параметры: [DESKTOP_PACKAGES.md](DESKTOP_PACKAGES.md).
+Smoke Launcher: `dotnet run --project tests/Launcher.Smoke -c Release -- workspace\launcher-ui`.
+Ниже сохранены также исторические заметки о прежнем разделении модулей.
+
 Все команды выполняются из `C:\broker`. Обычный цикл после изменения кода:
 
 Наблюдение текущей пары остановлено пользователем 24 сентября в 15:13 по Киеву;

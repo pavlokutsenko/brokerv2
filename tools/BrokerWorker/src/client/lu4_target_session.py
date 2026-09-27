@@ -25,6 +25,8 @@ INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 sys.path.insert(0, str(PROJECT_ROOT / "client"))
 from lu4_memory_client import Lu4MemoryClient  # noqa: E402
 from lu4_target_controller import read_exact  # noqa: E402
+from session_cache import reuse  # noqa: E402
+from worker_progress import publish, check_stop
 
 
 class PROCESSENTRY32W(ctypes.Structure):
@@ -133,6 +135,7 @@ def scan(pid: int) -> dict[str, object]:
 
 
 def prepare(pid: int) -> dict[str, object]:
+    check_stop()
     stale_removed = remove_stale_state(pid)
     state = load_state()
     installed_now = False
@@ -144,14 +147,19 @@ def prepare(pid: int) -> dict[str, object]:
     status = json.loads(run_python(CONTROLLER, "status"))
     if not status["direct_patch_matches"] or not status["post_patch_matches"]:
         raise RuntimeError("installed hook bytes do not match the saved state")
+    publish('Reading current character and actor bindings')
     snapshot = scan(pid)
-    session = run_python(
+    check_stop()
+    publish('Resolving client connection; first setup may take a few minutes')
+    session = "live cache" if reuse(pid, SESSION_PATH, 'session') else run_python(
         PROJECT_ROOT / "diagnostics" / "resolve_lu4_session.py",
         pid,
         "--json",
         SESSION_PATH,
     )
-    active64 = run_python(
+    check_stop()
+    publish('Validating this process encryption state')
+    active64 = "live cache" if reuse(pid, ACTIVE64_STATE_PATH, 'active64') else run_python(
         PROJECT_ROOT / "diagnostics" / "resolve_active64_state.py",
         pid,
         "--json",

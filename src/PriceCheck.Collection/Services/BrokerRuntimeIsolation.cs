@@ -4,16 +4,19 @@ public static class BrokerRuntimeIsolation
 {
     private static readonly object Sync = new();
 
-    public static string WorkerFor(int pid)
+    public static string WorkerFor(PriceCheck.Contracts.ClientSession session)
     {
+        var pid=session.ProcessId;
         var source = Path.Combine(AppContext.BaseDirectory, "BrokerRuntime");
         var sourceWorker = Path.Combine(source, "BrokerWorker.exe");
         if (!File.Exists(sourceWorker))
             throw new FileNotFoundException("BrokerWorker is missing from the collector package.", sourceWorker);
 
-        var target = Path.Combine(AppContext.BaseDirectory, "runtime-sessions", pid.ToString(), "BrokerRuntime");
-        var targetWorker = Path.Combine(target, "BrokerWorker.exe");
         var sourceStamp = Stamp(sourceWorker);
+        // Versioned directories retain old cleanup journals. Never delete a
+        // runtime that a live worker may still own during a package update.
+        var target = Path.Combine(CycleQueue.Root, "runtime-sessions", $"{pid}-{session.StartedAtUtc.UtcTicks}", sourceStamp, "BrokerRuntime");
+        var targetWorker = Path.Combine(target, "BrokerWorker.exe");
         var marker = Path.Combine(target, ".source-stamp");
 
         lock (Sync)
@@ -21,7 +24,6 @@ public static class BrokerRuntimeIsolation
             var currentStamp = File.Exists(marker) ? File.ReadAllText(marker) : "";
             if (!File.Exists(targetWorker) || !string.Equals(currentStamp, sourceStamp, StringComparison.Ordinal))
             {
-                if (Directory.Exists(target)) Directory.Delete(target, true);
                 CopyCleanRuntime(source, target);
                 File.WriteAllText(marker, sourceStamp);
             }
@@ -31,7 +33,7 @@ public static class BrokerRuntimeIsolation
     }
 
     private static string Stamp(string worker) =>
-        $"{new FileInfo(worker).Length}:{File.GetLastWriteTimeUtc(worker).Ticks}";
+        $"{new FileInfo(worker).Length}-{File.GetLastWriteTimeUtc(worker).Ticks}";
 
     private static void CopyCleanRuntime(string source, string target)
     {

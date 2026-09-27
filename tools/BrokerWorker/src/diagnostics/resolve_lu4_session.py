@@ -16,6 +16,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "client"))
 
 from lu4_memory_client import Lu4MemoryClient  # noqa: E402
 from resolve_lu4_direct_hook import executable_sections, read_exact  # noqa: E402
+from worker_progress import check_stop
 
 
 ENCRYPT_FUNCTION_SIGNATURE = bytes.fromhex(
@@ -117,6 +118,7 @@ def scan_range(
     carry = b""
     offset = 0
     while offset < size:
+        check_stop()
         requested = min(MAX_CHUNK, size - offset)
         try:
             chunk = read_exact(client, pid, address + offset, requested)
@@ -146,6 +148,7 @@ def virtual_regions(pid: int) -> list[tuple[int, int, int, int]]:
         address = 0
         mbi = MEMORY_BASIC_INFORMATION()
         while address < MAX_USER_ADDRESS:
+            check_stop()
             returned = kernel32.VirtualQueryEx(
                 handle, ctypes.c_void_p(address), ctypes.byref(mbi), ctypes.sizeof(mbi)
             )

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/PriceCheck.Collection/PriceCheck.Collection.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../src/PriceCheck.Launching/PriceCheck.Launching.csproj" /></ItemGroup>
+  <ItemGroup><Content Include="../../src/PriceCheck.Collector/BrokerRuntime/**/*" Link="BrokerRuntime/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup>
+    <Content Include="../../native/ClientLaunch/build/x64/PriceCheck.ClientAgent.dll" Link="ClientLaunchRuntime/PriceCheck.ClientAgent.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../native/ClientLaunch/build/x64/PriceCheck.ClientLogin.dll" Link="ClientLaunchRuntime/PriceCheck.ClientLogin.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

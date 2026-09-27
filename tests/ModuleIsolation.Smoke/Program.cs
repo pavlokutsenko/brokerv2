@@ -18,7 +18,7 @@ var radar = new FakeRadar();
 var reader = new CollectionModule(radar, session => processes.Identity(session.ProcessId) == session);
 var profiles = Enumerable.Range(0, 2).Select(index => new CollectorProfile
 {
-    Name = $"Synthetic {index}", AutoLoginEnabled = true, LoginName = "test-user", LoginPassword = "synthetic-password"
+    Name = "Gamma", AutoLoginEnabled = true, LoginName = "test-user", LoginPassword = "synthetic-password"
 }).ToArray();
 var runtimes = new List<ProfileRuntime>();
 foreach (var profile in profiles)
@@ -80,13 +80,17 @@ await controlledReader.DetachAsync(second);
 var pendingWorker = new PendingWorker();
 var busyRadar = new FakeRadar { CurrentSnapshot = new RadarSnapshot { IsInsideCenterZone = true, CenterZoneConfigured = true } };
 var uploadStarts = 0;
-var busyReader = new CollectionModule(busyRadar, _ => true, pendingWorker, () => uploadStarts++);
-var busyRuntime = new ProfileRuntime { Profile = new CollectorProfile { CenterZonesByCity = new() { ["Giran"] = new() { X = 0, Y = 0 } } }, Session = fresh };
+var busyReader = new CollectionModule(busyRadar, _ => true, pendingWorker, () => uploadStarts++,
+    new PriceCheck.Collector.Services.ServerUploadOutbox(()=>uploadStarts++,Path.Combine(Path.GetTempPath(),"PriceCheck-cycle-tests",Guid.NewGuid().ToString("N"))),new FakeMarketTasks());
+var busyRuntime = new ProfileRuntime { Profile = new CollectorProfile { Name="Synthetic-Busy-"+Guid.NewGuid().ToString("N"),ServerUrl="http://127.0.0.1:1",CenterZonesByCity = new() { ["Giran"] = new() { X = 0, Y = 0 } } }, Session = fresh };
+using var busyFixture=new LocalTestFixture();busyFixture.Install(busyReader,busyRuntime.Profile);
 await busyReader.AttachAsync(busyRuntime, CancellationToken.None);
 Check(uploadStarts == 0, "Connecting read-only must not start price/upload workers.");
 await busyReader.SetCollectionAsync(busyRuntime, true);
 await busyReader.RefreshAsync(busyRuntime);
-Check(pendingWorker.Runs == 1 && uploadStarts == 1, "Collection starts its own worker.");
+await busyReader.RefreshAsync(busyRuntime);
+for(var i=0;i<100 && pendingWorker.Runs==0;i++) await Task.Delay(10);
+Check(pendingWorker.Runs == 1 && uploadStarts >= 1, "Collection starts its worker and durable status uploads.");
 var disconnecting = busyReader.DetachAsync(busyRuntime);
 Check(!disconnecting.IsCompleted && !busyRuntime.IsCollectionEnabled && busyRuntime.ReaderAttached, "Disconnect waits for in-flight work with collection disabled.");
 await Reject(() => busyReader.SetCollectionAsync(busyRuntime, true));
@@ -95,8 +99,19 @@ await disconnecting;
 Check(!busyRuntime.ReaderAttached && busyRadar.Active.Count == 0, "Reader cleanup follows worker completion.");
 Check(processes.Terminations == 2, "Draining collection must never terminate a game.");
 
-var launchRefs = typeof(LaunchModule).Assembly.GetReferencedAssemblies().Select(value => value.Name).ToArray();
-var readerRefs = typeof(CollectionModule).Assembly.GetReferencedAssemblies().Select(value => value.Name).ToArray();
-Check(!launchRefs.Contains("PriceCheck.Collection") && !readerRefs.Contains("PriceCheck.Launching"), "Modules must not reference each other.");
-Check(!launchRefs.Contains("PriceCheck.Collector") && !readerRefs.Contains("PriceCheck.Collector"), "Modules must not reference the UI.");
-Console.WriteLine("MODULE_ISOLATION_OK launch_only solo_detach paired_detach reader_failure duplicate_pid pid_reuse launch_failure attach_race drain_worker assembly_boundaries");
+// Active architecture tests use private synthetic markets, offline transport and
+// a temp SQLite store. Historical lease/cohort fixtures remain in separate files.
+await LocalCoordinatorTests.Run();
+await LocalBrokerWarningTests.Run();
+await LocalNativeFailureTests.Run();
+await LocalCenterArrivalTests.Run();
+await LocalApproachErrorTests.Run();
+RadarFrameSharingTests.Run();
+await CharacterRotationTests.Run();
+await ClientRecoveryTests.Run();
+await BrokerIdentityTests.Run();
+var launchRefs=typeof(LaunchModule).Assembly.GetReferencedAssemblies().Select(v=>v.Name).ToArray();
+var readerRefs=typeof(CollectionModule).Assembly.GetReferencedAssemblies().Select(v=>v.Name).ToArray();
+Check(!launchRefs.Contains("PriceCheck.Collection")&&!readerRefs.Contains("PriceCheck.Launching"),"Module ownership references stay independent.");
+Check(!launchRefs.Contains("PriceCheck.Collector")&&!readerRefs.Contains("PriceCheck.Collector"),"Modules do not reference the UI.");
+Console.WriteLine("MODULE_ISOLATION_OK launch_only solo_detach paired_detach reader_failure duplicate_pid pid_reuse attach_race drain_worker local_four_markets warning_continuation new_client_fresh_history no_server_claims assembly_boundaries");

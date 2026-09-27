@@ -13,6 +13,7 @@ sys.path.insert(0, str(CLIENT_DIR))
 
 from lu4_memory_client import Lu4MemoryClient  # noqa: E402
 from scan_lu4_actors import Memory, pe_info, pointer  # noqa: E402
+from worker_progress import check_stop
 
 
 MAX_TRANSFER = 1024 * 1024
@@ -97,7 +98,6 @@ def validate_gobjects(mem: Memory, slot: int, header: bytes, offset: int):
         chunk_count > 64
         or count > chunk_count * 0x10000
         or max_elements != max_chunks * 0x10000
-        or chunk_count != (count // 0x10000) + 1
     ):
         return None
     try:
@@ -108,10 +108,17 @@ def validate_gobjects(mem: Memory, slot: int, header: bytes, offset: int):
     if not all(pointer(value) for value in chunks_list):
         return None
     first_object = mem.u64(chunks_list[0])
-    last_object = mem.u64(chunks_list[-1])
-    if not pointer(first_object) or not pointer(last_object):
+    # GC may leave any dynamic slot empty, including the first slot in the
+    # final allocated chunk. It does not make the object array invalid.
+    if not pointer(first_object):
         return None
     first_index = mem.i32(first_object + 0x0C, -1)
+    if first_index != 0:
+        return None
+    for index in (1, 2):
+        obj = mem.u64(chunks_list[0] + index * 0x18)
+        if not pointer(obj) or mem.i32(obj + 0x0C, -1) != index:
+            return None
     return {
         "address": slot,
         "chunks": chunks,
@@ -125,12 +132,34 @@ def validate_gobjects(mem: Memory, slot: int, header: bytes, offset: int):
     }
 
 
+def current_profile(mem, base, pe):
+    """Validated module-relative globals for the supported build; no heap scan."""
+    if (pe['timestamp'], pe['image_size']) != (0x956E0D97, 0xDCEB000):
+        raise RuntimeError('Unsupported client build; globals discovery requires an explicit --scan diagnostic')
+    slot = base + 0x80768E0
+    objects = validate_gobjects(mem, slot, mem.read(slot, 0x30), 0)
+    slot = base + 0x7FBFB80
+    names = validate_fname_pool(mem, slot, mem.read(slot, 0x30), 0)
+    if not objects or not names:
+        raise RuntimeError('Known Unreal globals failed live structural validation')
+    from inspect_shop_ufunctions import read_object, decode_name
+    for index, expected in ((0, '/Script/CoreUObject'), (1, 'Object'), (2, 'Interface'), (218705, 'CharacterPlayer_C')):
+        obj = read_object(mem, objects['address'], index)
+        if not pointer(obj) or mem.i32(obj + 0x0C, -1) != index or decode_name(mem, names['address'], mem.i32(obj + 0x18, -1)) != expected:
+            raise RuntimeError(f'Unreal object guard failed at index {index}')
+    for row in (objects, names):
+        row['rva'] = row['address'] - base
+        row['section'] = '.data'
+    return [objects], [names]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Read-only discovery of current LU4 GObjects and FNamePool"
     )
     parser.add_argument("pid", type=int)
     parser.add_argument("--json", type=Path)
+    parser.add_argument("--scan", action="store_true", help="Explicit read-only lab discovery; not the normal collector path")
     args = parser.parse_args()
 
     started = time.perf_counter()
@@ -138,20 +167,23 @@ def main() -> int:
         base = client.process_base(args.pid)
         mem = Memory(client, args.pid)
         pe = pe_info(mem, base)
+        objects: list[dict] = []
+        names: list[dict] = []
+        if not args.scan:
+            objects, names = current_profile(mem, base, pe)
         ranges = [
             section
             for section in pe["sections"]
             if section["characteristics"] & 0x40000000
             and section["characteristics"] & 0x80000000
-        ]
-        objects: list[dict] = []
-        names: list[dict] = []
+        ] if args.scan else []
         checked = 0
         for section in ranges:
             section_start = base + int(section["rva"])
             remaining = int(section["size"])
             position = 0
             while position < remaining:
+                check_stop()
                 size = min(MAX_TRANSFER, remaining - position)
                 data = mem.read(section_start + position, size)
                 for offset in range(0, max(0, len(data) - 0x30), 8):

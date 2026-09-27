@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using PriceCheck.Windows.Storage;
 
 namespace PriceCheck.Collector.Services;
 
@@ -24,7 +25,7 @@ public static class ServerUploadWorker
         try
         {
             RecoverInterruptedFiles(directory);
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(2) };
             var idleSince = DateTimeOffset.UtcNow;
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -150,10 +151,10 @@ public static class ServerUploadWorker
     private static void Release(string path, ServerUploadEnvelope envelope)
     {
         var ready = Path.Combine(Path.GetDirectoryName(path)!, $"{Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(path))}.ready");
-        var temporary = $"{ready}.{Environment.ProcessId}.tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(envelope, Json));
-        File.Move(path, ready);
-        File.Move(temporary, ready, true);
+        // Keep the claimed payload until the retry copy is durable. If both
+        // survive a crash, their stable batch/snapshot ID makes replay harmless.
+        DurableJsonFile.Write(ready, envelope, Json, keepBackup: false);
+        File.Delete(path);
     }
 
     private static void MoveTo(string path, string folderName, string error)
@@ -174,6 +175,24 @@ public static class ServerUploadWorker
             if (marker < 0) continue;
             var ready = Path.Combine(directory, $"{fileName[..marker]}.ready");
             try { File.Move(path, ready); } catch (IOException) { }
+        }
+        foreach (var path in Directory.EnumerateFiles(directory, "*.ready.tmp"))
+        {
+            var ready = path[..^4];
+            if (File.Exists(ready)) continue;
+            try
+            {
+                using (var stream = File.OpenRead(path))
+                {
+                    var saved = JsonSerializer.Deserialize<ServerUploadEnvelope>(stream, Json);
+                    if (saved is null || saved.Id == Guid.Empty || saved.Body.ValueKind != JsonValueKind.Object ||
+                        !Uri.TryCreate(saved.Url, UriKind.Absolute, out var url) || url.Scheme is not ("http" or "https"))
+                        throw new InvalidDataException("Interrupted upload has no valid payload.");
+                }
+                File.Move(path, ready);
+            }
+            catch (Exception e) when (e is JsonException or InvalidDataException) { MoveTo(path,"rejected",e.Message); }
+            catch (IOException) { } // A producer may still own its temporary file.
         }
     }
 

@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <cstdint>
 #include <cwchar>
+#include "character_roster.h"
 
 namespace {
 constexpr std::uint32_t magic = 0x50434C47;
@@ -77,6 +78,14 @@ LONG call_login(Shared* shared) {
     HMODULE self = nullptr;
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
             reinterpret_cast<LPCWSTR>(&call_login), &self)) return -8;
+    auto hud_roster=object_at(chunks,19208);
+    auto mode_roster=object_at(chunks,19214);
+    if(!hud_roster || !mode_roster ||
+        *reinterpret_cast<std::int32_t*>(reinterpret_cast<std::uintptr_t>(hud_roster)+0x0C)!=19208 ||
+        *reinterpret_cast<std::int32_t*>(reinterpret_cast<std::uintptr_t>(mode_roster)+0x0C)!=19214 ||
+        *reinterpret_cast<std::uint16_t*>(reinterpret_cast<std::uintptr_t>(hud_roster)+0xB6)!=16 ||
+        *reinterpret_cast<std::uint16_t*>(reinterpret_cast<std::uintptr_t>(mode_roster)+0xB6)!=16) return -27;
+    if(!StartCharacterRoster(reinterpret_cast<void*>(callback),hud_roster,mode_roster)) return -28;
     callback(cdo, function, &params);
     return 2;
 }
@@ -117,6 +126,10 @@ LONG select_server(Shared* shared) {
 LONG select_character(Shared* shared) {
     int slot = shared->character_slot;
     if (slot < 0 || slot > 10) return -20;
+    const int count=CharacterRosterCount();
+    if(count==-1 || count==0) return -24; // Wait for the real character-list notification.
+    if(count==-2) return -26;
+    if(count>0 && slot>=count) slot=0;
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(L"lu4.bin"));
     if (!base) return -21;
     auto chunks = *reinterpret_cast<std::uintptr_t*>(base + gobjects_rva);
@@ -142,6 +155,8 @@ LONG select_character(Shared* shared) {
         auto address = reinterpret_cast<std::uintptr_t>(callback);
         if (address < base + 0x1000 || address >= base + expected_image_size) return -23;
         callback(instance, function, &slot);
+        CharacterRosterSelected(slot);
+        StopCharacterRoster();
         return 4;
     }
     return -24;
@@ -192,6 +207,7 @@ extern "C" __declspec(dllexport) LRESULT CALLBACK PriceCheckHookProc(int code, W
                     } else InterlockedExchange(&stage, 4);
                 }
                 InterlockedExchange(&shared->status, result);
+                if(result<0) StopCharacterRoster();
                 UnmapViewOfFile(shared);
             } else InterlockedExchange(&stage, current);
             CloseHandle(mapping);

@@ -24,6 +24,8 @@ public partial class MainWindow
         {
             var session = runtime.Session is { } current && ClientProcessIdentity.IsCurrent(current) ? current : SelectedClient;
             if (session is null) throw new InvalidOperationException("Launch a client or select an existing process.");
+            if (Runtimes.Count(other => other != runtime && other.ReaderAttached) >= 4)
+                throw new InvalidOperationException("Одновременно поддерживаются от 1 до 4 коллекторов.");
             if (Runtimes.Any(other => other != runtime && other.Session == session))
                 throw new InvalidOperationException("This client already belongs to another profile.");
             runtime.Session = session;
@@ -41,7 +43,7 @@ public partial class MainWindow
     {
         if (SelectedRuntime is not { IsBusy: false } runtime) return;
         runtime.IsBusy = true;
-        try { await _collection.DetachAsync(runtime); await SaveProfilesAsync(); }
+        try { _clientRecovery.Forget(runtime.Profile.Id);runtime.ClientFault=null;await _collection.DetachAsync(runtime); await SaveProfilesAsync(); }
         catch (Exception exception) { ShowModuleError(runtime, exception); }
         finally { runtime.IsBusy = false; }
     }
@@ -58,10 +60,13 @@ public partial class MainWindow
             foreach (var runtime in runtimes)
             {
                 if (runtime.IsBusy) continue;
+                if(await TickClientRecoveryAsync(runtime)) continue;
+                if(await TickCharacterRotationAsync(runtime)) continue;
                 await _collection.RefreshAsync(runtime);
                 if (runtime.Session is { } session && !ClientProcessIdentity.IsCurrent(session))
                 {
                     _launcher.ReleaseExited(runtime.Profile.Id);
+                    _characterRotation.Forget(runtime.Profile.Id);
                     runtime.Session = null;
                     runtime.Profile.LastProcessId = null;
                     runtime.Profile.LastProcessStartUtc = null;

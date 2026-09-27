@@ -2,21 +2,20 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using PriceCheck.Collector.Models;
+using PriceCheck.Windows.Storage;
 
 namespace PriceCheck.Collector.Services;
 
-public sealed class LaunchTemplateStore
+public sealed class LaunchTemplateStore(string? directory = null)
 {
-    private readonly string _path = Path.Combine(
+    private readonly string _path = Path.Combine(directory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "PriceCheckCollector", "launch-templates.json");
+        "PriceCheckCollector"), "launch-templates.json");
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public async Task<List<LaunchTemplate>> LoadAsync()
+    public Task<List<LaunchTemplate>> LoadAsync()
     {
-        if (!File.Exists(_path)) return [];
-        await using var stream = File.OpenRead(_path);
-        var templates = await JsonSerializer.DeserializeAsync<List<LaunchTemplate>>(stream) ?? [];
+        var templates = DurableJsonFile.ReadRecoverable<List<LaunchTemplate>>(_path) ?? [];
         foreach (var template in templates)
         {
             template.Identity ??= ClientLaunchConfiguration.GenerateIdentity();
@@ -33,7 +32,7 @@ public sealed class LaunchTemplateStore
                 template.ProxyEnabled = false;
             }
         }
-        return templates.Where(value => value.Id != Guid.Empty).ToList();
+        return Task.FromResult(templates.Where(value => value.Id != Guid.Empty).ToList());
     }
 
     public async Task SaveAsync(IEnumerable<LaunchTemplate> templates)
@@ -47,9 +46,7 @@ public sealed class LaunchTemplateStore
                 template.ProxyPasswordProtected = string.IsNullOrEmpty(template.ProxyPassword) ? null :
                     Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(template.ProxyPassword),
                         null, DataProtectionScope.CurrentUser));
-            var temporary = _path + ".tmp";
-            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(values, new JsonSerializerOptions { WriteIndented = true }));
-            File.Move(temporary, _path, true);
+            DurableJsonFile.Write(_path, values, new JsonSerializerOptions { WriteIndented = true });
         }
         finally { _gate.Release(); }
     }

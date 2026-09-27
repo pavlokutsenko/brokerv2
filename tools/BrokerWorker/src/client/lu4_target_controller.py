@@ -43,6 +43,7 @@ from lu4_memory_client import (  # noqa: E402
     build_target_packet,
 )
 from runtime_stub_builder import run_main_generator, run_post_generator  # noqa: E402
+from send_prologue import resolve_send_prologue  # noqa: E402
 
 
 class PROCESS_BASIC_INFORMATION(ctypes.Structure):
@@ -334,36 +335,11 @@ def install(pid: int) -> None:
         direct_patched = False
         post_patched = False
         try:
-            send_first_five = read_exact(client, pid, send_address, 5)
             send_dispatch: int | None = None
-            send_mode = "copied-prologue"
-            generator_prologue = send_first_five
-            if send_first_five[:1] == b"\xE9":
-                # Herz's ws2_32 relay retains the displaced five-byte prologue
-                # immediately before an absolute jump back to send+5. Recover
-                # it only after validating the exact dispatcher tail, then use
-                # our normal copied-prologue trampoline. Calling the relay from
-                # the cave changes the successful Herz route and can disconnect
-                # the session.
-                relay = send_address + 5 + struct.unpack_from(
-                    "<i", send_first_five, 1
-                )[0]
-                relay_bytes = read_exact(client, pid, relay, 65)
-                if (
-                    relay_bytes[44] != 0x5A
-                    or relay_bytes[50:57] != b"\x48\xFF\x25\x00\x00\x00\x00"
-                    or struct.unpack_from("<Q", relay_bytes, 57)[0]
-                    != send_address + 5
-                ):
-                    raise RuntimeError(
-                        "send E9 target is not the validated Herz relay layout"
-                    )
-                generator_prologue = relay_bytes[45:50]
-                if generator_prologue[:1] in (b"\xE9", b"\xEB"):
-                    raise RuntimeError("recovered send prologue is still a branch")
-                send_mode = "recovered-prologue-from-e9-relay"
-            elif send_first_five[:1] == b"\xEB":
-                raise RuntimeError("send entry begins with an unsupported short branch")
+            generator_prologue, send_mode, send_relays = resolve_send_prologue(
+                lambda address, size: read_exact(client, pid, address, size),
+                send_address, modules,
+            )
             main_stub, trampoline_offset = run_main_generator(
                 HERZ_IMAGE, cave, direct, send_address, generator_prologue
             )
@@ -398,6 +374,7 @@ def install(pid: int) -> None:
                     "main_stub_size": len(main_stub),
                     "post_stub_size": len(post_stub),
                     "send_mode": send_mode,
+                    "send_relays": send_relays,
                     "send_dispatch": send_dispatch,
                     "installed": True,
                 }
@@ -485,7 +462,8 @@ def select_target(
     fast: bool = False,
     payload_override: bytes | None = None,
     packet_name: str = "target_action",
-) -> None:
+    emit_output: bool = True,
+) -> dict[str, object]:
     state = load_state()
     pid = int(state["pid"])
     cave = int(state["cave"])
@@ -599,19 +577,12 @@ def select_target(
             trigger = struct.unpack("<I", read_exact(client, pid, cave, 4))[0]
             if trigger == 0:
                 result = struct.unpack("<i", read_exact(client, pid, cave + 0x58, 4))[0]
-                print(
-                    json.dumps(
-                        {
-                            "packet": packet_name,
-                            "object_id": object_id,
-                            "wire_length": len(wire),
-                            "payload_length": len(payload),
-                            "send_result": result,
-                        },
-                        indent=2,
-                    )
-                )
-                return
+                response = {"packet": packet_name, "object_id": object_id,
+                            "wire_length": len(wire), "payload_length": len(payload),
+                            "send_result": result}
+                if emit_output:
+                    print(json.dumps(response, indent=2))
+                return response
             time.sleep(0.002)
         raise TimeoutError("phase2 timeout: send did not complete")
 

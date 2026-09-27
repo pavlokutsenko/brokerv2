@@ -1,7 +1,11 @@
 param(
     [switch]$ForceBroker,
     [switch]$SkipBroker,
-    [string]$OutputDirectory
+    [string]$OutputDirectory,
+    [string]$LauncherOutputDirectory,
+    [string]$PackageDirectory,
+    [switch]$SkipPackages,
+    [string]$BuildLabel = 'desktop-split'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,6 +24,7 @@ if (-not $SkipBroker) {
         $runtimeTime = (Get-Item -LiteralPath $brokerRuntime).LastWriteTimeUtc
         $inputs = @(Get-ChildItem -LiteralPath $brokerSource -Recurse -File -Filter '*.py')
         $inputs += Get-Item -LiteralPath $brokerBuild
+        $inputs += Get-ChildItem -LiteralPath (Join-Path $repo 'tools\WorldGeometry'),(Join-Path $repo 'tools\RemotePrices'),(Join-Path $repo 'maps') -Recurse -File
         $brokerChanged = $null -ne ($inputs | Where-Object { $_.LastWriteTimeUtc -gt $runtimeTime } | Select-Object -First 1)
     }
     if ($brokerChanged) {
@@ -50,12 +55,39 @@ $release = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 } else {
     [System.IO.Path]::GetFullPath($OutputDirectory, $repo)
 }
-New-Item -ItemType Directory -Force -Path $release | Out-Null
-& $dotnet publish (Join-Path $repo 'src\PriceCheck.Collector\PriceCheck.Collector.csproj') `
-    -c Release -r win-x64 --self-contained true -o $release --nologo
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-$obsoleteProxy = Join-Path $release 'ClientLaunchRuntime\version.dll'
-if (Test-Path -LiteralPath $obsoleteProxy) {
-    Remove-Item -LiteralPath $obsoleteProxy
+$launcherRelease = if ([string]::IsNullOrWhiteSpace($LauncherOutputDirectory)) {
+    Join-Path $repo 'release\PriceCheckLauncher'
+} else { [IO.Path]::GetFullPath($LauncherOutputDirectory, $repo) }
+if ([string]::Equals($release.TrimEnd('\'), $launcherRelease.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Launcher and Collector need separate output directories.'
 }
-exit 0
+$buildId = [guid]::NewGuid().ToString('N')
+$outputs = @{}
+foreach ($product in @('Launcher','Collector')) {
+    $staging = Join-Path $repo ("workspace\publish-$product-$buildId")
+    & $dotnet publish (Join-Path $repo "src\PriceCheck.$product\PriceCheck.$product.csproj") `
+        -c Release -r win-x64 --self-contained true -o $staging --nologo
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $buildInfo = [ordered]@{
+        SchemaVersion = 2; Product = $product; BuildLabel = $BuildLabel; BuildId = $buildId
+        BuiltAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        AppSha256 = (Get-FileHash -LiteralPath (Join-Path $staging "PriceCheck.$product.dll") -Algorithm SHA256).Hash
+    }
+    if ($product -eq 'Collector') {
+        $buildInfo.CollectorSha256 = $buildInfo.AppSha256
+        $buildInfo.CollectionSha256 = (Get-FileHash -LiteralPath (Join-Path $staging 'PriceCheck.Collection.dll') -Algorithm SHA256).Hash
+        $buildInfo.BrokerSha256 = (Get-FileHash -LiteralPath (Join-Path $staging 'BrokerRuntime\BrokerWorker.exe') -Algorithm SHA256).Hash
+    }
+    $buildInfo | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $staging 'build-info.json') -Encoding utf8
+    $outputs[$product] = $staging
+}
+# Publish only after both applications compiled. Packages always use fresh output,
+# and do not include stale files or runtime state from release directories.
+& (Join-Path $repo 'scripts\publish-durable.ps1') -Product Launcher -Source $outputs.Launcher -Destination $launcherRelease
+& (Join-Path $repo 'scripts\publish-durable.ps1') -Source $outputs.Collector -Destination $release
+if (-not $SkipPackages) {
+    foreach ($product in @('Launcher','Collector')) {
+        & (Join-Path $repo 'scripts\package-portable.ps1') -Product $product -PublishDirectory $outputs[$product] -PackageDirectory $PackageDirectory
+    }
+}
+Write-Host "Ready: $launcherRelease and $release"

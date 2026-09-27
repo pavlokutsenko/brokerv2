@@ -17,11 +17,12 @@ internal static class ModuleViews
         window.Runtimes.Add(runtime);
         window.SelectedRuntime = runtime;
         var tabs = (TabControl)window.FindName("MainTabs");
-        if (tabs.Items.Count != 2) throw new Exception("Expected exactly two module tabs.");
+        if (tabs.Items.Count != 3 || tabs.Items.Cast<TabItem>().Select(value => value.Header?.ToString()).SequenceEqual(new[] { "LAUNCH", "COLLECTION", "ЖУРНАЛ" }) == false)
+            throw new Exception("Expected launch, collection and journal tabs.");
         var root = (FrameworkElement)window.Content;
         foreach (var width in new[] { 1380, 1120 })
         {
-            for (var index = 0; index < 2; index++)
+            for (var index = 0; index < 3; index++)
             {
                 tabs.SelectedIndex = index;
                 root.Measure(new Size(width, 800));
@@ -39,7 +40,7 @@ internal static class ModuleViews
         }
         // Synthetic rendering must never have started reading or modified session identity.
         if (runtime.ReaderAttached || runtime.ProcessId is not null) throw new Exception("Rendering started a live module.");
-        Console.WriteLine("MODULE_UI_OK two_tabs launch_templates_nested synthetic_only widths=1380,1120");
+        Console.WriteLine("MODULE_UI_OK launch_collection_journal shared_launch_views synthetic_only widths=1380,1120");
         window.Close();
     }
 }

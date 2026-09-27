@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PriceCheck.Contracts\PriceCheck.Contracts.csproj" />
+    <Compile Include="..\..\src\PriceCheck.Collection\Runtime\Radar\RadarEntityStore.cs" Link="RadarEntityStore.cs" />
+    <Compile Include="..\..\src\PriceCheck.Collection\Runtime\Radar\RadarIdentityCache.cs" Link="RadarIdentityCache.cs" />
+    <Compile Include="..\..\src\PriceCheck.Collection\Runtime\Radar\WorldPacket.cs" Link="WorldPacket.cs" />
+  </ItemGroup>
+</Project>

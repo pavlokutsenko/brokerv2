@@ -1,0 +1,7 @@
+<Application x:Class="PriceCheck.Launcher.App"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <Application.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries>
+  <ResourceDictionary Source="/PriceCheck.Launching.UI;component/DesktopStyles.xaml" />
+ </ResourceDictionary.MergedDictionaries></ResourceDictionary></Application.Resources>
+</Application>

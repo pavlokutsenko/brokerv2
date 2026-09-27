@@ -7,6 +7,7 @@ import ctypes  # bundled for dynamically dispatched helpers
 import ctypes.wintypes  # bundled for dynamically dispatched helpers
 import json
 import math  # bundled for dynamically dispatched helpers
+import os
 import subprocess
 import sys
 import unicodedata  # bundled for dynamically dispatched helpers
@@ -17,6 +18,9 @@ ROOT = Path(__file__).resolve().parent
 BUILD = ROOT / "build"
 DIAGNOSTICS = ROOT / "diagnostics"
 CLIENT = ROOT / "client"
+sys.path.insert(0, str(CLIENT))
+sys.path.insert(0, str(DIAGNOSTICS))
+from worker_progress import publish, check_stop
 
 
 def run_script(script: Path, *arguments: object, timeout: int = 300) -> str:
@@ -56,6 +60,23 @@ def json_matches_pid(path: Path, pid: int) -> bool:
         return False
 
 
+def release_walk_capture_for_broker(pid: int) -> None:
+    """End the retained price bridge only at the broker role transition."""
+    state_path=Path(os.environ['LOCALAPPDATA']) / 'PriceCheckCollector/research/market-walk' / str(pid) / 'capture-state.json'
+    if not state_path.exists():
+        return
+    import process_event_shop_capture as capture
+    previous=capture.STATE_PATH
+    capture.STATE_PATH=state_path
+    try:
+        state=capture.load_state()
+        if int(state['pid'])!=pid:
+            raise RuntimeError('walk capture belongs to another PID')
+        capture.uninstall()
+    finally:
+        capture.STATE_PATH=previous
+
+
 def collect(pid: int, output: Path) -> None:
     BUILD.mkdir(parents=True, exist_ok=True)
     DIAGNOSTICS.mkdir(parents=True, exist_ok=True)
@@ -70,8 +91,12 @@ def collect(pid: int, output: Path) -> None:
     target_prepared = False
     broker_installed = False
     try:
+        check_stop()
+        publish('Preparing client connection; first setup may take a few minutes')
         target_prepared = True
         run_script(CLIENT / "lu4_target_session.py", "--pid", pid, "prepare")
+        check_stop()
+        publish('Checking broker functions')
         run_script(DIAGNOSTICS / "resolve_target_route.py", pid, "--json", DIAGNOSTICS / "latest_target_route.json")
         run_script(DIAGNOSTICS / "discover_unreal_globals.py", pid, "--json", DIAGNOSTICS / "latest_unreal_globals.json")
         run_script(
@@ -82,8 +107,11 @@ def collect(pid: int, output: Path) -> None:
             "--json",
             DIAGNOSTICS / "latest_shop_ufunctions.json",
         )
+        check_stop()
+        release_walk_capture_for_broker(pid)
         run_script(DIAGNOSTICS / "process_event_broker_capture.py", "install", pid)
         broker_installed = True
+        publish('Requesting item catalogues')
         run_script(
             DIAGNOSTICS / "collect_full_broker_inventory.py",
             "--store-types",
@@ -96,17 +124,23 @@ def collect(pid: int, output: Path) -> None:
             output,
             timeout=600,
         )
+        publish('Matching broker traders to names and positions')
+        run_script(DIAGNOSTICS / "bind_broker_actors.py", pid, output)
     finally:
+        publish('Finishing broker pass and restoring hooks')
+        cleanup_errors=[]
         if broker_installed and (BUILD / "process_event_broker_capture_state.json").exists():
             try:
                 run_script(DIAGNOSTICS / "process_event_broker_capture.py", "uninstall")
-            except Exception:
-                pass
+            except Exception as error:
+                cleanup_errors.append(str(error))
         if target_prepared and (BUILD / "lu4_target_hook_state.json").exists():
             try:
                 run_script(CLIENT / "lu4_target_session.py", "cleanup")
-            except Exception:
-                pass
+            except Exception as error:
+                cleanup_errors.append(str(error))
+        if cleanup_errors:
+            raise RuntimeError('Broker native cleanup failed; route must not start: '+'; '.join(cleanup_errors))
 
 
 def prepare_price(pid: int) -> None:
@@ -317,7 +351,7 @@ def main() -> int:
         return 0
 
     parser = argparse.ArgumentParser(description="PriceCheck embedded market worker")
-    parser.add_argument("--mode", choices=("broker", "price-prepare", "price", "price-batch", "price-sweep", "manual-passby", "move", "cleanup"), default="broker")
+    parser.add_argument("--mode", choices=("broker", "market-route", "price-prepare", "price", "price-batch", "price-sweep", "manual-passby", "move", "cleanup"), default="broker")
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--object-id", type=int)
@@ -331,7 +365,14 @@ def main() -> int:
     parser.add_argument("--input", type=Path)
     parser.add_argument("--duration", type=float, default=0.0)
     args = parser.parse_args()
-    if args.mode == "price-prepare":
+    if args.mode == "market-route":
+        if args.input is None: parser.error('--input is required')
+        navigation = ROOT / 'navigation'
+        if not navigation.exists(): navigation = ROOT.parents[2] / 'tools/WorldGeometry'
+        sys.path.insert(0,str(navigation))
+        from cycle_route import run
+        run(args.pid,args.input,args.output.resolve())
+    elif args.mode == "price-prepare":
         prepare_price(args.pid)
     elif args.mode == "price":
         if args.object_id is None:

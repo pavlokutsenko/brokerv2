@@ -351,14 +351,11 @@ def uninstall() -> None:
         if read_exact(client, pid, int(state["process_event"]), len(original)) != patch:
             raise RuntimeError("ProcessEvent patch no longer matches broker state")
         patch_region(client, pid, int(state["process_event"]), original)
-        client.free_process_memory(pid, int(state["cave"]))
-        history_cave = int(state.get("history_cave", 0))
-        if history_cave:
-            client.free_process_memory(pid, history_cave)
-        for allocation in state.get("history_caves", []):
-            client.free_process_memory(pid, int(allocation["address"]))
+        # The game thread can still be returning through this trampoline after
+        # the entry point is restored. Its history slots are referenced by the
+        # same code, so retire all allocations until process exit.
     STATE_PATH.unlink()
-    print("uninstalled ProcessEvent broker capture")
+    print("restored ProcessEvent broker prologue; retired capture allocations remain mapped")
 
 
 def main() -> int:

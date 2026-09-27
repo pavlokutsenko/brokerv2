@@ -4,6 +4,10 @@ namespace PriceCheck.Collector.Models;
 
 public sealed class ShopCaptureFile
 {
+    public DateTimeOffset? ReadStartedAtUtc { get; init; }
+    public DateTimeOffset CapturedAtUtc { get; init; } = DateTimeOffset.UtcNow;
+    public string SnapshotId { get; init; } = Guid.NewGuid().ToString("N");
+    public string Precision { get; init; } = "client_int32_unverified";
     [JsonPropertyName("side")] public string Side { get; init; } = "sell";
     [JsonPropertyName("rows")] public IReadOnlyList<ShopCaptureRow> Rows { get; init; } = [];
 }

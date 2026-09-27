@@ -8,6 +8,7 @@ namespace PriceCheck.Collector;
 
 public partial class App : Application
 {
+    private PriceCheck.Windows.DesktopInstanceLease? _instance;
     private readonly bool _enableRuntime;
     public App() : this(true) { }
     public App(bool enableRuntime) => _enableRuntime = enableRuntime;
@@ -43,18 +44,29 @@ public partial class App : Application
         base.OnStartup(e);
         try
         {
+            _instance = new("Collector");
+            if (!_instance.Acquired)
+            {
+                MessageBox.Show("PriceCheck Collector уже запущен.", "PriceCheck Collector");
+                Shutdown(); return;
+            }
             new DriverBootstrapper().EnsureReady();
             const string launchProfilePrefix = "--launch-profile=";
             const string launchProfilesPrefix = "--launch-profiles=";
+            const string collectProfilePrefix = "--collect-profile=";
             var startupProfile = e.Args.FirstOrDefault(argument =>
                 argument.StartsWith(launchProfilePrefix, StringComparison.OrdinalIgnoreCase) ||
                 argument.StartsWith(launchProfilesPrefix, StringComparison.OrdinalIgnoreCase));
             MainWindow = new MainWindow
             {
+                StartupResumeCharacter = e.Args.Any(argument =>
+                    argument.Equals("--resume-character", StringComparison.OrdinalIgnoreCase)),
                 StartupLaunchProfileName = startupProfile is null ? null :
                     startupProfile.StartsWith(launchProfilesPrefix, StringComparison.OrdinalIgnoreCase)
                         ? startupProfile[launchProfilesPrefix.Length..]
-                        : startupProfile[launchProfilePrefix.Length..]
+                        : startupProfile[launchProfilePrefix.Length..],
+                StartupCollectProfileId = e.Args.FirstOrDefault(argument =>
+                    argument.StartsWith(collectProfilePrefix, StringComparison.OrdinalIgnoreCase))?[collectProfilePrefix.Length..]
             };
             MainWindow.Show();
         }
@@ -68,4 +80,5 @@ public partial class App : Application
             Shutdown(1);
         }
     }
+    protected override void OnExit(ExitEventArgs e) { _instance?.Dispose(); base.OnExit(e); }
 }

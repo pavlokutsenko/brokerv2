@@ -13,9 +13,12 @@ public sealed class RadarSession : IAsyncDisposable
     private readonly LocalPlayerPositionReader? _playerPosition;
     private readonly CancellationTokenSource _stop = new();
     private readonly Task _readerTask;
+    private readonly FileStream _ownership;
+    private readonly object _positionGate = new();
 
-    private RadarSession(int pid, Lu4Device device, ReceiveHookSession hook, MarketZone? zone, bool collectionEnabled)
+    private RadarSession(int pid, Lu4Device device, ReceiveHookSession hook, MarketZone? zone, bool collectionEnabled, FileStream ownership)
     {
+        _ownership = ownership;
         _pid = pid;
         _device = device;
         _hook = hook;
@@ -32,6 +35,9 @@ public sealed class RadarSession : IAsyncDisposable
     {
         Exception? last = null;
         var process = PriceCheck.Windows.ClientProcessIdentity.Read(pid) ?? throw new InvalidOperationException("Client exited.");
+        var ownership = PriceCheck.Windows.ClientReaderLease.Acquire(process);
+        try
+        {
         var deadline = DateTime.UtcNow.AddSeconds(60);
         while (DateTime.UtcNow < deadline)
         {
@@ -42,7 +48,7 @@ public sealed class RadarSession : IAsyncDisposable
             {
                 device = new Lu4Device();
                 var hook = ReceiveHookSession.Install(device, pid);
-                return new RadarSession(pid, device, hook, zone, collectionEnabled);
+                return new RadarSession(pid, device, hook, zone, collectionEnabled, ownership);
             }
             catch (Exception exception)
             {
@@ -52,6 +58,8 @@ public sealed class RadarSession : IAsyncDisposable
             }
         }
         throw new TimeoutException($"Receive hook was not installed within 60 seconds: {last?.Message}", last);
+        }
+        catch { ownership.Dispose(); throw; }
     }
 
     public RadarSnapshot Snapshot(MarketZone? zone, bool collectionEnabled)
@@ -66,8 +74,7 @@ public sealed class RadarSession : IAsyncDisposable
             if (separator >= 0 && separator + 3 < title.Length) playerName = title[(separator + 3)..].Trim();
         }
         catch { }
-        PlayerPosition? livePlayer = null;
-        if (_playerPosition?.TryRead(out var position) == true) livePlayer = position;
+        var livePlayer = ReadLivePosition();
         _store.SetObservationZone(zone, livePlayer, collectionEnabled);
         return _store.Snapshot(_pid, playerName, livePlayer);
     }
@@ -75,7 +82,16 @@ public sealed class RadarSession : IAsyncDisposable
     private void OnPacket(ReadOnlyMemory<byte> data)
     {
         var decoded = WorldPacketDecoder.Decode(data.Span);
-        if (decoded is not null) _store.Apply(decoded);
+        // Bind a closure to the observer's position now, not at a later UI tick.
+        var observer = decoded is CharacterPacket { KioskType: 0 } character && _store.NeedsClosurePosition(character.Name)
+            ? ReadLivePosition() : null;
+        if (decoded is not null) _store.Apply(decoded, observerX: observer?.X, observerY: observer?.Y);
+    }
+
+    private PlayerPosition? ReadLivePosition()
+    {
+        lock (_positionGate)
+            return _playerPosition?.TryRead(out var position) == true ? position : null;
     }
 
     public async ValueTask DisposeAsync()
@@ -85,5 +101,6 @@ public sealed class RadarSession : IAsyncDisposable
         _hook.Dispose();
         _device.Dispose();
         _stop.Dispose();
+        _ownership.Dispose();
     }
 }

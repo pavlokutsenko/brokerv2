@@ -18,11 +18,13 @@ from scan_lu4_actors import (  # noqa: E402
     Memory,
     coherent_actor_snapshot,
     enumerate_positioned_actors,
+    pointer,
 )
 
 
 def current_traders(
-    client: Lu4MemoryClient, snapshot: dict[str, object]
+    client: Lu4MemoryClient, snapshot: dict[str, object], allowed_object_ids: set[int] | None = None,
+    *, include_closed: bool = False
 ) -> tuple[list[dict[str, object]], float]:
     started = time.perf_counter()
     pid = int(snapshot["pid"])
@@ -39,13 +41,18 @@ def current_traders(
         ),
     }
     actors, _ = coherent_actor_snapshot(mem, level)
+    if allowed_object_ids is not None:
+        # The broker/radar binding already fixed the ObjectIDs for this route.
+        # Skip full capsule/name/title reads for unrelated market actors.
+        actors = [actor for actor in actors if pointer(actor)
+                  and mem.i32(actor + 0x550, -1) in allowed_object_ids]
     positioned = enumerate_positioned_actors(mem, world, actors)
     traders = [
         item
         for item in positioned
         if int(item.get("object_id", 0)) > 0
         and str(item.get("name", ""))
-        and int(item.get("kiosk_type", 0)) in (1, 3, 8)
+        and int(item.get("kiosk_type", -1)) in ((0, 1, 3, 8) if include_closed else (1, 3, 8))
     ]
     return traders, (time.perf_counter() - started) * 1000
 

@@ -29,7 +29,7 @@ The result proves six `+0` rows and eight `+4` rows. One trader occurred five
 times in the `+0` result, confirming that duplicate rows are retained rather
 than collapsed to one row per trader.
 
-Artifact: `diagnostics/broker-enchant-probe-34932.json`.
+Artifact: `docs/analysis/broker-enchant/probe-34932.json`.
 
 ## Integration consequence
 

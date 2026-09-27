@@ -1,0 +1,9 @@
+<Project>
+  <ItemGroup>
+    <Content Include="$(MSBuildThisFileDirectory)build\x64\PriceCheck.ClientAgent.dll" Link="ClientLaunchRuntime\PriceCheck.ClientAgent.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)build\x64\PriceCheck.ClientLogin.dll" Link="ClientLaunchRuntime\PriceCheck.ClientLogin.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)minhook\LICENSE.txt" Link="ClientLaunchRuntime\MinHook.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)..\LU4Memory\artifacts\verified\lu4_memory.sys" Link="DriverRuntime\lu4_memory_wfp.sys" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)..\LU4Memory\loader\**\*" Link="DriverRuntime\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Diagnostics;
+using PriceCheck.Windows.Storage;
 
 namespace PriceCheck.Collector.Services;
 
@@ -47,9 +48,7 @@ internal static class ClientLaunchDeployment
 
     private static Dictionary<string, string> LoadRecords()
     {
-        var saved = File.Exists(StatePath)
-            ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(StatePath))
-            : null;
+        var saved = DurableJsonFile.ReadRecoverable<Dictionary<string, string>>(StatePath);
         return saved is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(saved, StringComparer.OrdinalIgnoreCase);
@@ -57,9 +56,6 @@ internal static class ClientLaunchDeployment
 
     private static void SaveRecords(Dictionary<string, string> records)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(StatePath)!);
-        var temporary = StatePath + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(records));
-        File.Move(temporary, StatePath, true);
+        DurableJsonFile.Write(StatePath, records);
     }
 }

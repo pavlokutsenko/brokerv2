@@ -29,10 +29,20 @@ function Get-ServiceBinaryPath {
     return $null
 }
 
+function Get-Sha256File {
+    param([string]$Path)
+    # The desktop loader runs in Windows PowerShell, which can inherit a
+    # PowerShell 7 module path. Do not depend on Get-FileHash module discovery.
+    $stream = [IO.File]::OpenRead($Path)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
+    finally { $sha.Dispose(); $stream.Dispose() }
+}
+
 function Assert-FileHash {
     param([string]$Path, [string]$Expected)
     if (-not (Test-Path -LiteralPath $Path)) { throw "Отсутствует файл загрузчика: $Path" }
-    $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    $actual = Get-Sha256File $Path
     if ($actual -ne $Expected) { throw "Контрольная сумма не совпала: $Path" }
 }
 
@@ -51,7 +61,7 @@ try {
         $normalized = $existingPath
         if ($normalized -and $normalized.StartsWith('\??\')) { $normalized = $normalized.Substring(4) }
         if (-not $normalized -or -not (Test-Path -LiteralPath $normalized) -or
-            (Get-FileHash -LiteralPath $normalized -Algorithm SHA256).Hash -notin @(
+            (Get-Sha256File $normalized) -notin @(
                 '2393EEE0E77E03A3C5D4640CE16F0A6AC1B6DE1E1A3D7887B1635AE6186AE766',
                 'C7228FD5D285C29268A64707B3062FEEEFCCB76BEB5332CB8BF5B4E52CCC64DA')) {
             throw 'Служба LU4Memory уже запущена из другого или повреждённого бинарника. Закройте игровые клиенты и перезагрузите Windows.'

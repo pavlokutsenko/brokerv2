@@ -38,7 +38,6 @@ public partial class MainWindow
                 template.Name = $"Template {number}";
             LaunchTemplates.Add(template);
         }
-        var restoredPids = new HashSet<int>();
         if (profiles.Count == 0)
             profiles = [new CollectorProfile { Name = "Gamma", City = "Giran", Role = CollectorRole.BrokerRadar }];
         foreach (var profile in profiles)
@@ -71,27 +70,25 @@ public partial class MainWindow
             var runtime = new ProfileRuntime { Profile = profile };
             if (!LoginServerOptions.Contains(profile.LoginServerName)) profile.LoginServerName = "Gamma";
             if (profile.CharacterSlot is < 0 or > 6) profile.CharacterSlot = 0;
-            if (!CityOptions.Contains(profile.City)) profile.City = "Giran";
+            profile.City = "Giran";
             profile.CenterZonesByCity ??= [];
             if (profile.CenterZoneX is double legacyX && profile.CenterZoneY is double legacyY &&
                 !profile.CenterZonesByCity.ContainsKey(profile.City))
                 profile.CenterZonesByCity[profile.City] = new CenterZoneSettings { X = legacyX, Y = legacyY };
             profile.CenterZoneX = null;
             profile.CenterZoneY = null;
-            // Restore only a verified process reference, never reader hooks or proxy ownership.
-            if (profile.LastProcessId is int pid && profile.LastProcessStartUtc is DateTimeOffset started &&
-                PriceCheck.Windows.ClientProcessIdentity.Read(pid) is { } session &&
-                session.StartedAtUtc == started && restoredPids.Add(pid))
-            {
-                runtime.Session = session;
-                runtime.LaunchStatus = "Existing client · managed elsewhere";
-            }
-            else { profile.LastProcessId = null; profile.LastProcessStartUtc = null; }
+            // A persisted PID is diagnostic history, never a startup action
+            // binding. New startup obtains a fresh owned session or an explicit
+            // selection from the current process inventory.
+            profile.LastProcessId = null;
+            profile.LastProcessStartUtc = null;
             profile.CollectionEnabled = false;
             runtime.Status = "Reader disconnected";
             Runtimes.Add(runtime);
         }
+        ApplySavedGiranCenter();
         SelectedRuntime = Runtimes.FirstOrDefault();
+        _collection.InitializeLocalHistory(Runtimes.Select(runtime => runtime.Profile));
         TemplatesView.SetTemplates(LaunchTemplates.Where(value => value.Id != Guid.Empty));
         _loaded = true;
         await SaveTemplatesAsync();
@@ -113,10 +110,11 @@ public partial class MainWindow
                     break;
                 }
                 SelectedRuntime = requested;
-                await LaunchProfileAsync(requested);
+                await LaunchProfileAsync(requested, StartupResumeCharacter);
                 if (requested.Session is null) break;
             }
         }
+        await StartRequestedCollectionAsync();
     }
 
 }

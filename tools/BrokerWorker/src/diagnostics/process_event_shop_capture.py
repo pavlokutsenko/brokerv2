@@ -598,12 +598,12 @@ def uninstall() -> None:
         finally:
             if suspended is not None:
                 resume_process(suspended)
-        client.free_process_memory(pid, int(state["cave"]))
-        history_cave = int(state.get("history_cave", 0))
-        if history_cave:
-            client.free_process_memory(pid, history_cave)
+        # Process-wide suspension is not always available for this client.
+        # A thread may already have entered the old trampoline when the entry
+        # point is restored. Keep its code and capture data mapped until the
+        # process exits; freeing either allocation here is a use-after-free.
     STATE_PATH.unlink()
-    print("uninstalled ProcessEvent shop capture and restored original prologue")
+    print("restored ProcessEvent shop prologue; retired capture allocations remain mapped")
 
 
 def main() -> int:

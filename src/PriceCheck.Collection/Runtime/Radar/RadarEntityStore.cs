@@ -1,69 +1,63 @@
 using PriceCheck.Collector.Models;
+using System.Text;
 
 namespace PriceCheck.Collector.Runtime.Radar;
 
+// One reader/client owns this store. A delete is visibility loss, never closure.
 public sealed class RadarEntityStore
 {
-    private static readonly TimeSpan PresenceGrace = TimeSpan.FromSeconds(3);
     private readonly object _gate = new();
     private readonly Dictionary<int, Entity> _entities = [];
-    private readonly Dictionary<string, Trader> _traders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly RadarIdentityCache _identities = new();
+    private readonly Dictionary<string, RadarPoint> _traders = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, string> _traderKeysByObjectId = [];
     private MarketZone? _zone;
-    private PlayerPosition? _lastPlayerPosition;
-    private bool _insideZone;
     private bool _collectionRequested;
-    private bool _catalogEnabled;
     private DateTimeOffset _updatedAt = DateTimeOffset.UtcNow;
+
+    public bool NeedsClosurePosition(string name)
+    {
+        lock (_gate) return _traders.ContainsKey(Normalize(name));
+    }
 
     internal void SetObservationZone(MarketZone? zone, PlayerPosition? playerPosition, bool collectionRequested)
     {
         lock (_gate)
         {
-            if (playerPosition is not null) _lastPlayerPosition = playerPosition;
-            MarketZone? normalized = zone is MarketZone value && double.IsFinite(value.X) && double.IsFinite(value.Y) &&
-                double.IsFinite(value.Radius) && value.Radius is >= 100 and <= 20_000 ? value : null;
-            var wasEnabled = _catalogEnabled;
-            _zone = normalized;
+            _zone = zone is MarketZone value && double.IsFinite(value.X) && double.IsFinite(value.Y)
+                ? value with { Radius = 500 } : null;
             _collectionRequested = collectionRequested;
-            _insideZone = normalized is not null && _lastPlayerPosition is PlayerPosition player &&
-                Distance(player.X, player.Y, normalized.Value.X, normalized.Value.Y) <= normalized.Value.Radius;
-            _catalogEnabled = _collectionRequested && _insideZone;
-            if (!wasEnabled && _catalogEnabled) RebuildVisibleCatalog();
-            if (wasEnabled && !_catalogEnabled) ClearPendingAbsenceChecks();
         }
     }
 
-    public void Apply(WorldPacket packet)
+    public void Apply(WorldPacket packet, DateTimeOffset? observedAt = null,
+        double? observerX = null, double? observerY = null)
     {
         lock (_gate)
         {
+            var now = observedAt ?? DateTimeOffset.UtcNow;
+            _identities.Apply(packet, now);
             switch (packet)
             {
                 case CharacterPacket value:
-                    _entities[value.ObjectId] = new Entity(value.ObjectId, value.Name, value.KioskType, value.X, value.Y, value.Z);
-                    if (_catalogEnabled) ApplyCharacter(value);
+                    _entities[value.ObjectId] = new(value.Name, value.X, value.Y);
+                    ApplyCharacter(value, now, observerX, observerY);
                     break;
-                case MovePacket value when _entities.TryGetValue(value.ObjectId, out var current):
-                    _entities[value.ObjectId] = current with { X = value.X, Y = value.Y, Z = value.Z };
-                    if (_catalogEnabled && _traderKeysByObjectId.TryGetValue(value.ObjectId, out var traderKey) &&
-                        _traders.TryGetValue(traderKey, out var movingTrader))
-                        _traders[traderKey] = movingTrader with
-                        {
-                            X = value.X,
-                            Y = value.Y,
-                            Z = value.Z,
-                            LastSeenAtUtc = DateTimeOffset.UtcNow
-                        };
+                case MovePacket value:
+                    if (_entities.TryGetValue(value.ObjectId, out var entity))
+                        _entities[value.ObjectId] = entity with { X = value.X, Y = value.Y };
+                    if (_traderKeysByObjectId.TryGetValue(value.ObjectId, out var key) &&
+                        _traders.TryGetValue(key, out var trader) && trader.ObjectId == value.ObjectId)
+                        _traders[key] = trader with { X = value.X, Y = value.Y, LastSeenAtUtc = now };
                     break;
                 case DeletePacket value:
                     _entities.Remove(value.ObjectId);
-                    if (_catalogEnabled && _traderKeysByObjectId.Remove(value.ObjectId, out var deletedKey) &&
-                        _traders.TryGetValue(deletedKey, out var deletedTrader))
-                        _traders[deletedKey] = deletedTrader with { IsVisible = false };
+                    if (_traderKeysByObjectId.TryGetValue(value.ObjectId, out var deletedKey) &&
+                        _traders.TryGetValue(deletedKey, out var deleted) && deleted.ObjectId == value.ObjectId)
+                        _traders[deletedKey] = deleted with { IsVisible = false };
                     break;
             }
-            _updatedAt = DateTimeOffset.UtcNow;
+            _updatedAt = now;
         }
     }
 
@@ -71,96 +65,67 @@ public sealed class RadarEntityStore
     {
         lock (_gate)
         {
-            if (_zone is not null && _catalogEnabled)
-                ReconcileMissingTraders(DateTimeOffset.UtcNow);
-            var traders = _traders.Values.Where(value => value.IsTrading).ToArray();
             var player = string.IsNullOrWhiteSpace(playerName) ? null : _entities.Values.FirstOrDefault(
                 value => string.Equals(value.Name, playerName, StringComparison.OrdinalIgnoreCase));
-            var centerX = livePlayer?.X ?? player?.X ?? (traders.Length == 0 ? 0 : traders.Average(value => (double)value.X));
-            var centerY = livePlayer?.Y ?? player?.Y ?? (traders.Length == 0 ? 0 : traders.Average(value => (double)value.Y));
+            var x = livePlayer?.X ?? player?.X ?? 0;
+            var y = livePlayer?.Y ?? player?.Y ?? 0;
+            var traders = _traders.Values.Where(value => Trading(value.KioskType)).ToArray();
             return new RadarSnapshot
             {
                 ProcessId = pid,
-                PlayerX = centerX,
-                PlayerY = centerY,
+                LivePlayerPositionAvailable = livePlayer is not null,
+                WorldCharacterDataAvailable = _identities.Count > 0,
+                PlayerX = x, PlayerY = y,
                 CenterZoneConfigured = _zone is not null,
-                IsInsideCenterZone = _insideZone,
+                IsInsideCenterZone = livePlayer is not null && _zone is MarketZone zone &&
+                    Distance(x, y, zone.X, zone.Y) <= 500,
                 CollectionRequested = _collectionRequested,
-                CenterZoneX = _zone?.X ?? 0,
-                CenterZoneY = _zone?.Y ?? 0,
+                CenterZoneX = _zone?.X ?? 0, CenterZoneY = _zone?.Y ?? 0,
                 CenterZoneRadius = _zone?.Radius ?? 0,
                 PositionedActors = _entities.Count,
                 VisibleTraders = traders.Count(value => value.IsVisible),
-                Traders = traders.Select(value => new RadarPoint(
-                    value.ObjectId, value.Name, value.KioskType, value.X, value.Y,
-                    Math.Sqrt(Math.Pow(value.X - centerX, 2) + Math.Pow(value.Y - centerY, 2)),
-                    value.IsVisible, value.LastSeenAtUtc)).ToArray(),
+                BrokerIdentities = _identities.Snapshot(),
+                Traders = traders.Select(value => value with { Distance = Distance(value.X, value.Y, x, y) }).ToArray(),
+                // Visibility loss cannot erase an already explicit closure.
+                // Its original state time/observer position still govern confirmation.
+                ClosedTraders = _traders.Values.Where(value => value.KioskType == 0).ToArray(),
                 CapturedAtUtc = _updatedAt
             };
         }
     }
 
-    private void ApplyCharacter(CharacterPacket value)
+    private void ApplyCharacter(CharacterPacket value, DateTimeOffset now, double? observerX, double? observerY)
     {
         var key = Normalize(value.Name);
-        if (key.Length == 0) return;
-        var now = DateTimeOffset.UtcNow;
-        if (value.KioskType is 1 or 3 or 8)
+        if (key.Length is 0 or > 32 || value.ObjectId <= 0) return;
+        _traders.TryGetValue(key, out var known);
+        // Standing strangers do not become market traders. Their identities
+        // still survive for broker joins throughout this client session.
+        if (known is null && !Trading(value.KioskType)) return;
+        if (_traderKeysByObjectId.TryGetValue(value.ObjectId, out var previousKey) && previousKey != key &&
+            _traders.TryGetValue(previousKey, out var previous))
+            _traders[previousKey] = previous with { IsVisible = false };
+        if (known is not null && known.ObjectId != value.ObjectId) _traderKeysByObjectId.Remove(known.ObjectId);
+        _traderKeysByObjectId[value.ObjectId] = key;
+        var closed = known?.LastClosedAtUtc;
+        var reopened = known?.LastReopenedAtUtc;
+        var revision = known?.TradeRevision ?? 0;
+        if (known is null || known.KioskType != value.KioskType) revision++;
+        if (value.KioskType == 0 && known is not null && Trading(known.KioskType)) closed = now;
+        // An ObjectID change or initial sighting in a new client is not reopen.
+        if (Trading(value.KioskType) && known is not null && closed is not null &&
+            (reopened is null || closed > reopened)) reopened = now;
+        _traders[key] = new(value.ObjectId, value.Name, value.KioskType, value.X, value.Y, 0, true, now)
         {
-            if (_traderKeysByObjectId.TryGetValue(value.ObjectId, out var previousKey) && previousKey != key)
-                _traderKeysByObjectId.Remove(value.ObjectId);
-            _traderKeysByObjectId[value.ObjectId] = key;
-            _traders[key] = new Trader(value.ObjectId, value.Name, value.KioskType,
-                value.X, value.Y, value.Z, true, true, now, null);
-            return;
-        }
-
-        if (_traders.TryGetValue(key, out var known))
-            _traders[key] = known with
-            {
-                ObjectId = value.ObjectId,
-                IsVisible = true,
-                IsTrading = false,
-                LastSeenAtUtc = now,
-                MissingInRangeSinceUtc = null
-            };
+            StateObservedAtUtc = now,
+            StateObservedPlayerX = observerX, StateObservedPlayerY = observerY,
+            LastClosedAtUtc = closed, LastReopenedAtUtc = reopened, TradeRevision = revision
+        };
     }
 
-    private void ReconcileMissingTraders(DateTimeOffset now)
-    {
-        foreach (var (key, trader) in _traders.ToArray())
-        {
-            if (!trader.IsTrading || trader.IsVisible) continue;
-            if (trader.MissingInRangeSinceUtc is null)
-                _traders[key] = trader with { MissingInRangeSinceUtc = now };
-            else if (now - trader.MissingInRangeSinceUtc >= PresenceGrace)
-                _traders[key] = trader with { IsTrading = false, MissingInRangeSinceUtc = null };
-        }
-    }
-
-    private void RebuildVisibleCatalog()
-    {
-        _traderKeysByObjectId.Clear();
-        foreach (var (key, trader) in _traders.ToArray())
-            _traders[key] = trader with { IsVisible = false, MissingInRangeSinceUtc = null };
-        foreach (var entity in _entities.Values)
-            ApplyCharacter(new CharacterPacket(entity.ObjectId, entity.Name, string.Empty,
-                entity.KioskType, entity.X, entity.Y, entity.Z));
-    }
-
-    private void ClearPendingAbsenceChecks()
-    {
-        foreach (var (key, trader) in _traders.ToArray())
-            if (trader.MissingInRangeSinceUtc is not null)
-                _traders[key] = trader with { MissingInRangeSinceUtc = null };
-    }
-
+    private static bool Trading(int kind) => kind is 1 or 3 or 8;
+    private static string Normalize(string value) => value.Normalize(NormalizationForm.FormKC).Trim().ToUpperInvariant();
     private static double Distance(double x1, double y1, double x2, double y2) =>
         Math.Sqrt(Math.Pow(x1 - x2, 2) + Math.Pow(y1 - y2, 2));
-
-    private static string Normalize(string value) => value.Trim().ToUpperInvariant();
-
-    private sealed record Entity(int ObjectId, string Name, int KioskType, int X, int Y, int Z);
-    private sealed record Trader(int ObjectId, string Name, int KioskType, int X, int Y, int Z,
-        bool IsVisible, bool IsTrading, DateTimeOffset LastSeenAtUtc, DateTimeOffset? MissingInRangeSinceUtc);
+    private sealed record Entity(string Name, int X, int Y);
 }

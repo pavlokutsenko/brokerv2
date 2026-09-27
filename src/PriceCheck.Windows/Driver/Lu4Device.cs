@@ -17,7 +17,7 @@ public sealed class Lu4Device : IDisposable
 
     public Lu4Device()
     {
-        _handle = CreateFile(@"\\.\LU4Memory", 0xC0000000, 0, IntPtr.Zero, 3, 0, IntPtr.Zero);
+        _handle = CreateFile(@"\\.\LU4Memory", 0xC0000000, 3, IntPtr.Zero, 3, 0, IntPtr.Zero);
         if (_handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error(), "LU4Memory driver is not running.");
     }
 
@@ -28,6 +28,8 @@ public sealed class Lu4Device : IDisposable
         BinaryPrimitives.WriteInt32LittleEndian(request.AsSpan(4), pid);
         var response = Ioctl(Code(0x800, ReadAccess), request, 16);
         Validate(response, 16);
+        if (BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(4)) != pid)
+            throw new IOException("LU4Memory base response belongs to another PID.");
         return BinaryPrimitives.ReadUInt64LittleEndian(response.AsSpan(8));
     }
 
@@ -37,6 +39,11 @@ public sealed class Lu4Device : IDisposable
         var request = CopyHeader(pid, address, size);
         var response = Ioctl(Code(0x801, ReadAccess), request, CopyHeaderSize + size);
         if (response.Length < CopyHeaderSize) throw new IOException("LU4Memory returned a short read response.");
+        if (BinaryPrimitives.ReadUInt32LittleEndian(response) != Version ||
+            BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(4)) != pid ||
+            BinaryPrimitives.ReadUInt64LittleEndian(response.AsSpan(8)) != address ||
+            BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(16)) != size)
+            throw new IOException("LU4Memory read response does not match this PID/address request.");
         var copied = BinaryPrimitives.ReadInt32LittleEndian(response.AsSpan(20));
         if (copied != size) throw new IOException($"LU4Memory read {copied} of {size} bytes.");
         return response.AsSpan(CopyHeaderSize, copied).ToArray();

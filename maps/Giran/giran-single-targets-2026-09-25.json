@@ -1,0 +1,714 @@
+{
+  "logs": [
+    "C:\\Users\\Pavel\\AppData\\Local\\PriceCheckCollector\\research\\market-walk\\19308\\20260925-134332.jsonl"
+  ],
+  "nearby": 438,
+  "traders": 1798,
+  "nearby_percent": 24.36,
+  "recoveries": 0,
+  "components_within_150": 17,
+  "proximity": [
+    {
+      "name": "Giran_CH_side_body [capsule band]",
+      "mesh": "Giran_CH_side_body",
+      "distance": 48.86
+    },
+    {
+      "name": "Giran_V_Plaza_Pole12 [capsule band]",
+      "mesh": "Giran_V_Plaza_Pole01",
+      "distance": 59.63
+    },
+    {
+      "name": "Giran_StLight57",
+      "mesh": "Giran_StLight01",
+      "distance": 73.0
+    },
+    {
+      "name": "Manor_Giran2",
+      "mesh": "Manor_Giran",
+      "distance": 75.07
+    },
+    {
+      "name": "Giran_V_Plaza_Pole2",
+      "mesh": "Giran_V_Plaza_Pole01",
+      "distance": 76.42
+    },
+    {
+      "name": "Giran_StLight43",
+      "mesh": "Giran_StLight01",
+      "distance": 77.18
+    },
+    {
+      "name": "Giran_V_Plaza_Pole14",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 83.12
+    },
+    {
+      "name": "Giran_CH_side_body2 [capsule band]",
+      "mesh": "Giran_CH_side_body",
+      "distance": 90.35
+    },
+    {
+      "name": "Giran_StLight68",
+      "mesh": "Giran_StLight01",
+      "distance": 93.37
+    },
+    {
+      "name": "Giran_StLight32",
+      "mesh": "Giran_StLight01",
+      "distance": 102.03
+    },
+    {
+      "name": "Giran_V_Plaza_Wall02",
+      "mesh": "Giran_V_Plaza_Wall02",
+      "distance": 103.22
+    },
+    {
+      "name": "Giran_CH_front_body [capsule band]",
+      "mesh": "Giran_CH_front_body",
+      "distance": 116.16
+    },
+    {
+      "name": "Giran_V_Plaza_Pole11 [capsule band]",
+      "mesh": "Giran_V_Plaza_Pole01",
+      "distance": 127.06
+    },
+    {
+      "name": "Giran_V_Plaza_Pole10",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 128.66
+    },
+    {
+      "name": "Giran_StLight11 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 134.35
+    },
+    {
+      "name": "Giran_V_Plaza_Wall3",
+      "mesh": "Giran_V_Plaza_Wall02",
+      "distance": 142.61
+    },
+    {
+      "name": "Giran_V_Plaza_Elevation",
+      "mesh": "Giran_V_Plaza_Elevation",
+      "distance": 144.51
+    },
+    {
+      "name": "Giran_V_Plaza_Wall01",
+      "mesh": "Giran_V_Plaza_Wall01",
+      "distance": 156.65
+    },
+    {
+      "name": "Giran_V_Plaza_Wall04",
+      "mesh": "Giran_V_Plaza_Wall04",
+      "distance": 158.0
+    },
+    {
+      "name": "Giran_V_Market_Wall6 [capsule band]",
+      "mesh": "Giran_V_Market_Wall05",
+      "distance": 168.66
+    },
+    {
+      "name": "Giran_V_Plaza_Gate02 [capsule band]",
+      "mesh": "Giran_V_Plaza_Gate02",
+      "distance": 168.95
+    },
+    {
+      "name": "Giran_V_Market_Wall01 [capsule band]",
+      "mesh": "Giran_V_Market_Wall01",
+      "distance": 172.89
+    },
+    {
+      "name": "Giran_V_Market_Wall05 [capsule band]",
+      "mesh": "Giran_V_Market_Wall05",
+      "distance": 184.47
+    },
+    {
+      "name": "Giran_V_Plaza_Stair01 [capsule band]",
+      "mesh": "Giran_V_Plaza_Stair01",
+      "distance": 184.67
+    },
+    {
+      "name": "Giran_V_Plaza_Gate3 [capsule band]",
+      "mesh": "Giran_V_Plaza_Gate02",
+      "distance": 186.62
+    },
+    {
+      "name": "Giran_V_Plaza_Pole6",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 186.77
+    },
+    {
+      "name": "Giran_CH_in_front [capsule band]",
+      "mesh": "Giran_CH_in_front",
+      "distance": 186.87
+    },
+    {
+      "name": "Giran_StLight25 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 189.53
+    },
+    {
+      "name": "BspConvertedToStaticMesh_021E62DC [capsule band]",
+      "mesh": "BspConvertedToStaticMesh_021E62DC",
+      "distance": 190.13
+    },
+    {
+      "name": "Submesh_F3B99427 [capsule band]",
+      "mesh": "Submesh_Giran",
+      "distance": 192.82
+    },
+    {
+      "name": "Giran_V_Plaza_Pole16",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 194.79
+    },
+    {
+      "name": "Giran_V_Plaza_Pole18 [capsule band]",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 206.19
+    },
+    {
+      "name": "Giran_V_Plaza_Pole17 [capsule band]",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 206.3
+    },
+    {
+      "name": "Giran_V_Plaza_Wall03",
+      "mesh": "Giran_V_Plaza_Wall03",
+      "distance": 214.86
+    },
+    {
+      "name": "Giran_V_Plaza_Pole19",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 215.48
+    },
+    {
+      "name": "Giran_V_Plaza_Pole3",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 218.16
+    },
+    {
+      "name": "O_Box50 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 220.34
+    },
+    {
+      "name": "O_Box5 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 226.21
+    },
+    {
+      "name": "Giran_V_Market_Wall02 [capsule band]",
+      "mesh": "Giran_V_Market_Wall02",
+      "distance": 227.87
+    },
+    {
+      "name": "O_Box56 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 229.18
+    },
+    {
+      "name": "Giran_V_Plaza_Pole01 [capsule band]",
+      "mesh": "Giran_V_Plaza_Pole01",
+      "distance": 230.31
+    },
+    {
+      "name": "Giran_V_Plaza_Pole15 [capsule band]",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 230.83
+    },
+    {
+      "name": "O_Box6 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 234.89
+    },
+    {
+      "name": "O_Box29 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 234.92
+    },
+    {
+      "name": "Giran_V_Plaza_Pole13",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 245.99
+    },
+    {
+      "name": "Giran_V_Plaza_Pole5",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 251.62
+    },
+    {
+      "name": "Giran_V_AccessaryShop",
+      "mesh": "Giran_V_AccessaryShop",
+      "distance": 255.95
+    },
+    {
+      "name": "O_Box02 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 264.13
+    },
+    {
+      "name": "O_Box43 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 266.08
+    },
+    {
+      "name": "O_Box40 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 271.86
+    },
+    {
+      "name": "BspConvertedToStaticMesh_544B5DE5",
+      "mesh": null,
+      "distance": 271.95
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 273.13
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 273.97
+    },
+    {
+      "name": "O_Box4 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 276.78
+    },
+    {
+      "name": "O_Box13 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 280.61
+    },
+    {
+      "name": "O_Box36 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 291.1
+    },
+    {
+      "name": "O_Box58 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 296.3
+    },
+    {
+      "name": "Giran_V_Plaza_Gate01 [capsule band]",
+      "mesh": "Giran_V_Plaza_Gate01",
+      "distance": 307.17
+    },
+    {
+      "name": "O_Box38 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 307.26
+    },
+    {
+      "name": "O_Box66 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 313.91
+    },
+    {
+      "name": "NameCube11 [capsule band]",
+      "mesh": "Giran_AdenaGirl_Btm_Stand",
+      "distance": 319.07
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 319.38
+    },
+    {
+      "name": "O_Box39 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 320.79
+    },
+    {
+      "name": "O_Box35 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 323.52
+    },
+    {
+      "name": "O_Box49 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 324.18
+    },
+    {
+      "name": "Giran_V_Plaza_Gate03",
+      "mesh": "Giran_V_Plaza_Gate03",
+      "distance": 326.0
+    },
+    {
+      "name": "Giran_Bank_Btm [capsule band]",
+      "mesh": "Giran_Bank_Btm",
+      "distance": 332.18
+    },
+    {
+      "name": "O_Box67 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 333.21
+    },
+    {
+      "name": "Giran_V_Plaza_Pole02 [capsule band]",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 336.6
+    },
+    {
+      "name": "Giran_V_GroceryShop",
+      "mesh": "Giran_V_GroceryShop",
+      "distance": 337.41
+    },
+    {
+      "name": "O_Box30 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 345.67
+    },
+    {
+      "name": "O_Box3 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 346.5
+    },
+    {
+      "name": "BspConvertedToStaticMesh_CDDDC0A3",
+      "mesh": null,
+      "distance": 358.41
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 359.56
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 366.13
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 367.87
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 368.63
+    },
+    {
+      "name": "Giran_V_Market_Wall02 [capsule band]",
+      "mesh": "Giran_V_Market_Wall02",
+      "distance": 369.68
+    },
+    {
+      "name": "O_Box46 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 375.81
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 375.96
+    },
+    {
+      "name": "O_Box12 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 376.52
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 395.14
+    },
+    {
+      "name": "Giran_Bank_Body_under",
+      "mesh": "Giran_Bank_Body_under",
+      "distance": 409.9
+    },
+    {
+      "name": "Giran_Bank_Pir_under2",
+      "mesh": "Giran_Bank_Pir_under",
+      "distance": 415.26
+    },
+    {
+      "name": "Giran_StLight73 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 433.71
+    },
+    {
+      "name": "O_Box23 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 437.08
+    },
+    {
+      "name": "Giran_StLight4 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 452.69
+    },
+    {
+      "name": "NameCube10",
+      "mesh": "Giran_AdenaGirl_Btm_Stand",
+      "distance": 452.69
+    },
+    {
+      "name": "O_Box68 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 455.85
+    },
+    {
+      "name": "O_Box22 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 463.18
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 465.4
+    },
+    {
+      "name": "BspConvertedToStaticMesh_6919CCE3",
+      "mesh": "BspConvertedToStaticMesh_6919CCE3",
+      "distance": 471.44
+    },
+    {
+      "name": "Giran_StLight78 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 474.35
+    },
+    {
+      "name": "Giran_V_Market_Wall01 [capsule band]",
+      "mesh": "Giran_V_Market_Wall01",
+      "distance": 478.24
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 479.31
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 481.32
+    },
+    {
+      "name": "O_Box62 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 484.27
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 488.96
+    },
+    {
+      "name": "Giran_StLight25 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 506.0
+    },
+    {
+      "name": "Giran_StLight25 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 507.1
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 507.24
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 518.9
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 530.45
+    },
+    {
+      "name": "Giran_StLight46 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 544.02
+    },
+    {
+      "name": "Giran_V_GroceryShop_Top [capsule band]",
+      "mesh": "Giran_V_GroceryShop_Top",
+      "distance": 546.34
+    },
+    {
+      "name": "Giran_AdenaGirl_Btm [capsule band]",
+      "mesh": "Giran_AdenaGirl_Btm",
+      "distance": 547.5
+    },
+    {
+      "name": "O_Box57 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 548.7
+    },
+    {
+      "name": "Giran_CH_Body [capsule band]",
+      "mesh": "Giran_CH_Body",
+      "distance": 563.45
+    },
+    {
+      "name": "Giran_StLight25 [capsule band]",
+      "mesh": "O_LoadLamp01",
+      "distance": 566.11
+    },
+    {
+      "name": "O_Box45 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 571.88
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 576.93
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 585.48
+    },
+    {
+      "name": "Giran_WorG_Pir01 [capsule band]",
+      "mesh": "Giran_WorG_Pir01",
+      "distance": 586.26
+    },
+    {
+      "name": "O_Box64 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 594.41
+    },
+    {
+      "name": "Giran_CH_F_side10 [capsule band]",
+      "mesh": "Giran_CH_F_side",
+      "distance": 612.74
+    },
+    {
+      "name": "O_Box51 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 617.58
+    },
+    {
+      "name": "Giran_V_Plaza_Pole7",
+      "mesh": "Giran_V_Plaza_Pole02",
+      "distance": 622.47
+    },
+    {
+      "name": "Giran_StLight8 [capsule band]",
+      "mesh": "Giran_StLight02",
+      "distance": 628.37
+    },
+    {
+      "name": "O_Box52 [capsule band]",
+      "mesh": "O_Box02",
+      "distance": 632.86
+    },
+    {
+      "name": "Giran_StLight25 [capsule band]",
+      "mesh": "O_LoadLamp01",
+      "distance": 642.46
+    },
+    {
+      "name": "Giran_StLight25 [capsule band]",
+      "mesh": "O_LoadLamp01",
+      "distance": 707.05
+    },
+    {
+      "name": "Giran_StLight25 [capsule band]",
+      "mesh": "O_LoadLamp01",
+      "distance": 707.19
+    },
+    {
+      "name": "interior_A",
+      "mesh": "interior_A",
+      "distance": 715.72
+    },
+    {
+      "name": "interior_A [capsule band]",
+      "mesh": "interior_A",
+      "distance": 722.41
+    },
+    {
+      "name": "Giran_CH_in_side3 [capsule band]",
+      "mesh": "Giran_CH_in_side",
+      "distance": 743.63
+    },
+    {
+      "name": "Giran_CH_in_side4 [capsule band]",
+      "mesh": "Giran_CH_in_side",
+      "distance": 856.96
+    },
+    {
+      "name": "Giran_CH_F_side3 [capsule band]",
+      "mesh": "Giran_CH_F_side",
+      "distance": 868.99
+    },
+    {
+      "name": "Giran_CH_in_top",
+      "mesh": "Giran_CH_in_top",
+      "distance": 909.94
+    }
+  ],
+  "note": "Proximity to captured geometry is not proof of testing every side or every live obstacle.",
+  "shops": {
+    "log": "C:\\Users\\Pavel\\AppData\\Local\\PriceCheckCollector\\research\\market-walk\\19308\\20260925-134332.shops.jsonl",
+    "captured": 4,
+    "rows": 22,
+    "wire_int64": 4
+  },
+  "single_targets": [
+    {
+      "name": "SetkaPipetka",
+      "trader_key": "setkapipetka",
+      "corner": "north-west",
+      "read": true,
+      "planned_min_distance": 62.75226369609768,
+      "observed_min_distance": 55.78481178882421,
+      "rows": 2,
+      "precision": "wire_int64",
+      "read_distance": 67.28742584436313,
+      "server_distance": 68.24221567329127,
+      "moved_on_after_read": 148.27273466472903
+    },
+    {
+      "name": "Tierra",
+      "trader_key": "tierra",
+      "corner": "north-east",
+      "read": true,
+      "planned_min_distance": 71.53717360870208,
+      "observed_min_distance": 57.317036786996816,
+      "rows": 15,
+      "precision": "wire_int64",
+      "read_distance": 71.31633126440722,
+      "server_distance": 80.4922112120004,
+      "moved_on_after_read": 163.83401204012867
+    },
+    {
+      "name": "twwin003",
+      "trader_key": "twwin003",
+      "corner": "south-east",
+      "read": true,
+      "planned_min_distance": 71.53717360870358,
+      "observed_min_distance": 59.03239495244866,
+      "rows": 1,
+      "precision": "wire_int64",
+      "read_distance": 61.86178288614915,
+      "server_distance": 64.13267497929586,
+      "moved_on_after_read": 140.77953100575013
+    },
+    {
+      "name": "theTrade",
+      "trader_key": "thetrade",
+      "corner": "south-west",
+      "read": true,
+      "planned_min_distance": 71.53717360870803,
+      "observed_min_distance": 55.825120511533605,
+      "rows": 4,
+      "precision": "wire_int64",
+      "read_distance": 71.09772135015693,
+      "server_distance": 72.09022125087424,
+      "moved_on_after_read": 209.402716402423
+    }
+  ],
+  "result_file": "C:\\Users\\Pavel\\AppData\\Local\\PriceCheckCollector\\research\\market-walk\\19308\\20260925-134332.result.json"
+}

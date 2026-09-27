@@ -9,7 +9,7 @@ internal sealed class CollectionWorker(Func<ClientSession, bool> isCurrent) : IC
     public async Task RunAsync(ClientSession session, string mode, string output, Action<ProcessStartInfo> configure)
     {
         if (!isCurrent(session)) throw new OperationCanceledException("Client exited or changed.");
-        var executable = BrokerRuntimeIsolation.WorkerFor(session.ProcessId);
+        var executable = BrokerRuntimeIsolation.WorkerFor(session);
         var start = new ProcessStartInfo
         {
             FileName = executable, WorkingDirectory = Path.GetDirectoryName(executable)!,

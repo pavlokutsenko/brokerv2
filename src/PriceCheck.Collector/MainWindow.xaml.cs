@@ -14,6 +14,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly IProfileStore _profileStore = new ProfileStore();
     private readonly LaunchTemplateStore _templateStore = new();
     private readonly PriceCheck.Launching.LaunchModule _launcher = new();
+    private readonly PriceCheck.Launching.CharacterRotationService _characterRotation;
+    private readonly PriceCheck.Launching.ClientRecoveryService _clientRecovery;
     private readonly PriceCheck.Collection.CollectionModule _collection = new();
     public ObservableCollection<PriceCheck.Contracts.ClientSession> AvailableClients { get; } = [];
     public PriceCheck.Contracts.ClientSession? SelectedClient { get; set; }
@@ -26,6 +28,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _syncingLoginPassword;
 
     public string? StartupLaunchProfileName { get; init; }
+    public string? StartupCollectProfileId { get; init; }
+    public bool StartupResumeCharacter { get; init; }
 
     public ObservableCollection<ProfileRuntime> Runtimes { get; } = [];
     public ObservableCollection<LaunchTemplate> LaunchTemplates { get; } =
@@ -37,9 +41,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public IReadOnlyList<CollectorRoleOption> RoleOptions => CollectorRoleOption.All;
     public IReadOnlyList<string> MarketOptions { get; } = ["Gamma", "Black", "White", "Carmine"];
     public IReadOnlyList<string> LoginServerOptions { get; } = ["Gamma"];
-    public IReadOnlyList<CharacterSlotOption> CharacterOptions { get; } =
-        Enumerable.Range(0, 7).Select(slot => new CharacterSlotOption(slot, $"Slot {slot + 1}")).ToArray();
-    public IReadOnlyList<string> CityOptions { get; } = ["Giran", "Gludio"];
+    public IReadOnlyList<CharacterSlotOption> CharacterOptions =>
+        SelectedRuntime?.Profile.RotationCharacterSlots is { Length: > 0 } slots
+            ? slots.Select(slot => new CharacterSlotOption(slot, $"Slot {slot}")).ToArray()
+            : [new CharacterSlotOption(0, "Slot 0 · список после входа")];
 
     public ProfileRuntime? SelectedRuntime
     {
@@ -50,6 +55,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _selectedRuntime = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(SelectedTemplateSummary));
+            OnPropertyChanged(nameof(CharacterOptions));
             SyncLoginPasswordField();
             _ = RefreshSelectedAsync();
         }
@@ -60,6 +66,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     // Allows rendering the actual window with synthetic data and no application lifecycle.
     public MainWindow(bool initializeRuntime)
     {
+        _characterRotation=new(_launcher);
+        _clientRecovery=new(_launcher);
         InitializeComponent();
         DataContext = this;
         TemplatesView.SaveRequested = ApplyTemplatesAsync;
@@ -74,7 +82,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     private Task SaveProfilesAsync() =>
-        _profileStore.SaveAsync(Runtimes.Select(runtime => runtime.Profile));
+        _loaded ? _profileStore.SaveAsync(Runtimes.Select(runtime => runtime.Profile)) : Task.CompletedTask;
 
     private void SyncLoginPasswordField()
     {
@@ -85,16 +93,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     private static MarketZone? GetCenterZone(CollectorProfile profile) =>
-        profile.CenterZonesByCity.TryGetValue(profile.City, out var center) &&
-        double.IsFinite(center.X) && double.IsFinite(center.Y)
-            ? new MarketZone(center.X, center.Y, 500)
-            : null;
-
-    private void Log(string value)
-    {
-        Events.Insert(0, $"{DateTime.Now:HH:mm:ss}  {value}");
-        while (Events.Count > 100) Events.RemoveAt(Events.Count - 1);
-    }
+        PriceCheck.Collection.CollectionModule.GetCenterZone(profile);
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

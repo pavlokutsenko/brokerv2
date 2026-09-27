@@ -1,4 +1,22 @@
-# Unified market collector
+# Market collector: current and historical paths
+
+The active recurring coordinator is implemented in [COLLECTION_CYCLE.md](COLLECTION_CYCLE.md).
+See [implementation and validation](analysis/market-cycle/IMPLEMENTATION.md) and
+[driver/update/concurrency audit](analysis/market-cycle/DRIVER_COMPATIBILITY.md).
+It uses the manual center, broker-only admission and authoritative complete
+epochs, durable LocalAppData queues, smooth flybys and 24-hour rechecks.
+
+The sector route, radar-authority rule and app-base queue described below are
+HISTORICAL. RefreshAsync no longer calls that coordinator. The native sender
+and research findings remain relevant; do not infer current behavior from the
+old scheduling sections.
+
+The target sender recognizes the original send relay and the validated
+ClientAgent wrapper introduced by the launcher. It checks the wrapper and
+retained prologue before installing hooks; an unknown layout remains an error.
+The 2026-09-24 fix passed the packaged price workflow on the live client and
+was applied to both running installations without replacing session caches.
+See [sender compatibility validation](analysis/remote-prices/observations/003-production-send-fix.md).
 
 Each profile owns one game client for one market and city. Different profiles can run independently for Gamma, Black, White or Carmine. The former broker and price-verifier roles are retired; existing duplicate profiles for the same market/city are collapsed to the broker profile during migration because it contains the saved centre coordinates.
 
@@ -6,7 +24,7 @@ The collector keeps its price queue locally in `data/local-price-queue/<profile-
 
 Only a radar snapshot captured inside the saved centre zone is authoritative for whole-market presence. While the character roams, new observations are merged into the local catalogue, but off-radar traders are retained. Partial roaming snapshots are never uploaded as whole-market presence.
 
-Selection follows the old collector's stable sector policy. Ordinary warm-up stays in one 420 by 420 world-unit sector until it is drained, then chooses the nearest remaining sector and the nearest trader inside it. A newly observed or reopened trader interrupts that route at higher priority. Priorities are session-local, and a failed trader is deferred for a later pass without interrupting the route. Every stop reads up to 64 pending shops from the selected sector inside the validated 95-world-unit interaction radius. The price reader keeps an eight-request sliding window, refilling it as ProcessEvent responses arrive, so a large work list does not overrun the eight-record capture ring. The desktop prepares the price hook once per session; hot batches never reinstall it. If no pending shop is nearby, the collector invokes the client's `Move to Location by Keyboard` UFunction for the selected sector anchor, preserving the client's normal collision tracing and obstacle-aware pathing.
+Selection follows the old collector's stable sector policy. Ordinary warm-up stays in one 420 by 420 world-unit sector until it is drained, then chooses the nearest remaining sector and the nearest trader inside it. A newly observed or reopened trader interrupts that route at higher priority. Priorities are session-local, and a failed trader is deferred for a later pass without interrupting the route. Every stop reads up to 64 pending shops from the selected sector inside the validated 95-world-unit interaction radius. The price reader keeps an eight-request sliding window, refilling it as ProcessEvent responses arrive, so a large work list does not overrun the eight-record capture ring. The desktop prepares the price hook once per session; hot batches never reinstall it. If no pending shop is nearby, the collector invokes the client's `Move to Location by Keyboard` UFunction for the selected sector anchor, delegating movement to the client. Reliable obstacle avoidance by this function has not been established; see [read-only geometry and collision findings](analysis/world-geometry/README.md).
 
 The embedded worker validates that `latest_session.json` and `latest_active64_state.json` belong to the same PID as the live target hook before collection starts. Runtime deployment must preserve live hook state and must not copy `latest*.json` caches between client sessions; a mismatch is regenerated before the first batch.
 

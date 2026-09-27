@@ -1,16 +1,21 @@
 using System.Text.Json;
 using PriceCheck.Collector.Models;
+using PriceCheck.Windows.Storage;
 
 namespace PriceCheck.Collector.Services;
 
-public sealed class ServerUploadOutbox
+public sealed partial class ServerUploadOutbox
 {
+    private readonly Action _startWorker;
+    public string OutputDirectory { get; }
+    public ServerUploadOutbox(Action? startWorker = null, string? directory = null)
+    { _startWorker = startWorker ?? UploadWorkerProcess.EnsureRunning; OutputDirectory=directory??DirectoryPath; }
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = false,
     };
 
-    public static string DirectoryPath => Path.Combine(AppContext.BaseDirectory, "data", "server-outbox");
+    public static string DirectoryPath => Path.Combine(CycleQueue.Root, "server-outbox");
 
     public Task EnqueueRadarAsync(CollectorProfile profile, RadarSnapshot radar)
     {
@@ -71,9 +76,9 @@ public sealed class ServerUploadOutbox
             }).ToArray()
         });
 
-    private static async Task EnqueueAsync(string kind, string url, object body)
+    private Task EnqueueAsync(string kind, string url, object body)
     {
-        Directory.CreateDirectory(DirectoryPath);
+        Directory.CreateDirectory(OutputDirectory);
         var envelope = new ServerUploadEnvelope
         {
             Kind = kind,
@@ -81,11 +86,10 @@ public sealed class ServerUploadOutbox
             Body = JsonSerializer.SerializeToElement(body, Json),
         };
         var name = $"{DateTime.UtcNow:yyyyMMddHHmmssfffffff}-{envelope.Id:N}";
-        var temporary = Path.Combine(DirectoryPath, $"{name}.tmp");
-        var ready = Path.Combine(DirectoryPath, $"{name}.ready");
-        await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(envelope, Json)).ConfigureAwait(false);
-        File.Move(temporary, ready);
-        UploadWorkerProcess.EnsureRunning();
+        var ready = Path.Combine(OutputDirectory, $"{name}.ready");
+        DurableJsonFile.Write(ready, envelope, Json, keepBackup: false);
+        _startWorker();
+        return Task.CompletedTask;
     }
 
     private static string SnapshotUrl(CollectorProfile profile) =>

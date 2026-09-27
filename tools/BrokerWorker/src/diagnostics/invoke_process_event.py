@@ -27,6 +27,13 @@ def invoke(object_address: int, function_address: int, params: bytes) -> bytes:
 
     with Lu4MemoryClient() as client:
         trigger, status = struct.unpack("<II", read_exact(client, pid, command, 8))
+        if trigger == 0 and status == 2:
+            # The game can finish an earlier command just after its caller
+            # timed out or exited. Only status 2 means it has completed; its
+            # reply is orphaned, and the single reader may clear it. Never
+            # reset an armed or still-running command here.
+            write_exact(client, pid, command + 4, b"\0\0\0\0")
+            trigger, status = struct.unpack("<II", read_exact(client, pid, command, 8))
         if trigger or status:
             raise RuntimeError(
                 f"ProcessEvent command bridge is busy: trigger={trigger} status={status}"

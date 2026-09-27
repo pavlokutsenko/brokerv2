@@ -1,5 +1,12 @@
 # Launch and collection modules — 2026-09-24
 
+Update 2026-09-27: the common launch and template UI now lives in
+`PriceCheck.Launching.UI`. A new `PriceCheck.Launcher` WPF host uses it without
+referencing collection; the existing Collector host retains both modules.
+`build.ps1` builds both and creates two ZIPs with the executable at archive root.
+Settings stores are separate. Current instructions: [desktop packages](../../DESKTOP_PACKAGES.md).
+The validation and portable archive entries below describe the historical 24 September build.
+
 Request: one WPF window, two independent modules. The previous launch path
 installed the packet radar before login and waited for first-client coordinates
 before starting the second CLI-selected profile. This coupled launching to

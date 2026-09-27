@@ -331,6 +331,8 @@ def decode_record(raw: bytes, state: dict[str, object]) -> dict[str, object]:
     return {
         "sequence": sequence,
         "function_name": names.get(name_index, ""),
+        "parser_caller": f"0x{struct.unpack_from('<Q', raw, 0xB8)[0]:X}",
+        "alternate_converter_caller": f"0x{struct.unpack_from('<Q', raw, 0xC0)[0]:X}",
         "object_id": object_id,
         "side": {1: "buy", 2: "sell"}.get(side_code, ""),
         "count": count,

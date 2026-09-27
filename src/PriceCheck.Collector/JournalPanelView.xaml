@@ -1,0 +1,29 @@
+<UserControl x:Class="PriceCheck.Collector.JournalPanelView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <Grid Margin="8,10" TextElement.Foreground="{StaticResource TextBrush}">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <WrapPanel Margin="0,0,0,12">
+   <TextBlock Text="Профиль" VerticalAlignment="Center" Margin="0,0,8,0"/>
+   <ComboBox x:Name="ProfileFilter" Width="125" SelectionChanged="FilterChanged"/>
+   <ComboBox x:Name="LevelFilter" Width="115" SelectedIndex="0" SelectionChanged="FilterChanged" Margin="8,0">
+    <ComboBoxItem Content="Все уровни"/><ComboBoxItem Content="INFO"/><ComboBoxItem Content="WARNING"/><ComboBoxItem Content="ERROR"/>
+   </ComboBox>
+   <TextBox x:Name="Search" Width="230" TextChanged="FilterChanged" ToolTip="Поиск в журнале"/>
+   <CheckBox x:Name="AutoScroll" Content="Автопрокрутка" IsChecked="True" VerticalAlignment="Center" Margin="12,0"/>
+   <Button Content="Копировать" Click="Copy_Click" ToolTip="Выделенные записи; без выделения — все отфильтрованные"/>
+  </WrapPanel>
+  <DataGrid x:Name="Entries" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+   SelectionMode="Extended" EnableRowVirtualization="True" EnableColumnVirtualization="True"
+   Background="{StaticResource PanelBrush}" Foreground="{StaticResource TextBrush}" RowBackground="{StaticResource PanelBrush}"
+   AlternatingRowBackground="{StaticResource CardBrush}" BorderThickness="0" GridLinesVisibility="None">
+   <DataGrid.Columns>
+    <DataGridTextColumn Header="Время" Binding="{Binding LocalTime}" Width="115"/>
+    <DataGridTextColumn Header="Уровень" Binding="{Binding Level}" Width="90"/>
+    <DataGridTextColumn Header="Профиль" Binding="{Binding Profile}" Width="100"/>
+    <DataGridTextColumn Header="Трейдер" Binding="{Binding Trader}" Width="110"/>
+    <DataGridTextColumn Header="Событие" Binding="{Binding Message}" Width="*"/>
+   </DataGrid.Columns>
+  </DataGrid>
+ </Grid>
+</UserControl>

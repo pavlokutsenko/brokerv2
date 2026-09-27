@@ -1,4 +1,5 @@
 using PriceCheck.Collector.Models;
+using PriceCheck.Collector.Services;
 
 namespace PriceCheck.Collection;
 
@@ -11,6 +12,7 @@ public sealed partial class CollectionModule
             if (!_attached.TryGetValue(runtime.Profile.Id, out var session)) return;
             if (!_isCurrent(session))
             {
+                runtime.ClientFault="Client exited or changed";
                 await DetachAsync(runtime);
                 runtime.Status = "Reader disconnected · client exited or changed";
                 return;
@@ -19,25 +21,33 @@ public sealed partial class CollectionModule
             var radar = runtime.ProcessId is int livePid
                 ? _radarSessions.Snapshot(livePid, GetCenterZone(runtime.Profile), runtime.IsCollectionEnabled)
                 : null;
-            if (radar is not null) runtime.Radar = radar;
+            if (radar is not null)
+            {
+                runtime.Radar = radar; ObserveLocalState(runtime,radar);
+                if(_localStores.TryGetValue(runtime.Profile.Id,out var store))runtime.UploadStatus=$"Local outbox · {store.PendingUploads} individual operations pending";
+            }
             if (radar is not null && runtime.IsCollectionEnabled)
             {
-                _localPriceQueue.Observe(runtime.Profile, radar);
-                if (radar.IsInsideCenterZone)
-                {
-                    await UploadRadarWhenChangedAsync(runtime, radar);
-                    TryStartBrokerCycle(runtime, radar);
-                }
-                TryStartPriceWorker(runtime, radar);
+                TickCycle(runtime,radar);
             }
+            await PublishCycleStatusAsync(runtime);
             // Broker values must belong to this profile's live session. Never
             // surface old research JSON as if it were current market state.
-            runtime.Broker = null;
         }
         catch (IOException) { }
         catch (JsonException) { }
         catch (Exception exception)
         {
+            var faultFolder=Path.Combine(CycleQueue.Root,runtime.Profile.Id.ToString("N"),"runs");
+            try
+            {
+                Directory.CreateDirectory(faultFolder);
+                var faultPath=Path.Combine(faultFolder,$"reader-error-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.log");
+                File.WriteAllText(faultPath,exception.ToString());
+                Log($"{runtime.Profile.Name}: reader fault details: {faultPath}");
+            }
+            catch(Exception io) when(io is IOException or UnauthorizedAccessException) { }
+            runtime.ClientFault=$"Reader failed: {exception.GetBaseException().Message}";
             if (runtime.ProcessId is int pid)
             {
                 await DetachAsync(runtime);

@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "city": "Giran",
+  "navigation": "giran-navigation-2026-09-26-expanded.json",
+  "validatedCapsule": [9, 23],
+  "coordinateOrigin": [80000, 147000],
+  "collectionZone": {
+    "revision": "giran-2026-09-26-approved",
+    "polygon": [[80640,147430],[83590,147430],[83590,147020],[84560,147020],[84560,149830],[80640,149830]]
+  },
+  "hardExclusions": [
+    {"name": "Manor_Giran2 cart", "bounds": [81850, 82166, 149574, 149802], "evidence": "Native scene footprint plus 15 units; user confirmed trap 2026-09-26"}
+  ],
+  "navigationRules": {
+    "skipProjectionPrefixes": ["BspConvertedToStaticMesh_021E62DC", "Submesh_F3B99427", "Giran_CH_"],
+    "keepProjectionWalls": ["Giran_CH_side_body [capsule band]", "Giran_CH_side_body2 [capsule band]", "Giran_CH_front_body [capsule band]"],
+    "gates": [[83700, 83910, 148110, 148260], [83700, 83910, 148535, 148715], [83700, 83910, 148985, 149135]],
+    "gateFacadeMeshes": ["Giran_CH_side_body", "Giran_CH_front_body", "Giran_CH_side_body2", "Giran_CH_in_front"],
+    "gateImpactX": [83740, 83920],
+    "gateApproachX": [83580, 83960],
+    "riserMesh": "BspConvertedToStaticMesh_021E62DC",
+    "lowStairPrefix": "Giran_V_Plaza_Stair",
+    "riserX": [83800, 83920]
+  }
+}

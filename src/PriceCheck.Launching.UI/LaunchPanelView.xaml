@@ -1,0 +1,111 @@
+<UserControl x:Class="PriceCheck.Collector.LaunchPanelView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" TextElement.Foreground="{StaticResource TextBrush}">
+ <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+  <StackPanel Margin="8,10,8,6" DataContext="{Binding SelectedRuntime}">
+   <TextBlock Text="Запуск и ротация" FontSize="25" FontWeight="SemiBold"/>
+   <TextBlock Text="Настройки клиента и входа в игру" Foreground="{StaticResource MutedBrush}" Margin="0,6,0,20"/>
+   <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="16">
+    <StackPanel>
+     <DockPanel Margin="0,0,0,18">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+       <Button Content="Launch client" Click="Launch_Click" Background="{StaticResource PrimaryBrush}" Foreground="#07110D" Margin="0,0,10,0"/>
+       <Button Content="Stop client" Click="Stop_Click" ToolTip="Stops clients launched by this window. Other clients remain open."/>
+      </StackPanel>
+      <StackPanel><TextBlock Text="{Binding Profile.Name, TargetNullValue=Select a profile}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{Binding LaunchStatus}" Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}"/></StackPanel>
+     </DockPanel>
+     <TextBlock Text="Client executable" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,0,6"/>
+     <DockPanel><Button DockPanel.Dock="Right" Content="Browse…" Click="BrowseFolder_Click" Margin="8,0,0,0"/><TextBox Text="{Binding Profile.LaunchFile, UpdateSourceTrigger=PropertyChanged}" TextChanged="ProfileField_Changed"/></DockPanel>
+                    <Border  Background="#0E131A" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="7" Padding="11" Margin="0,8,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="240" />
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="LAUNCH TEMPLATE" Foreground="{StaticResource MutedBrush}" FontSize="10"
+                                       VerticalAlignment="Center" Margin="0,0,14,0"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=LaunchTemplates}"
+                                      SelectedValuePath="Id"
+                                      SelectedValue="{Binding Profile.LaunchTemplateId, Mode=TwoWay}"
+                                      SelectionChanged="LaunchTemplateSelection_Changed">
+                                <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Name}" Foreground="#11161E"/></DataTemplate></ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="2" Content="Edit templates" Click="ManageTemplates_Click" Margin="10,0,16,0"/>
+                            <StackPanel Grid.Column="3" VerticalAlignment="Center">
+                                <TextBlock Text="HWID and proxy come from the selected template" TextWrapping="Wrap" FontSize="11"/>
+                                <TextBlock Text="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=SelectedTemplateSummary}"
+                                           Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <Border  Background="#0E131A" BorderBrush="{StaticResource BorderBrush}"
+                            BorderThickness="1" CornerRadius="7" Padding="11" Margin="0,8,0,0">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="1.5*" />
+                                <ColumnDefinition Width="1.5*" /><ColumnDefinition Width="1.1*" />
+                                <ColumnDefinition Width="1*" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Content="Auto login" IsChecked="{Binding Profile.AutoLoginEnabled, Mode=TwoWay}"
+                                      Checked="AutoLogin_Changed" Unchecked="AutoLogin_Changed"
+                                      VerticalAlignment="Center" Margin="0,0,18,0"/>
+                            <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                <TextBlock Text="USERNAME" Foreground="{StaticResource MutedBrush}" FontSize="10" />
+                                <TextBox Text="{Binding Profile.LoginName, UpdateSourceTrigger=PropertyChanged}"
+                                         TextChanged="ProfileField_Changed" Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                                <TextBlock Text="PASSWORD" Foreground="{StaticResource MutedBrush}" FontSize="10" />
+                                <PasswordBox x:Name="LoginPasswordBox" x:FieldModifier="public" PasswordChanged="LoginPassword_Changed" Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" Margin="0,0,10,0">
+                                <TextBlock Text="LOGIN SERVER" Foreground="{StaticResource MutedBrush}" FontSize="10" />
+                                <ComboBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=LoginServerOptions}"
+                                          SelectedItem="{Binding Profile.LoginServerName, Mode=TwoWay}"
+                                          SelectionChanged="ProfileSelection_Changed" Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="4" Margin="0,0,10,0">
+                                <TextBlock Text="CHARACTER" Foreground="{StaticResource MutedBrush}" FontSize="10" />
+                                <ComboBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=Window}, Path=CharacterOptions}"
+                                          DisplayMemberPath="Label" SelectedValuePath="Slot"
+                                          SelectedValue="{Binding Profile.CharacterSlot, Mode=TwoWay}"
+                                          SelectionChanged="ProfileSelection_Changed" Margin="0,4,0,0"/>
+                            </StackPanel>
+                            <TextBlock Grid.Row="1" Grid.ColumnSpan="5" Margin="0,8,0,0" FontSize="11"
+                                       Foreground="{StaticResource MutedBrush}"
+                                       Text="Character slots start at 0. Password is protected with Windows DPAPI."/>
+                        </Grid>
+                    </Border>
+                    <Border Background="#0E131A" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="11" Margin="0,8,0,0">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="120"/><ColumnDefinition Width="120"/></Grid.ColumnDefinitions>
+                                <CheckBox x:Name="RotationToggle" Content="Rotate characters" IsChecked="{Binding Profile.CharacterRotationEnabled, Mode=TwoWay}"
+                                          Checked="AutoLogin_Changed" Unchecked="AutoLogin_Changed" VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                    <TextBlock Text="INTERVAL · MIN" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                                    <TextBox x:Name="RotationIntervalInput" Text="{Binding Profile.RotationIntervalMinutes, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" TextChanged="ProfileField_Changed" Margin="0,4,0,0"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="RANDOM ± MIN" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
+                                    <TextBox x:Name="RotationJitterInput" Text="{Binding Profile.RotationJitterMinutes, UpdateSourceTrigger=PropertyChanged, ValidatesOnExceptions=True}" TextChanged="ProfileField_Changed" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Text="All occupied slots, starting at 0, then around again. The client restarts for each change. Auto login is required."
+                                       TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,9,0,0"/>
+                            <TextBlock Text="{Binding CharacterRotationStatus}" TextWrapping="Wrap" Foreground="{StaticResource PrimaryBrush}" FontSize="11" Margin="0,7,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <CheckBox x:Name="AutoRestartToggle" Content="Restart on disconnect or client failure" IsChecked="{Binding Profile.AutoRestartEnabled, Mode=TwoWay}"
+                              Checked="AutoLogin_Changed" Unchecked="AutoLogin_Changed" Margin="0,12,0,0"/>
+    </StackPanel>
+   </Border>
+   <TextBlock Text="Выберите шаблон HWID/прокси и запустите клиент." TextWrapping="Wrap" Margin="0,18,0,0" Foreground="{StaticResource MutedBrush}"/>
+   <TextBlock Text="Closing this application stops clients launched here and their proxy connections." TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{StaticResource MutedBrush}"/>
+  </StackPanel>
+ </ScrollViewer>
+</UserControl>
+
+
