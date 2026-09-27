@@ -17,6 +17,11 @@ and DOTNET_STARTUP_HOOKS to this built library. Launch the ordinary EXE with
 the real Launcher owns the client throughout. Close Launcher normally to stop.
 The hook is never distributed in portable packages.
 
+For startup/readiness-only observation omit PRICECHECK_LAUNCHER_SOAK_ACCOUNT.
+Manual-login profiles then stay at the login screen without a login attempt;
+normal AutoLogin profiles still follow the production flow. Use the real
+--launch-profiles=<first GUID>,<second GUID> argument to launch two profiles.
+
 Optional PRICECHECK_LAUNCHER_SOAK_LOGIN_ACCOUNT selects an authorized saved
 Collector account for an isolation experiment during normal AutoLogin. The
 hook changes only the service argument, preserving the saved Launcher profile,

@@ -93,9 +93,9 @@ public static class StartupHook
                     if (!loginStarted && snapshot is { Busy: false, Session: not null, Protection.HardwareReady: true })
                     {
                         loginStarted = true;
-                        if (!snapshot.AutoLogin)
+                        if (!snapshot.AutoLogin && Environment.GetEnvironmentVariable("PRICECHECK_LAUNCHER_SOAK_ACCOUNT") is { } savedAccount)
                         {
-                            var accountId = Guid.Parse(Environment.GetEnvironmentVariable("PRICECHECK_LAUNCHER_SOAK_ACCOUNT")!);
+                            var accountId = Guid.Parse(savedAccount);
                             var account = (await new ProfileStore().LoadAsync()).Single(value => value.Id == accountId);
                             account.CharacterSlot = snapshot.Slot;
                             account.CharacterRotationEnabled = false;
