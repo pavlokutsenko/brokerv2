@@ -1,0 +1,11 @@
+<Project>
+  <!-- Use the SDK host, preserving the desktop manifest and the same process. -->
+  <Target Name="CreatePortableAppHost" DependsOnTargets="Build">
+    <Error Condition="'$(PortableAppHostDestination)' == ''" Text="PortableAppHostDestination is required." />
+    <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)"
+                   AppHostDestinationPath="$(PortableAppHostDestination)"
+                   AppBinaryName="runtime\$(AssemblyName)$(TargetExt)"
+                   IntermediateAssembly="@(IntermediateAssembly->'%(FullPath)')"
+                   WindowsGraphicalUserInterface="true" />
+  </Target>
+</Project>

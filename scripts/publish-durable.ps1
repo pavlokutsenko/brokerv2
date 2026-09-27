@@ -6,7 +6,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $Destination = [IO.Path]::GetFullPath($Destination)
-$statePath = Join-Path $Destination '.package-state.json'
+$layoutRoot = if (($Source -and (Test-Path -LiteralPath (Join-Path $Source 'runtime'))) -or
+    ($Restore -and (Test-Path -LiteralPath (Join-Path $Destination 'runtime\.package-state.json')))) { 'runtime' } else { '' }
+$statePath = Join-Path (Join-Path $Destination $layoutRoot) '.package-state.json'
 $live = @(Get-Process -Name "PriceCheck.$Product" -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -eq (Join-Path $Destination "PriceCheck.$Product.exe") })
 if ($live.Count) { throw "Stop the installed $Product before publication/recovery." }
@@ -40,7 +42,7 @@ if (-not $Restore) {
     if ($Source -eq $Destination) { throw 'Publish from a separate staging directory.' }
     # Validate the launcher before committing a package. A zero-filled config
     # has the expected length but cannot be used by the .NET host.
-    $runtime = Get-Content -LiteralPath (Join-Path $Source "PriceCheck.$Product.runtimeconfig.json") -Raw | ConvertFrom-Json
+    $runtime = Get-Content -LiteralPath (Join-Path (Join-Path $Source $layoutRoot) "PriceCheck.$Product.runtimeconfig.json") -Raw | ConvertFrom-Json
     if (-not $runtime.runtimeOptions.tfm) { throw "$Product runtimeconfig has no valid runtimeOptions/tfm." }
     $versionPath = Join-Path ($Destination + '.package-recovery') ([Guid]::NewGuid().ToString('N'))
     $entries = @()

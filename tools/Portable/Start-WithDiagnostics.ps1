@@ -24,7 +24,8 @@ try {
     Get-ChildItem Env: | Where-Object { $_.Name.StartsWith('PRICECHECK_TEST_') } |
         ForEach-Object { Remove-Item -LiteralPath ('Env:\' + $_.Name) }
     $env:PRICECHECK_TRACE_HARDWARE = '1'
-    Start-Process -FilePath (Join-Path $PSScriptRoot 'PriceCheck.Collector.exe') -WorkingDirectory $PSScriptRoot
+    $packageRoot = Split-Path -Parent $PSScriptRoot
+    Start-Process -FilePath (Join-Path $packageRoot 'PriceCheck.Collector.exe') -WorkingDirectory $packageRoot
 }
 catch {
     Add-Type -AssemblyName PresentationFramework

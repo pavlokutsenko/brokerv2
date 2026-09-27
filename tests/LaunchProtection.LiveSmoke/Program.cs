@@ -18,11 +18,18 @@ var settings = new[] { "profiles.json", "launch-templates.json" }.Select(name =>
 var hashes = settings.Select(path => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))).ToArray();
 var profile = (await new ProfileStore().LoadAsync()).Single(p => p.Id == profileId);
 var template = (await new LaunchTemplateStore().LoadAsync()).Single(t => t.Id == profile.LaunchTemplateId);
+if (!args.Contains("--direct")) {
 template.ProxyHost = Console.ReadLine() ?? throw new ArgumentException("Proxy host is required.");
 template.ProxyPort = int.Parse(Console.ReadLine()!, CultureInfo.InvariantCulture);
 template.ProxyUser = Console.ReadLine() ?? "";
 template.ProxyPassword = Console.ReadLine() ?? "";
 template.ProxyEnabled = true;
+} else {
+    template.ProxyEnabled = false;
+    // Invalid stale values prove that disabled fields are never validated or contacted.
+    template.ProxyHost = "invalid host:unused"; template.ProxyPort = -1;
+    template.ProxyUser = "unused\r\n"; template.ProxyPassword = "unused\r\n";
+}
 template.HardwareEnabled = true;
 template.RotateEachLaunch = false;
 if (args.Contains("--banner"))

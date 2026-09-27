@@ -32,6 +32,7 @@
          <Style.Triggers>
           <DataTrigger Binding="{Binding Protection.ProxyReady}" Value="True"><Setter Property="Foreground" Value="#65D4A6"/></DataTrigger>
           <DataTrigger Binding="{Binding Protection.Failed}" Value="True"><Setter Property="Foreground" Value="#FF7B7B"/></DataTrigger>
+          <DataTrigger Binding="{Binding Protection.ProxyRequired}" Value="False"><Setter Property="Foreground" Value="#8F9CAB"/></DataTrigger>
          </Style.Triggers>
         </Style></TextBlock.Style>
        </TextBlock>
@@ -127,7 +128,7 @@
                               Checked="AutoLogin_Changed" Unchecked="AutoLogin_Changed" Margin="0,12,0,0"/>
     </StackPanel>
    </Border>
-   <TextBlock Text="Выберите шаблон HWID/прокси и запустите клиент." TextWrapping="Wrap" Margin="0,18,0,0" Foreground="{StaticResource MutedBrush}"/>
+   <TextBlock Text="Выберите шаблон HWID и запустите клиент. Прокси используется только при включённой опции в шаблоне." TextWrapping="Wrap" Margin="0,18,0,0" Foreground="{StaticResource MutedBrush}"/>
    <TextBlock Text="Closing this application stops clients launched here and their proxy connections." TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{StaticResource MutedBrush}"/>
   </StackPanel>
  </ScrollViewer>

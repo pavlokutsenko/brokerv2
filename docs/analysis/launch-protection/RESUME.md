@@ -3,9 +3,25 @@
 2026-09-27 11:15 UTC: the user requested removing extra checks and adding them
 one at a time. Baseline and all incremental stages passed world entry.
 The full production path passed both slots and failure injection. The user
-subsequently lifted the archive hold. Both final ZIPs were packaged from the
-same tested BuildId efb2a79169f2491ea7a71e310b254b49, without rebuilding,
-and passed DesktopPackages.Smoke after extraction. See
+subsequently lifted the archive hold, then requested a single EXE at each
+portable root. Current BuildId d013b2d8cda841608edae1fd680d25a5 uses the SDK
+apphost plus runtime directory. ProxyEnabled=false now skips all external
+proxy field validation and preflight/periodic probes. The owned local relay
+connects directly to the original IPv4 endpoint; HWID, world generation,
+PID/birth and controller checks remain active. UDP/raw/IPv6 remain denied.
+Native required flags allow only 1 (HWID) or 3 (HWID+proxy). Agent/login were
+rebuilt; driver/BrokerWorker are unchanged. Both new ZIPs passed
+DesktopPackages.Smoke and actual apphost/WPF loading with a test-only startup
+hook; profile settings are unchanged. Two complete live runs passed this code:
+proxy off and proxy on, slots 0/1 with Collector reader then Launcher rotation,
+continuous checks and owned relay revocation. Expected HWID tag E333C54BA1BC
+matches the selected saved template. Logs:
+`workspace/launch-protection-live/optional-proxy-direct.log` (PID 20848/15692,
+CONNECT=0, ProxyRequired=false) and `optional-proxy-enabled.log` (CONNECT=6).
+The direct-mode echo test waits 11 seconds with invalid unused proxy fields,
+then injects HWID failure and confirms termination. Old ZIP/checksum pairs
+are pruned only after a verified replacement; user-extracted folders are retained.
+See
 [DESKTOP_PACKAGES.md](../../DESKTOP_PACKAGES.md) for names and checksums.
 
 Confirmed baseline: ordinary root launch, final PID bound to the same current
@@ -24,7 +40,8 @@ visible error, loading after login, then client closure/crash.
 Verified and loaded driver SHA256:
 `7DDB36E3C6201093F8A3471EC757E9BDA0C760DDCEE33D58AA0B75CF32703F11`, capabilities 31.
 The tested bytes were promoted into the tracked artifact and pinned loader.
-The service now points to `release/PriceCheckCollector/DriverRuntime/lu4_memory_wfp.sys`.
+After the portable layout change, the service now points to
+`release/PriceCheckCollector/runtime/DriverRuntime/lu4_memory_wfp.sys`.
 Only its saved path changed; the identical loaded driver was not reloaded.
 
 Incremental results after the user's request, each added independently:

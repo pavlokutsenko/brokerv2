@@ -10,7 +10,7 @@ internal sealed class LaunchGuardMapping : IDisposable
     private readonly MemoryMappedViewAccessor _view;
     private readonly byte[] _world;
     public string IdentityTag { get; }
-    public LaunchGuardMapping(string world)
+    public LaunchGuardMapping(string world, bool proxyRequired = true)
     {
         _world = Convert.FromHexString(world);
         if (_world.Length != 16) throw new LaunchProtectionException("Неверная идентичность HWID.");
@@ -19,7 +19,7 @@ internal sealed class LaunchGuardMapping : IDisposable
         _view = _mapping.CreateViewAccessor();
         _view.Write(0, 0x50434744u); _view.Write(4, 1u);
         _view.WriteArray(48, _world, 0, 16);
-        _view.Write(80, 3); // Both HWID and proxy are required.
+        _view.Write(80, proxyRequired ? 3 : 1); // HWID always, external proxy only when selected.
         Heartbeat();
     }
     public void Bind(int pid)

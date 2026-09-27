@@ -50,8 +50,8 @@ public sealed class LaunchTemplate : INotifyPropertyChanged
     public string ProxyPassword { get; set; } = "";
 
     [System.Text.Json.Serialization.JsonIgnore]
-    public string Summary => Id == Guid.Empty ? "Запуск запрещён: выберите шаблон HWID и прокси" :
-        (!HardwareEnabled || !ProxyEnabled ? "Запуск запрещён: включите HWID и прокси · " : "") +
+    public string Summary => Id == Guid.Empty ? "Запуск запрещён: выберите шаблон HWID" :
+        (!HardwareEnabled ? "Запуск запрещён: включите HWID · " : "") +
         $"HWID: {(HardwareEnabled ? RotateEachLaunch ? "new on each launch" : "fixed" : "off")}  ·  " +
         $"HTTP proxy: {(ProxyEnabled ? $"{ProxyHost}:{ProxyPort}" : "off")}";
 

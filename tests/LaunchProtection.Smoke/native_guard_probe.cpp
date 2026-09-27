@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include "../../native/ClientLaunch/launch_guard.h"
 
 static std::atomic_bool hardware{true}, world{true}, layout{true};
@@ -50,6 +51,13 @@ int main(int argc, char** argv) {
     }
     require(!LaunchGuardAllowsLogin(false) && !LaunchGuardAllowsNetwork(), "Unconfirmed HWID accepted");
     state->flags = 1;
+    state->required = 1;
+    require(LaunchGuardAllowsLogin(false) && LaunchGuardAllowsNetwork(), "HWID-only lease rejected");
+    for (auto invalid : {0, 2, 4, 7}) {
+        state->required = invalid;
+        require(!LaunchGuardAllowsLogin(false) && !LaunchGuardAllowsNetwork(), "Invalid required flags accepted");
+    }
+    state->required = 3;
     require(LaunchGuardAllowsLogin(false) && LaunchGuardAllowsNetwork(), "Healthy pre-login gate rejected");
     require(!LaunchGuardAllowsLogin(true), "Character gate accepted an unconfirmed world HWID");
     state->flags = 3; state->world_opened_tick = GetTickCount64(); state->applied_tick = state->world_opened_tick;

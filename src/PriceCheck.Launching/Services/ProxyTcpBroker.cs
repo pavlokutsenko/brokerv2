@@ -32,14 +32,14 @@ internal sealed partial class ProxyTcpBroker : IDisposable
 
     public ProxyTcpBroker(LaunchTemplate template, bool guarded = false)
     {
-        ClientLaunchConfiguration.ValidateProxy(template);
+        if (template.ProxyEnabled) ClientLaunchConfiguration.ValidateProxy(template);
         _guarded = guarded;
-        _probeTemplate = new LaunchTemplate { ProxyEnabled = true, ProxyHost = template.ProxyHost, ProxyPort = template.ProxyPort,
+        _probeTemplate = new LaunchTemplate { ProxyEnabled = template.ProxyEnabled, ProxyHost = template.ProxyHost, ProxyPort = template.ProxyPort,
             ProxyUser = template.ProxyUser, ProxyPassword = template.ProxyPassword };
-        _host = template.ProxyHost.Trim();
-        _port = template.ProxyPort;
-        _authorization = Convert.ToBase64String(Encoding.UTF8.GetBytes(
-            template.ProxyUser + ":" + template.ProxyPassword));
+        _host = template.ProxyEnabled ? template.ProxyHost.Trim() : "";
+        _port = template.ProxyEnabled ? template.ProxyPort : 0;
+        _authorization = template.ProxyEnabled ? Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            template.ProxyUser + ":" + template.ProxyPassword)) : "";
         _listener.Start();
         ListenerPort = ((IPEndPoint)_listener.LocalEndpoint).Port;
         _acceptLoop = Task.Run(AcceptAsync);
@@ -110,7 +110,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
                 var recordsLength = client.Client.IOControl(QueryRecords, null, records);
                 if (recordsLength <= 0) return;
                 Trace("redirect_records", recordsLength);
-                if (_guarded && port == 53)
+                if (_guarded && ProxyEnabled && port == 53)
                 {
                     await ServeDnsAsync(client.GetStream(), records.AsSpan(0, recordsLength).ToArray(), session.Token);
                     return;
@@ -118,56 +118,32 @@ internal sealed partial class ProxyTcpBroker : IDisposable
 
                 using var upstream = new TcpClient(AddressFamily.InterNetwork);
                 upstream.Client.IOControl(SetRecords, records.AsSpan(0, recordsLength).ToArray(), null);
-                await upstream.ConnectAsync(_host, _port, session.Token).AsTask()
+                await upstream.ConnectAsync(ProxyEnabled ? _host : address.ToString(), ProxyEnabled ? _port : port, session.Token).AsTask()
                     .WaitAsync(TimeSpan.FromSeconds(10), session.Token);
-                Trace("proxy_tcp", _port);
+                Trace(ProxyEnabled ? "proxy_tcp" : "direct_tcp", ProxyEnabled ? _port : port);
                 var network = upstream.GetStream();
-                var request = Encoding.ASCII.GetBytes($"CONNECT {destination} HTTP/1.1\r\n" +
-                    $"Host: {destination}\r\nProxy-Authorization: Basic {_authorization}\r\n" +
-                    "Proxy-Connection: Keep-Alive\r\n\r\n");
-                await network.WriteAsync(request, session.Token);
-
-                var response = new byte[8192];
-                var used = 0;
-                var end = -1;
-                while (used < response.Length && end < 0)
-                {
-                    var read = await network.ReadAsync(response.AsMemory(used), session.Token)
-                        .AsTask().WaitAsync(TimeSpan.FromSeconds(10), session.Token);
-                    if (read == 0) { SetError("Прокси закрыл соединение до CONNECT 200."); return; }
-                    used += read;
-                    end = response.AsSpan(0, used).IndexOf("\r\n\r\n"u8);
-                }
-                if (end < 0 || !IsConnectSuccess(response.AsSpan(0, used)))
-                {
-                    var statusEnd = response.AsSpan(0, used).IndexOf("\r\n"u8);
-                    var status = statusEnd >= 0 ? Encoding.ASCII.GetString(response, 0, statusEnd) : "неполный ответ";
-                    SetError($"Прокси отклонил CONNECT к {destination}: {status}.");
-                    return;
-                }
-                Interlocked.Increment(ref _connections);
+                var extra = ProxyEnabled ? await OpenConnectAsync(network, destination, session.Token) : [];
+                if (ProxyEnabled) Interlocked.Increment(ref _connections);
                 if (port == 7782) {
                     Interlocked.Increment(ref _worldConnections);
                     Interlocked.Increment(ref _worldActive); worldSession = true;
                     Interlocked.Exchange(ref _worldOpenedAt, Environment.TickCount64);
                     Interlocked.Exchange(ref _worldSent, 0); Interlocked.Exchange(ref _worldReceived, 0);
                 }
-                Trace("proxy_http_200", port);
-                Trace("connect_response_bytes", used);
-                Trace("connect_extra_bytes", used - end - 4);
+                Trace(ProxyEnabled ? "proxy_http_200" : "direct_connected", port);
 
                 var game = client.GetStream();
                 Trace("game_stream_ready", port);
-                if (used > end + 4)
+                if (extra.Length > 0)
                 {
-                    await game.WriteAsync(response.AsMemory(end + 4, used - end - 4), session.Token);
-                    CountTraffic("proxy_to_client", port, used - end - 4);
+                    await game.WriteAsync(extra, session.Token);
+                    CountTraffic("proxy_to_client", port, extra.Length);
                 }
                 var outgoing = PumpAsync(game, network, "client_to_proxy", port, session.Token);
                 var incoming = PumpAsync(network, game, "proxy_to_client", port, session.Token);
                 await Task.WhenAny(outgoing, incoming);
                 if (!_stop.IsCancellationRequested && (outgoing.IsFaulted || incoming.IsFaulted))
-                    SetError("Обмен игровыми данными через прокси прерван ошибкой сети.");
+                    SetError(ProxyEnabled ? "Обмен игровыми данными через прокси прерван ошибкой сети." : "Обмен игровыми данными прерван ошибкой сети.");
                 Trace("tunnel_ended", port);
                 session.Cancel();
                 upstream.Dispose();
@@ -176,7 +152,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
             }
             catch (Exception error) {
                 if (!_stop.IsCancellationRequested && (error is not OperationCanceledException || !session.IsCancellationRequested))
-                    SetError("Соединение через прокси не прошло проверку или было прервано.");
+                    SetError(error is IOException ? error.Message : ProxyEnabled ? "Соединение через прокси не прошло проверку или было прервано." : "Прямое соединение с игровым сервером прервано.");
                 Trace("tunnel_error", error.HResult);
             }
             finally { if (worldSession && Interlocked.Decrement(ref _worldActive) == 0) Interlocked.Exchange(ref _worldOpenedAt, 0); }

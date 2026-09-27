@@ -24,7 +24,7 @@ public sealed class LaunchModule
     public Task ValidateProtectionAsync(Guid profileId, bool requireWorld, CancellationToken token)
     {
         if (!_owned.TryGetValue(profileId, out var session) || _identity(session.ProcessId) != session)
-            throw new LaunchProtectionException("Проверка невозможна: запустите клиент через это приложение с HWID и прокси.");
+            throw new LaunchProtectionException("Проверка невозможна: запустите клиент через это приложение с HWID.");
         return _processes.ValidateProtectionAsync(session.ProcessId, requireWorld, token);
     }
 
@@ -44,7 +44,7 @@ public sealed class LaunchModule
     {
         if (!_launching.Add(profile.Id)) throw new InvalidOperationException("Profile is already launching.");
         ClientSession? session = null;
-        _lastProtection[profile.Id] = ClientProtectionStatus.Pending;
+        _lastProtection[profile.Id] = ClientProtectionStatus.Pending with { ProxyRequired = template?.ProxyEnabled == true };
         try
         {
             if (_owned.TryGetValue(profile.Id, out var current))
@@ -70,14 +70,14 @@ public sealed class LaunchModule
             progress("Waiting for game window…");
             await _processes.WaitForGameWindowAsync(pid, cancellationToken);
             await _processes.ActivateLateAgentAsync(pid, cancellationToken);
-            progress("Проверка HWID и защиты прокси…");
+            progress(template?.ProxyEnabled == true ? "Проверка HWID и защиты прокси…" : "Проверка HWID…");
             await _processes.ValidateProtectionAsync(pid, false, cancellationToken);
             if(beforeLogin is not null) await beforeLogin(session,cancellationToken);
             if (profile.AutoLoginEnabled)
             {
                 progress("Logging in…");
                 await _login(pid, profile, cancellationToken);
-                progress("Подтверждение HWID и прокси после входа персонажа…");
+                progress(template?.ProxyEnabled == true ? "Подтверждение HWID и прокси после входа персонажа…" : "Подтверждение HWID после входа персонажа…");
                 await _processes.ValidateProtectionAsync(pid, true, cancellationToken);
             }
             progress(profile.AutoLoginEnabled ? "Character selected" : "Client ready · log in manually");
@@ -114,7 +114,7 @@ public sealed class LaunchModule
     {
         if (!_owned.Remove(profileId, out var session)) return;
         var protection = _processes.Protection(session.ProcessId);
-        _lastProtection[profileId] = protection.Failed ? protection : ClientProtectionStatus.Pending;
+        _lastProtection[profileId] = protection.Failed ? protection : ClientProtectionStatus.Pending with { ProxyRequired = protection.ProxyRequired };
         if (_identity(session.ProcessId) == session) _processes.Terminate(session.ProcessId);
         else _processes.Release(session.ProcessId);
     }
@@ -138,7 +138,7 @@ public sealed class LaunchModule
         if (_owned.TryGetValue(profileId, out var session) && _identity(session.ProcessId) != session)
         {
             var protection = _processes.Protection(session.ProcessId);
-            _lastProtection[profileId] = protection.Failed ? protection : ClientProtectionStatus.Pending;
+            _lastProtection[profileId] = protection.Failed ? protection : ClientProtectionStatus.Pending with { ProxyRequired = protection.ProxyRequired };
             _owned.Remove(profileId);
             _processes.Release(session.ProcessId);
         }

@@ -12,10 +12,21 @@ cd C:\broker
 
 build.ps1 проверяет необходимость пересборки BrokerWorker/native-компонентов,
 публикует оба self-contained приложения и автоматически создаёт два ZIP с
-EXE в корне. Результаты: release\PriceCheckLauncher,
+единственным файлом EXE в корне и папкой runtime. Результаты: release\PriceCheckLauncher,
 release\PriceCheckCollector и release\packages. Оба продукта получают один BuildId.
 Устройство, параметры, перенос и проверенные архивы:
 [DESKTOP_PACKAGES.md](DESKTOP_PACKAGES.md).
+
+`scripts/layout-portable.ps1` создаёт стандартный SDK apphost с относительным
+путём runtime\PriceCheck.<Product>.dll и переносит зависимости в runtime.
+Действующий процесс остаётся корневым EXE; AppContext.BaseDirectory указывает
+на runtime. build-info.json и recovery metadata также находятся в runtime.
+Проверка ZIP, UAC manifest и запуска корневых EXE из распакованных папок:
+
+```powershell
+.\tests\DesktopPackages.Smoke.ps1 -Archives @(Get-ChildItem .\release\packages\*.zip | ForEach-Object FullName)
+.\tests\PackageRecovery.Smoke.ps1
+```
 
 -SkipPackages пропускает ZIP, -ForceBroker всегда пересобирает BrokerWorker.
 -SkipBroker использует уже подготовленный runtime; на чистом checkout сначала
@@ -78,6 +89,9 @@ dotnet run --project tests/LaunchProtection.Smoke/LaunchProtection.Smoke.csproj 
 UI smoke использует изолированные настройки и проверяет неизменность
 пользовательских JSON. Проверка готовых ZIP и manifests:
 tests/DesktopPackages.Smoke.ps1 (оба ZIP передаются явно).
+tests/PortablePrune.Smoke.ps1 принимает один готовый ZIP и проверяет, что
+неверный checksum сохраняет старые архивы, а успешная проверка удаляет только
+старые ZIP/sha256 этого продукта. Пользовательские распаковки сохраняются.
 Опциональный --wfp в LaunchProtection.Smoke требует загруженный новый LU4Memory
 и elevated PowerShell; использует только тестовые процессы и локальные endpoint.
 Native watchdog probe проверяет завершение тестового процесса. Полный охват

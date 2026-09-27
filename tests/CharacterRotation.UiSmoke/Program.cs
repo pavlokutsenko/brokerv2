@@ -23,6 +23,12 @@ internal static class Program
         if(!((TextBlock)view.FindName("HardwareProtectionIndicator")!).Text.Contains("FIXTURE123") ||
             !((TextBlock)view.FindName("ProxyProtectionIndicator")!).Text.Contains("2 CONNECT"))
             throw new Exception("Collector protection indicators did not bind to the selected runtime.");
+        runtime.Protection = runtime.Protection with { ProxyReady = false, ProxyRequired = false };
+        app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
+        var proxyIndicator = (TextBlock)view.FindName("ProxyProtectionIndicator")!;
+        if (!proxyIndicator.Text.Contains("выключен в шаблоне") ||
+            ((SolidColorBrush)proxyIndicator.Foreground).Color != Color.FromRgb(0x8F,0x9C,0xAB))
+            throw new Exception("Disabled proxy was displayed as an error or active protection.");
         var toggle=(CheckBox)view.FindName("RotationToggle")!;
         var interval=(TextBox)view.FindName("RotationIntervalInput")!;
         var jitter=(TextBox)view.FindName("RotationJitterInput")!;

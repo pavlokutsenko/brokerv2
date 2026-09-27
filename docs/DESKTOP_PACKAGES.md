@@ -1,11 +1,15 @@
 # Launcher и Collector — портативные поставки
 
 Финальные ZIP от 27 сентября собраны из чистых выходов проверенной сборки
-`efb2a79169f2491ea7a71e310b254b49` и содержат текущие проверки HWID/маршрута.
-В `release/packages` оставлены только два финальных ZIP и их `.sha256`;
-старые архивы и распакованный пакет перенесены в
-`workspace/obsolete-packages-67d2b901`, поскольку автоматическая проверка
-отклонила их физическое удаление. Успешный игровой вход и смена персонажа
+`d013b2d8cda841608edae1fd680d25a5` и содержат текущие проверки HWID/маршрута.
+В корне каждого ZIP один EXE и папка `runtime`; DLL, локализации, драйвер,
+README и проверочные скрипты находятся внутри `runtime`.
+В `release/packages` два финальных ZIP и их `.sha256`; ранняя пользовательская
+распаковка Launcher сохранена. Новые сборки удаляют старые ZIP/sha256 того же продукта;
+предыдущие плоские архивы и распакованный пакет перенесены в
+`workspace/obsolete-flat-packages-20260927`. Более ранние пакеты находятся в
+`workspace/obsolete-packages-67d2b901`: автоматическая проверка отклонила
+физическое удаление. Успешный игровой вход и смена персонажа
 описаны в [LAUNCH_PROTECTION.md](LAUNCH_PROTECTION.md).
 
 Один репозиторий, общие библиотеки, два WPF-приложения:
@@ -43,11 +47,19 @@ Launcher наблюдает живой процесс, окно и TCP без ч
 - `release\packages\PriceCheckLauncher-win-x64-<дата-время>.zip`
 - `release\packages\PriceCheckCollector-win-x64-<дата-время>.zip`
 
+После проверки новой поставки удаляются прежние ZIP и `.sha256` того же
+продукта в выбранном PackageDirectory. До успешного создания, проверки SHA256
+и структуры нового ZIP прежние архивы сохраняются. Распакованные пользователем
+папки и посторонние файлы не удаляются.
+
 `-SkipPackages` пропускает только ZIP. `-OutputDirectory` меняет каталог
 Collector, `-LauncherOutputDirectory` — Launcher, `-PackageDirectory` — архивы.
 Сборка не запускает приложения или игры. Закройте программу перед обновлением
 её установленного release; durable-публикация откажется заменять живой процесс.
 Архивы собираются из свежих staging-каталогов, а не из пользовательского release.
+Корневой EXE создаётся стандартной задачей SDK CreateAppHost и запускает
+runtime\PriceCheck.<Product>.dll в том же процессе. DLL и runtime не извлекаются
+во временную папку при запуске; внешний .NET не нужен.
 
 Для отдельной упаковки уже опубликованного чистого staging:
 
@@ -65,8 +77,9 @@ Collector, `-LauncherOutputDirectory` — Launcher, `-PackageDirectory` — ар
 1. Выберите Launcher для ПК только с игровыми окнами или Collector для ПК со сбором.
 2. **Полностью распакуйте** ZIP в отдельную папку. EXE находится сразу в корне,
    дополнительной вложенной папки PriceCheckLauncher / PriceCheckCollector нет.
+   Рядом только папка runtime со всеми служебными файлами.
 3. Запустите EXE и подтвердите стандартный UAC. Игра устанавливается отдельно.
-   Не запускайте из ZIP и не переносите один EXE без DLL и runtime-каталогов.
+   Не запускайте из ZIP; переносите EXE вместе с папкой runtime.
 4. Укажите путь игры, настройте и сохраните HWID/прокси-шаблон, выберите его
    в профиле. Автовход и ротация проверены для Gamma. Прокси требует учётные данные.
 5. В Collector задайте URL API; текущий default — https://pog-sandbox.com/api.
@@ -102,13 +115,14 @@ ClientAgent, ClientLogin, проверенный LU4Memory и загрузчик
 
 ## Проверка поставки
 
-Каждый ZIP содержит README-FIRST.txt, build-info.json, package-manifest.json
-и Verify-Package.ps1. Manifest schema 2 указывает продукт, корневой entry point,
+В runtime каждого ZIP находятся README-FIRST.txt, build-info.json,
+package-manifest.json и Verify-Package.ps1. Manifest schema 3 указывает продукт,
+корневой entry point, каталог runtime,
 размер и SHA256 каждого файла. Проверяется self-contained runtime и нужные
 native-компоненты; Launcher отвергает примесь сборщика. Проверка из распакованной папки:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Verify-Package.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\runtime\Verify-Package.ps1
 ```
 
 В ZIP не входят профили, пароли, результаты сбора, журналы, серверная база или
@@ -117,28 +131,38 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Verify-Package.ps1
 
 ## Готовая сборка 27 сентября 2026
 
-BuildId обоих приложений: `efb2a79169f2491ea7a71e310b254b49`.
-Исполняемые файлы, native-agent и драйвер совпадают с финальным live-прогоном;
-при упаковке приложения не пересобирались и пользовательские настройки не читались.
+BuildId обоих приложений: `d013b2d8cda841608edae1fd680d25a5`.
+Приложения пересобраны с новым расположением файлов и необязательным прокси.
+Agent/автовход поддерживают HWID-only lease (flags 1) и HWID+proxy (flags 3).
+Драйвер и BrokerWorker не менялись. HWID из шаблона проверяется в обоих режимах.
 
 | Архив в release/packages | Размер | Manifest-файлы |
 | --- | ---: | ---: |
-| PriceCheckLauncher-win-x64-20260927-143033.zip | 75 035 745 байт | 479 |
-| PriceCheckCollector-win-x64-20260927-143038.zip | 102 002 101 байт | 729 |
+| PriceCheckLauncher-win-x64-20260927-151939.zip | 75 045 566 байт | 479 |
+| PriceCheckCollector-win-x64-20260927-151945.zip | 102 015 946 байт | 729 |
 
-SHA256 Launcher: `BAD041963733BD0E33E69967D448EE572AAF00620556BCCFE8C9AE6B966E0F39`.
-SHA256 Collector: `093F2E15D3B04D7C3BC9CA727CD2E88BEE37E4889952A685950341ADD0BDD184`.
+SHA256 Launcher: `F3ECF3E4B6701B7AE83C0FD2E550D8FA58C25F0EC4817B3061F5BB56844018F7`.
+SHA256 Collector: `4BE9EB19796B9318E8641E789BB1D59A4E1892D722EC75797BFF02EBC8EE31C0`.
 
-Производственная сборка проверена через `build.ps1 -SkipPackages`,
-Launcher.Smoke, CharacterRotation.UiSmoke, ModuleIsolation.Smoke,
-LaunchProtection.Smoke --wfp и native guard probes. Финальный live-прогон
-`workspace/launch-protection-live/attempt-13-final-build.log` подтвердил вход
-двух персонажей в мир, подмену world identity, прокси и остановку при отзыве
-маршрута. Подробности и границы проверки: [LAUNCH_PROTECTION.md](LAUNCH_PROTECTION.md).
+Текущая защита проверена через Launcher.Smoke, CharacterRotation.UiSmoke,
+ModuleIsolation.Smoke, LaunchProtection.Smoke --wfp и native guard probes.
+Два полных live-прогона `workspace/launch-protection-live/optional-proxy-direct.log`
+и `optional-proxy-enabled.log` подтвердили вход слотов 0/1, подмену HWID,
+direct/CONNECT трафик, непрерывные проверки, ротацию и остановку при отзыве
+своего маршрута. Настройки на диске не изменились. Подробности и границы проверки:
+[LAUNCH_PROTECTION.md](LAUNCH_PROTECTION.md).
 
-Оба финальных ZIP независимо распакованы: DesktopPackages.Smoke подтвердил
-EXE в корне, все manifest-хэши в Windows PowerShell 5.1, self-contained runtime,
+Новый формат собран через `build.ps1`. Оба ZIP независимо распакованы:
+DesktopPackages.Smoke подтвердил единственный файл EXE в корне, одну папку runtime,
+GUI/UAC manifest, все manifest-хэши в Windows PowerShell 5.1, self-contained runtime,
 отсутствие пользовательского состояния и отказ при повреждённой DLL того же
 размера. Launcher не содержит сборщик/Python. Распаковка для проверки:
-`workspace/desktop-packages-smoke-a453d65bfa1042ba815dbf8f314d046e`.
-Упаковка не запускала игры; запуск на втором ПК/чистой Windows не проверен.
+`workspace/desktop-packages-smoke-55e0e1f74a2b49b9b7101351d3d84539`.
+PortableHost.Smoke запустил каждый корневой EXE с тестовым startup hook,
+загрузил реальные WPF-окна без игрового runtime, подтвердил путь runtime и
+работу из другой рабочей папки при недоступном глобальном .NET. Настройки не
+изменились. PackageRecovery.Smoke подтвердил восстановление EXE/config и
+хранение recovery metadata внутри runtime. PortablePrune.Smoke подтвердил
+сохранение старых архивов при неверном checksum и удаление только прежних
+ZIP/sha256 после успешной проверки. Проверка упаковки не запускала игры;
+полные входы проверены отдельно. Запуск на втором ПК/чистой Windows не проверялся.

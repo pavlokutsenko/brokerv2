@@ -7,6 +7,7 @@ internal sealed partial class ProxyTcpBroker
 {
     public static async Task VerifyUpstreamAsync(LaunchTemplate template, CancellationToken cancellationToken)
     {
+        if (!template.ProxyEnabled) return;
         ClientLaunchConfiguration.ValidateProxy(template);
         using var client = new TcpClient(AddressFamily.InterNetwork);
         try

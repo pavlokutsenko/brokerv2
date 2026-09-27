@@ -21,6 +21,14 @@ each host owns its settings directory and is its sole writer. Legacy public
 namespaces and the pure `CollectorProfile` JSON contract remain compatible.
 The launcher does not reference collection or the collector host.
 See [desktop packages](DESKTOP_PACKAGES.md) for the two portable entry points.
+Each portable root contains one desktop EXE and one runtime directory.
+The SDK CreateAppHost task binds the EXE directly to runtime/PriceCheck.<Product>.dll,
+preserving GUI/UAC resources and process identity; no wrapper process is added.
+AppContext.BaseDirectory resolves to runtime, so native/driver/worker lookups
+remain unchanged. Runtime dependencies, package verification and recovery
+metadata live there; profile settings remain in LocalAppData.
+The SDK supports relative app binary paths through
+[HostWriter.CreateAppHost](https://github.com/dotnet/runtime/blob/v8.0.24/src/installer/managed/Microsoft.NET.HostModel/AppHost/HostWriter.cs).
 See [module separation](analysis/module-separation/README.md) for API/lifecycle,
 validation, migration and live-test limits. The following diagram describes
 responsibilities; it is not a list of additional projects.

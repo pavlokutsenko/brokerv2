@@ -28,9 +28,8 @@ public sealed partial class ClientProcessService : IClientProcessService
         DateTime candidateStarted = DateTime.MinValue;
         try
         {
-            if (template is not { HardwareEnabled: true, ProxyEnabled: true })
-                throw new LaunchProtectionException("Запуск запрещён: выберите шаблон с включёнными HWID и прокси.");
-            ClientLaunchConfiguration.ValidateProxy(template);
+            if (template is not { HardwareEnabled: true })
+                throw new LaunchProtectionException("Запуск запрещён: выберите шаблон с включённым HWID.");
             using (var device = new PriceCheck.Collector.Runtime.Driver.Lu4Device())
                 if (device.QueryProxyGuard().Capabilities != 31)
                     throw new LaunchProtectionException("Драйвер не поддерживает обязательную защиту от прямого трафика.");
@@ -40,7 +39,7 @@ public sealed partial class ClientProcessService : IClientProcessService
             var start = new ProcessStartInfo { FileName = executable, WorkingDirectory = Path.GetDirectoryName(executable)!, UseShellExecute = false };
             var agentPath = ClientLaunchConfiguration.Apply(start, template, profile.Id)
                 ?? throw new LaunchProtectionException("HWID-агент не подготовлен.");
-            mapping = new(start.Environment["PRICECHECK_WORLD_IDENTITY"]!);
+            mapping = new(start.Environment["PRICECHECK_WORLD_IDENTITY"]!, template.ProxyEnabled);
             start.Environment["PRICECHECK_LAUNCH_GUARD"] = mapping.Name;
             // The experimental early loader is excluded from the mandatory guarded path.
             start.Environment.Remove("PRICECHECK_EARLY_CHILD_INJECT");

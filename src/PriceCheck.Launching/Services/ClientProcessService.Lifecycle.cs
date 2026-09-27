@@ -32,7 +32,7 @@ public sealed partial class ClientProcessService
 
     public Task ValidateProtectionAsync(int pid, bool requireWorld, CancellationToken token) =>
         _guards.TryGetValue(pid, out var guard) ? guard.RequireAsync(requireWorld, token) :
-        throw new LaunchProtectionException("Этот процесс не имеет подтверждённой защиты HWID и прокси.");
+        throw new LaunchProtectionException("Этот процесс не имеет подтверждённой защиты HWID.");
 
     public void Terminate(int pid)
     {

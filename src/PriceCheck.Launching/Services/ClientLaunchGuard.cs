@@ -21,6 +21,7 @@ internal sealed class ClientLaunchGuard : IDisposable
         Func<int,bool> alive, Action terminate)
     {
         _mapping = mapping; _broker = broker; _root = root; _alive = alive; _terminate = terminate;
+        _status = ClientProtectionStatus.Pending with { ProxyRequired = broker.ProxyEnabled };
         CheckRoute(root); mapping.ControllerReady(true);
         _lastProbe = Environment.TickCount64;
         _ = Task.Run(RunAsync);
@@ -34,11 +35,11 @@ internal sealed class ClientLaunchGuard : IDisposable
             token.ThrowIfCancellationRequested();
             var status = Status;
             if (status.Failed) throw new LaunchProtectionException(status.Error!);
-            if (status.HardwareReady && status.ProxyReady && (!world || status.WorldIdentityApplied)) return;
+            if (status.HardwareReady && (!status.ProxyRequired || status.ProxyReady) && (!world || status.WorldIdentityApplied)) return;
             if (Environment.TickCount64 >= deadline)
             {
-                Fail(world ? "Вход остановлен: применение HWID и трафик мира через прокси не подтверждены."
-                    : "Запуск остановлен: HWID или защита прокси не прошли проверку.");
+                Fail(world ? "HWID: применение идентичности и обмен данными мира не подтверждены."
+                    : "HWID: подмена идентичности не прошла проверку.");
                 throw new LaunchProtectionException(Status.Error!);
             }
             await Task.Delay(100, token);
@@ -50,7 +51,8 @@ internal sealed class ClientLaunchGuard : IDisposable
         var route = device.QueryProxyGuard(pid);
         if (route.Capabilities != 31 || !route.Active || route.HostProcessId != Environment.ProcessId ||
             route.ListenerPort != _broker.ListenerPort)
-            throw new LaunchProtectionException("Прокси: драйвер не подтвердил запрет прямого трафика для процесса.");
+            throw new LaunchProtectionException(_broker.ProxyEnabled ? "Прокси: драйвер не подтвердил запрет прямого трафика для процесса."
+                : "HWID: драйвер не подтвердил маршрут проверки игрового процесса.");
         // A denied attempt proves that the policy enforced the restriction.
         // Unsupported sockets must stay denied, but normal probing/fallback by
         // the client is not a lost protection lease or a direct traffic leak.
@@ -71,7 +73,7 @@ internal sealed class ClientLaunchGuard : IDisposable
                 // failure above remains fatal and cannot trigger a relaunch.
                 if (pid != 0 && !_alive(pid))
                 {
-                    lock (_gate) _status = ClientProtectionStatus.Pending;
+                    lock (_gate) _status = ClientProtectionStatus.Pending with { ProxyRequired = _broker.ProxyEnabled };
                     _broker.AllowLogin = false;
                     return;
                 }
@@ -79,7 +81,7 @@ internal sealed class ClientLaunchGuard : IDisposable
                 if (pid != 0 && _alive(pid)) blocked = Math.Max(blocked, CheckRoute(pid));
                 if (state.Hardware && Environment.TickCount64 - state.Tick > 5000)
                     throw new LaunchProtectionException("HWID: агент перестал подтверждать подмену.");
-                if (Environment.TickCount64 - _lastProbe > 10000 && (_probe is null || _probe.IsCompleted))
+                if (_broker.ProxyEnabled && Environment.TickCount64 - _lastProbe > 10000 && (_probe is null || _probe.IsCompleted))
                 {
                     _lastProbe = Environment.TickCount64;
                     _probe = ProbeAsync();
@@ -90,10 +92,10 @@ internal sealed class ClientLaunchGuard : IDisposable
                 var applied = state.World && state.WorldCount == _broker.WorldConnections && _broker.WorldOpenedAt is not null;
                 if (_broker.WorldOpenedAt is long started && Environment.TickCount64 - started > 20000 &&
                     !(applied && _broker.WorldTrafficConfirmed))
-                    throw new LaunchProtectionException("Вход остановлен: HWID и обмен данными мира через прокси не подтверждены.");
+                    throw new LaunchProtectionException("HWID: подмена и обмен данными текущего мира не подтверждены.");
                 _broker.AllowLogin = state.Hardware;
                 lock (_gate) _status = new(state.Hardware, applied && _broker.WorldTrafficConfirmed,
-                    true, _broker.Connections, _broker.SentBytes, _broker.ReceivedBytes, _mapping.IdentityTag, null, blocked);
+                    _broker.ProxyEnabled, _broker.Connections, _broker.SentBytes, _broker.ReceivedBytes, _mapping.IdentityTag, null, blocked, _broker.ProxyEnabled);
                 await Task.Delay(500, _stop.Token);
             }
         }

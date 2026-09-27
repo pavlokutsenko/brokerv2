@@ -10,6 +10,15 @@ internal static class GuardMonitorChecks
 {
     public static async Task ChildAsync(string[] args)
     {
+        if (args[0] == "--child-direct") {
+            if (Console.ReadLine() != "go") return;
+            using var client = new TcpClient(AddressFamily.InterNetwork);
+            await client.ConnectAsync(args[2], int.Parse(args[1]));
+            await client.GetStream().WriteAsync("DIRECT_HWID"u8.ToArray());
+            var echo = new byte[11]; await client.GetStream().ReadExactlyAsync(echo);
+            if (!echo.SequenceEqual("DIRECT_HWID"u8.ToArray())) throw new Exception("Direct relay changed the payload");
+            Console.WriteLine("DIRECT_OK"); Console.ReadLine(); return;
+        }
         if (args[0] == "--child-suspended") {
             await File.WriteAllTextAsync(args[1], "STARTED");
             using var tcp = new TcpClient();
@@ -116,7 +125,7 @@ internal static class GuardMonitorChecks
         child.Kill(); await child.WaitForExitAsync();
         Console.WriteLine("WORLD_GENERATION_OK application before CONNECT accepted; prior world cannot authorize reconnect");
     }
-    private static ProcessStartInfo StartInfo(params string[] args)
+    internal static ProcessStartInfo StartInfo(params string[] args)
     {
         var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true,
             WorkingDirectory = Environment.CurrentDirectory, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };

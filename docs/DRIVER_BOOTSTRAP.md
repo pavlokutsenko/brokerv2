@@ -4,7 +4,7 @@ The portable collector owns driver startup and runs with the Windows
 `requireAdministrator` execution level because the verified driver device is
 administrator-only. `App.OnStartup` opens
 `\\.\LU4Memory` before creating the main window. If the device is missing, the
-collector runs the bundled `DriverRuntime\load-driver.ps1` with the same
+collector runs the bundled `runtime\DriverRuntime\load-driver.ps1` with the same
 elevated token and
 waits for completion. A failed or cancelled load stops the collector, so LU4
 cannot be launched in an invalid order.
@@ -22,6 +22,13 @@ Windows installations; a BOM-less UTF-8 script containing Cyrillic diagnostics
 is otherwise decoded as the legacy ANSI code page and fails during parsing.
 Arguments are passed with `ProcessStartInfo.ArgumentList`, and output is
 captured when the collector already has an elevated token.
+
+The current portable root contains only its EXE and runtime directory.
+AppContext.BaseDirectory points to runtime. The saved LU4Memory service path
+was updated to `C:\broker\release\PriceCheckCollector\runtime\DriverRuntime\lu4_memory_wfp.sys`
+after comparing the driver hash with the tested bytes; the running driver was
+not reloaded during this packaging change. Current protection checks and
+capabilities: [LAUNCH_PROTECTION.md](LAUNCH_PROTECTION.md).
 
 Validation:
 

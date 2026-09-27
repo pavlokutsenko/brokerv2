@@ -49,7 +49,7 @@ internal static class Program
         window.SelectedRuntime.Protection = new(true, true, true, 2, 69, 13, "FIXTURE123", null); Pump(app);
         Check(hwid.Text.Contains("FIXTURE123") && proxy.Text.Contains("2 CONNECT"), "Protection status did not bind in Launcher.");
         Render(window, Path.Combine(output, "launcher-protected.png"));
-        window.SelectedRuntime.Protection = window.SelectedRuntime.Protection with { Error = "Synthetic protection failure" }; Pump(app);
+        window.SelectedRuntime.Protection = window.SelectedRuntime.Protection with { Error = "HWID: Synthetic protection failure" }; Pump(app);
         Check(hwid.Text.Contains("ОШИБКА") && proxy.Text.Contains("ОШИБКА"), "Failed protection displayed success.");
         window.SelectedRuntime.Protection = PriceCheck.Contracts.ClientProtectionStatus.Pending; Pump(app);
         var login = (CheckBox)FindVisual<CheckBox>(panel, value => Equals(value.Content, "Auto login"));

@@ -39,7 +39,7 @@ bool open_state() {
 }
 LaunchGuardState* GetLaunchGuardState() { return open_state() ? state : nullptr; }
 bool LaunchGuardLeaseValid() {
-    return state && state->required == 3 && !state->error && state->controller_ready == 1 &&
+    return state && (state->required == 1 || state->required == 3) && !state->error && state->controller_ready == 1 &&
         GetTickCount64() - static_cast<ULONGLONG>(InterlockedCompareExchange64(&state->heartbeat, 0, 0)) < 5000;
 }
 void LaunchGuardFail(LONG error) {

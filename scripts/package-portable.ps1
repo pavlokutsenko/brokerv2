@@ -25,15 +25,16 @@ foreach ($sourceFile in $inputs) {
         $sourceFile.Name -in @('profiles.json', 'launch-templates.json') -or
         $sourceFile.Extension -in @('.log','.csv','.dmp','.bin','.db','.sqlite') -or
         ($sourceFile.Extension -eq '.json' -and $sourceFile.Name -notin @("PriceCheck.$Product.deps.json","PriceCheck.$Product.runtimeconfig.json",'build-info.json') -and
-         $relative -notmatch '^BrokerRuntime\\_internal\\navigation\\maps\\')) {
+         $relative -notmatch '^runtime\\BrokerRuntime\\_internal\\navigation\\maps\\')) {
         throw "Publish directory contains non-distributable state: $relative. Use a fresh build output."
     }
     $target = Join-Path $package $relative
     [void][IO.Directory]::CreateDirectory((Split-Path -Parent $target))
     Copy-Item -LiteralPath $sourceFile.FullName -Destination $target
 }
+$payload = Join-Path $package 'runtime'
 $requiredFiles = @(
-    "PriceCheck.$Product.exe","PriceCheck.$Product.dll","PriceCheck.$Product.deps.json",
+    "PriceCheck.$Product.dll","PriceCheck.$Product.deps.json",
     'PriceCheck.Launching.UI.dll','PriceCheck.Launching.dll','PriceCheck.Contracts.dll','PriceCheck.Windows.dll',
     "PriceCheck.$Product.runtimeconfig.json",'hostfxr.dll','hostpolicy.dll','coreclr.dll','clrjit.dll',
     'PresentationFramework.dll','ClientLaunchRuntime\PriceCheck.ClientAgent.dll',
@@ -42,29 +43,33 @@ $requiredFiles = @(
     'DriverRuntime\kdu.exe','DriverRuntime\drv64.dll','DriverRuntime\Taigei64.dll')
 if ($Product -eq 'Collector') {
     $requiredFiles += @('PriceCheck.Collection.dll','BrokerRuntime\BrokerWorker.exe','BrokerRuntime\_internal\python314.dll','BrokerRuntime\_internal\base_library.zip')
-} elseif ((Test-Path -LiteralPath (Join-Path $package 'PriceCheck.Collection.dll')) -or (Test-Path -LiteralPath (Join-Path $package 'BrokerRuntime'))) {
+} elseif ((Test-Path -LiteralPath (Join-Path $payload 'PriceCheck.Collection.dll')) -or (Test-Path -LiteralPath (Join-Path $payload 'BrokerRuntime'))) {
     throw 'Launcher publication contains collection components.'
 }
 foreach ($required in $requiredFiles) {
-    if (-not (Test-Path -LiteralPath (Join-Path $package $required) -PathType Leaf)) { throw "Missing runtime: $required" }
+    if (-not (Test-Path -LiteralPath (Join-Path $payload $required) -PathType Leaf)) { throw "Missing runtime: $required" }
 }
-Copy-Item -LiteralPath (Join-Path $repo 'tools\Portable\Verify-Package.ps1') -Destination $package
-Copy-Item -LiteralPath (Join-Path $repo "tools\Portable\$Product-README.txt") -Destination (Join-Path $package 'README-FIRST.txt')
+$rootFiles = @(Get-ChildItem -LiteralPath $package -File -Force)
+$rootDirectories = @(Get-ChildItem -LiteralPath $package -Directory -Force)
+if ($rootFiles.Count -ne 1 -or $rootFiles[0].Name -ne "PriceCheck.$Product.exe" -or
+    $rootDirectories.Count -ne 1 -or $rootDirectories[0].Name -ne 'runtime') { throw 'Package root must contain only the executable and runtime directory.' }
+Copy-Item -LiteralPath (Join-Path $repo 'tools\Portable\Verify-Package.ps1') -Destination $payload
+Copy-Item -LiteralPath (Join-Path $repo "tools\Portable\$Product-README.txt") -Destination (Join-Path $payload 'README-FIRST.txt')
 if ($Product -eq 'Collector') {
     foreach ($name in @('Collect-Diagnostics.ps1','Start-WithDiagnostics.ps1')) {
-        Copy-Item -LiteralPath (Join-Path $repo "tools\Portable\$name") -Destination $package
+        Copy-Item -LiteralPath (Join-Path $repo "tools\Portable\$name") -Destination $payload
     }
 }
 $files = @(Get-ChildItem -LiteralPath $package -Recurse -File | Sort-Object FullName | ForEach-Object {
     @{ path = $_.FullName.Substring($package.Length + 1).Replace('\','/'); bytes = $_.Length;
        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
 })
-$manifest = @{ schema = 2; product = $Product; entry_point = "PriceCheck.$Product.exe"; created_utc = [datetimeoffset]::UtcNow.ToString('o'); target = 'win-x64';
+$manifest = @{ schema = 3; product = $Product; entry_point = "PriceCheck.$Product.exe"; runtime_directory = 'runtime'; created_utc = [datetimeoffset]::UtcNow.ToString('o'); target = 'win-x64';
     self_contained = $true; includes_user_settings = $false; includes_server = $false; files = $files }
-$manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Encoding utf8
-$manifestStream = [IO.File]::Open((Join-Path $package 'package-manifest.json'), [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
+$manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $payload 'package-manifest.json') -Encoding utf8
+$manifestStream = [IO.File]::Open((Join-Path $payload 'package-manifest.json'), [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
 try { $manifestStream.Flush($true) } finally { $manifestStream.Dispose() }
-& (Join-Path $package 'Verify-Package.ps1')
+& (Join-Path $payload 'Verify-Package.ps1')
 $destination = if ($PackageDirectory) { [IO.Path]::GetFullPath($PackageDirectory, $repo) } else { Join-Path $repo 'release\packages' }
 [void][IO.Directory]::CreateDirectory($destination)
 $archive = Join-Path $destination ("PriceCheck$Product-win-x64-$stamp.zip")
@@ -77,5 +82,6 @@ $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
 [IO.File]::WriteAllText($archive + '.sha256', ($hash + '  ' + [IO.Path]::GetFileName($archive) + "`n"))
 $hashStream = [IO.File]::Open($archive + '.sha256', [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
 try { $hashStream.Flush($true) } finally { $hashStream.Dispose() }
+& (Join-Path $repo 'scripts\prune-portable-packages.ps1') -KeepArchive $archive -Product $Product
 @{ product = $Product; archive = $archive; entry_point = "PriceCheck.$Product.exe"; bytes = (Get-Item -LiteralPath $archive).Length; sha256 = $hash;
    file_count = $files.Count; staging = $package } | ConvertTo-Json

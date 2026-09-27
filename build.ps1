@@ -79,6 +79,7 @@ foreach ($product in @('Launcher','Collector')) {
         $buildInfo.BrokerSha256 = (Get-FileHash -LiteralPath (Join-Path $staging 'BrokerRuntime\BrokerWorker.exe') -Algorithm SHA256).Hash
     }
     $buildInfo | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $staging 'build-info.json') -Encoding utf8
+    & (Join-Path $repo 'scripts\layout-portable.ps1') -Source $staging -Product $product -Dotnet $dotnet
     $outputs[$product] = $staging
 }
 # Publish only after both applications compiled. Packages always use fresh output,

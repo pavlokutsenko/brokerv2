@@ -13,6 +13,7 @@ internal sealed partial class ProxyTcpBroker
     private int _worldActive;
     private string? _error;
     public bool AllowLogin { get; set; }
+    public bool ProxyEnabled => _probeTemplate.ProxyEnabled;
     public string? Error => Volatile.Read(ref _error) ?? (_acceptLoop.IsFaulted ? "Локальный прокси перестал принимать соединения." : null);
     public long Connections => Interlocked.Read(ref _connections);
     public long SentBytes => Interlocked.Read(ref _sentBytes);

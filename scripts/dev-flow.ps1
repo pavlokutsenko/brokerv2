@@ -4,7 +4,7 @@ $script:DevTaskName = 'PriceCheck Collector Standalone'
 $script:RepoRoot = Split-Path -Parent $PSScriptRoot
 $script:ReleaseDirectory = Join-Path $script:RepoRoot 'release\PriceCheckCollector'
 $script:CollectorExe = Join-Path $script:ReleaseDirectory 'PriceCheck.Collector.exe'
-$script:DriverLoader = Join-Path $script:ReleaseDirectory 'DriverRuntime\load-driver.ps1'
+$script:DriverLoader = Join-Path $script:ReleaseDirectory 'runtime\DriverRuntime\load-driver.ps1'
 $script:BootstrapLog = Join-Path $env:LOCALAPPDATA 'PriceCheckCollector\logs\driver-bootstrap.log'
 
 function Test-DevAdministrator {
