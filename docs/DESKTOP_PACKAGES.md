@@ -1,10 +1,12 @@
 # Launcher и Collector — портативные поставки
 
-После live-проверок защиты 27 сентября новая сборка выполняется с
-`build.ps1 -SkipPackages`: создание ZIP приостановлено по просьбе пользователя.
-Архивы, перечисленные ниже, относятся к предыдущей сборке и не содержат
-текущие проверки HWID/маршрута. Успешный игровой вход и смена персонажа с
-новой защитой описаны в [LAUNCH_PROTECTION.md](LAUNCH_PROTECTION.md).
+Финальные ZIP от 27 сентября собраны из чистых выходов проверенной сборки
+`efb2a79169f2491ea7a71e310b254b49` и содержат текущие проверки HWID/маршрута.
+В `release/packages` оставлены только два финальных ZIP и их `.sha256`;
+старые архивы и распакованный пакет перенесены в
+`workspace/obsolete-packages-67d2b901`, поскольку автоматическая проверка
+отклонила их физическое удаление. Успешный игровой вход и смена персонажа
+описаны в [LAUNCH_PROTECTION.md](LAUNCH_PROTECTION.md).
 
 Один репозиторий, общие библиотеки, два WPF-приложения:
 
@@ -115,23 +117,28 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Verify-Package.ps1
 
 ## Готовая сборка 27 сентября 2026
 
-BuildId обеих приложений после удаления старой серверной поставки: `8d6ab3562cb64af8b36e4ab9271e395a`.
+BuildId обоих приложений: `efb2a79169f2491ea7a71e310b254b49`.
+Исполняемые файлы, native-agent и драйвер совпадают с финальным live-прогоном;
+при упаковке приложения не пересобирались и пользовательские настройки не читались.
 
 | Архив в release/packages | Размер | Manifest-файлы |
 | --- | ---: | ---: |
-| PriceCheckLauncher-win-x64-20260927-112548.zip | 75 013 029 байт | 479 |
-| PriceCheckCollector-win-x64-20260927-112553.zip | 101 978 808 байт | 729 |
+| PriceCheckLauncher-win-x64-20260927-143033.zip | 75 035 745 байт | 479 |
+| PriceCheckCollector-win-x64-20260927-143038.zip | 102 002 101 байт | 729 |
 
-SHA256 Launcher: `AE1DFC68F4D03C6149A531570AA71CEFDA529B654A9E8D55EEC83A522024FF1E`.
-SHA256 Collector: `C2E2563E4120C0090CA81FAB29AED6129BDA0995078429269A53173C534CD575`.
+SHA256 Launcher: `BAD041963733BD0E33E69967D448EE572AAF00620556BCCFE8C9AE6B966E0F39`.
+SHA256 Collector: `093F2E15D3B04D7C3BC9CA727CD2E88BEE37E4889952A685950341ADD0BDD184`.
 
-Проверены: root build.ps1; Launcher.Smoke (реальное WPF-окно в изолированных
-настройках, независимость сборок, сохранение прокси/ID/seed, widths 1380/1120,
-штатное закрытие, production settings unchanged); CollectorUi.Smoke;
-CharacterRotation.UiSmoke; ModuleIsolation.Smoke, включая recovery без reader;
-StorageRecovery.Smoke; ClientLaunch.Smoke --world-identity-checks; durable
-восстановление Collector и Launcher. Два ZIP независимо распакованы;
-DesktopPackages.Smoke подтвердил EXE в корне, полную manifest-проверку в
-Windows PowerShell 5.1, отсутствие пользовательского состояния и отказ при
-повреждённой сборке того же размера. Скриншоты: workspace/desktop-split-ui.
-Проверки не запускали игровые клиенты и не являются live-тестом на втором ПК.
+Производственная сборка проверена через `build.ps1 -SkipPackages`,
+Launcher.Smoke, CharacterRotation.UiSmoke, ModuleIsolation.Smoke,
+LaunchProtection.Smoke --wfp и native guard probes. Финальный live-прогон
+`workspace/launch-protection-live/attempt-13-final-build.log` подтвердил вход
+двух персонажей в мир, подмену world identity, прокси и остановку при отзыве
+маршрута. Подробности и границы проверки: [LAUNCH_PROTECTION.md](LAUNCH_PROTECTION.md).
+
+Оба финальных ZIP независимо распакованы: DesktopPackages.Smoke подтвердил
+EXE в корне, все manifest-хэши в Windows PowerShell 5.1, self-contained runtime,
+отсутствие пользовательского состояния и отказ при повреждённой DLL того же
+размера. Launcher не содержит сборщик/Python. Распаковка для проверки:
+`workspace/desktop-packages-smoke-a453d65bfa1042ba815dbf8f314d046e`.
+Упаковка не запускала игры; запуск на втором ПК/чистой Windows не проверен.

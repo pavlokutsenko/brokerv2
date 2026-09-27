@@ -2,8 +2,11 @@
 
 2026-09-27 11:15 UTC: the user requested removing extra checks and adding them
 one at a time. Baseline and all incremental stages passed world entry.
-The full production path passed both slots and failure injection. No archives
-should be produced until acceptance succeeds and the user's hold is resolved.
+The full production path passed both slots and failure injection. The user
+subsequently lifted the archive hold. Both final ZIPs were packaged from the
+same tested BuildId efb2a79169f2491ea7a71e310b254b49, without rebuilding,
+and passed DesktopPackages.Smoke after extraction. See
+[DESKTOP_PACKAGES.md](../../DESKTOP_PACKAGES.md) for names and checksums.
 
 Confirmed baseline: ordinary root launch, final PID bound to the same current
 driver and proxy, existing HWID agent with no new guard mapping, reader before

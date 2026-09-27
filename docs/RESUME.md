@@ -14,9 +14,10 @@ Launcher и Collector разделены и опубликованы в main к�
 - build.ps1 собирает оба приложения и два self-contained win-x64 ZIP.
   EXE лежит в корне каждого архива. Сервер и база в поставки не входят.
 
-Предыдущий BuildId ZIP-поставок: 8d6ab3562cb64af8b36e4ab9271e395a.
-Старые архивы: PriceCheckLauncher-win-x64-20260927-112548.zip и
-PriceCheckCollector-win-x64-20260927-112553.zip в release/packages.
+Текущий BuildId ZIP-поставок: efb2a79169f2491ea7a71e310b254b49.
+Финальные архивы: PriceCheckLauncher-win-x64-20260927-143033.zip и
+PriceCheckCollector-win-x64-20260927-143038.zip в release/packages.
+В этой папке оставлены только два ZIP и их контрольные суммы.
 Размеры, SHA256 и выполненные проверки:
 [DESKTOP_PACKAGES.md](DESKTOP_PACKAGES.md).
 [Установка и перенос](INSTALLATION.md), [разработка](DEVELOPMENT.md).
@@ -38,8 +39,9 @@ agent DLL полный запуск проходит. Не приписыват�
 
 Verified driver: capabilities 31, SHA256
 `7DDB36E3C6201093F8A3471EC757E9BDA0C760DDCEE33D58AA0B75CF32703F11`.
-Обе оболочки пересобираются через `build.ps1 -SkipPackages`. Новые архивы
-остаются на паузе по просьбе пользователя.
+Обе оболочки собраны через `build.ps1 -SkipPackages`. Пользователь снял паузу
+упаковки: финальные архивы созданы из чистых выходов этой же проверенной сборки.
+DesktopPackages.Smoke проверил оба ZIP после распаковки и отказ при повреждении.
 
 Сборка из экспортированных исходников без готовых runtime прошла: BrokerWorker,
 native-компоненты и обе WPF-оболочки восстановлены из репозитория. Smoke проверили
