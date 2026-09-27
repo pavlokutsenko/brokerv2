@@ -160,7 +160,7 @@ DesktopPackages.Smoke подтвердил единственный файл EXE
 GUI/UAC manifest, все manifest-хэши в Windows PowerShell 5.1, self-contained runtime,
 отсутствие пользовательского состояния и отказ при повреждённой DLL того же
 размера. Launcher не содержит сборщик/Python. Распаковка для проверки:
-`workspace/desktop-packages-smoke-55e0e1f74a2b49b9b7101351d3d84539`.
+`workspace/desktop-packages-smoke-464c11a8ae524d829c1414435c576326`.
 PortableHost.Smoke запустил каждый корневой EXE с тестовым startup hook,
 загрузил реальные WPF-окна без игрового runtime, подтвердил путь runtime и
 работу из другой рабочей папки при недоступном глобальном .NET. Настройки не

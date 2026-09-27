@@ -88,3 +88,10 @@ unchanged user settings. Extraction:
 workspace/desktop-packages-smoke-4436adabf41f4054bbcf6832ccb45399.
 Both final apphosts are left available for the user. No credentials or settings
 were modified. Do not close unrelated Collector processes owned by another chat.
+
+Packaging clarification: the first final PortableHost run loaded both WPF hosts
+but its settings-hash check failed while the real Launcher profiles were starting.
+That overlapping run does not prove the probe changed settings. After startup
+completed, DesktopPackages.Smoke was repeated on the identical ZIPs and passed
+fully, including PORTABLE_HOST_SETTINGS_UNCHANGED. Final evidence:
+workspace/launcher-soak/slow-pc-final-package-smoke-repeat.log.
