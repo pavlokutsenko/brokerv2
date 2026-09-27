@@ -1,28 +1,25 @@
-# Market cycle checkpoint
+# Исторические игровые проверки
 
-Latest: user rebooted after reporting a zero-counter startup. Progress and
-bidirectional connection-cache reuse fixed and packaged; collector/server/site
-reopened. User will log in manually. See STARTUP_PROGRESS.md; live validation
-of the updated progress UI remains pending on the new game PID.
+Сводка результатов 25–26 сентября 2026. Эти проверки относятся к указанным
+прежним сборкам. Текущий статус и дальнейшая приёмка:
+[RESUME.md](../../RESUME.md) и [NEXT_SESSION.md](NEXT_SESSION.md).
 
-2026-09-25. Implementation, WPF UI, v2 server integration, packaging and focused
-checks completed. See IMPLEMENTATION.md for exact evidence and limitations.
-The old sector route is no longer called by RefreshAsync. User-saved centers
-were preserved; no unbounded game run is active.
+| Сборка / проверка | Наблюдавшийся результат | Подробности |
+| --- | --- | --- |
+| Первый packaged cycle | Центр 11,125 с; брокер 1718 торговцев / 8997 строк; 24 sell-лавки / 142 точных лота за 41,2 с | [IMPLEMENTATION.md](IMPLEMENTATION.md) |
+| V36 / V40 | Конечные проходы с радарными дополнениями, возврат и следующий брокер; V40 44 и затем 8 принятых точных снимков | [RECHECK_PERFORMANCE_20260926.md](RECHECK_PERFORMANCE_20260926.md), [FAST_READ_HANDOFF_20260926.md](FAST_READ_HANDOFF_20260926.md) |
+| V43–V47 | Приём новых лавок во время брокера, короткие дуги чтения и исправление повторного наполнения пула известными именами | [RADAR_ADMISSION_20260926.md](RADAR_ADMISSION_20260926.md), [RADAR_ARC_AND_EMPTY_POOL_20260926.md](RADAR_ARC_AND_EMPTY_POOL_20260926.md) |
+| V49–V51 | Реальные закрытие/переоткрытие и повторное чтение; V50 не менее пяти возвратов с немедленным брокером; ранее прочитанные цены сохранили ревизии/сроки | [SHOP_CLOSE_CANCELLATION_20260926.md](SHOP_CLOSE_CANCELLATION_20260926.md), [FIRST_NATIVE_CLOSE_20260926.md](FIRST_NATIVE_CLOSE_20260926.md) |
+| V52–V60 | Ротация семи занятых слотов 0→1→2→3→4→5→6→0, пауза после выхода; естественная смена и recovery сохранили остаток прохода | [V53_FULL_RUN_ROTATION_20260926.md](V53_FULL_RUN_ROTATION_20260926.md), [character-rotation](../character-rotation/README.md) |
+| V64 | Полный проход: 101 лавка / 455 строк, возврат и следующий брокер; естественная 4→5 сохранила тот же проход | [V64_CONTINUATION_LIVE_20260926.md](V64_CONTINUATION_LIVE_20260926.md) |
+| V65 / V66 | Исправление времени жизни native-буфера и привязки брокерных имён; причины прежних сбоев и ограничения подтверждения | [V65](V65_COMMAND_BUFFER_LIFETIME_20260926.md), [V66](V66_BROKER_IDENTITY_20260926.md) |
+| V67 | Короткие участки по 20 целей, ротация и восстановление после native-сбоя; API outage сохранил outbox; полный конечный проход финальной версии не завершён | [LOCAL_CYCLE_V67_20260926.md](LOCAL_CYCLE_V67_20260926.md) |
 
-Live packaged test: center return 11.125 s; broker 1,718 traders / 8,997 rows,
-1,706 bindings (partial authority); price tour 24 sell shops / 142 exact lots in
-41.2 s, zero recoveries, 25 server cancels/replies. Hooks restored, target zero.
-Driver: 2 synthetic PIDs / 8 handles / 4,000 reads passed. Coordinator: two
-simulated independent markets and stop isolation passed. Two actual moving
-clients and long unattended operation have not been verified.
+На исторических сборках проверены точные sell/buy/package строки и независимая
+остановка simulated рынков. Четыре реальные игры, многодневная работа, чистая
+Windows и физическое отключение питания не были подтверждены.
+Не переносить успешный результат старой сборки на новую автоматически.
 
-Prepared control upload is C:/broker/workspace/cycle-live/review-outbox.
-Automatic approval review rejected starting that upload, reason only "blocked
-by policy". Nothing from this control export has been sent. A user approval
-question is pending; do not work around that decision. API migration is applied,
-API/web health is good, isolated PostgreSQL integration tests pass.
-
-Next: approved live upload/site verification; two-game live concurrency and
-long-run buffer reuse validation. Exact buy/package decoding and other city
-maps remain separate unproven work. Unknown client builds fail guarded checks.
+Дубли промежуточных checkpoint'ов с прежними PID, статусами запусков и
+ожидаемыми деплоями удалены из текущих handoff-документов. Подробные исследования
+остаются в этой папке; прежние версии версионированных документов доступны в Git.

@@ -1,5 +1,8 @@
 # Single-client recurring market cycle — integration plan
 
+Historical audit of the experimental server. Current local-cycle implementation
+and production ownership: [RESUME.md](../../RESUME.md).
+
 2026-09-25. Design only; live client and production collection unchanged.
 User asked to reason through the complete cycle after the successful four-target
 pass, and chose a 24-hour price recheck for otherwise unchanged shops.

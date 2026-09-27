@@ -1,6 +1,7 @@
 # Market cycle implementation and evidence
 
-2026-09-25. Active implementation in C:/broker and C:/broker-server.
+2026-09-25. Historical implementation in C:/broker and the experimental C:/broker-server.
+Current packages, server ownership and acceptance status: [RESUME.md](../../RESUME.md).
 Follow-up: distributed server scheduling and power-loss recovery supersede the
 local queue described below. See DISTRIBUTED_QUEUE.md for current ownership,
 tests and deployment; CycleQueue is no longer used by the active coordinator.
