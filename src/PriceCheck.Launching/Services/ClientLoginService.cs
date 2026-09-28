@@ -95,13 +95,17 @@ public sealed class ClientLoginService
 
     private static string ErrorMessage(int status) => status switch
     {
-            -3 => "This LU4 build differs from the validated build; programmatic login is not supported yet.",
+            -3 => "Не удалось проверить структуру исполняемого файла LU4 для автологина.",
+            -40 => "Автовход: в загруженном клиенте не найдены проверенные таблицы объектов и имён.",
+            -41 => "Автовход: структура функций входа изменилась; проверьте журнал и клиент.",
+            -42 => "Автовход: таблица объектов изменилась во время входа.",
             -30 => "Вход остановлен: защита HWID или прокси не подтверждена.",
+            -31 => "Экран персонажей открыт, но игра не подтвердила защищённый обмен с выбранным миром; программный выбор персонажа остановлен.",
             -15 => "The server selection screen did not appear in time.",
             -24 => "The character selection screen did not appear in time.",
             -26 => "The client returned an invalid character list.",
             -27 => "The character-list function differs from the validated client build.",
-            -28 => "Could not observe the character list for automatic rotation.",
+            -28 => "Не удалось подключить наблюдение списка персонажей для ротации. Подробности: character-roster-<PID>.txt в папке logs.",
             _ => $"Auto login stopped at {StageLabel(status)} (code {status})."
     };
 

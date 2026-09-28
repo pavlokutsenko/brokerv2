@@ -18,13 +18,13 @@ var settings = new[] { "profiles.json", "launch-templates.json" }.Select(name =>
 var hashes = settings.Select(path => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))).ToArray();
 var profile = (await new ProfileStore().LoadAsync()).Single(p => p.Id == profileId);
 var template = (await new LaunchTemplateStore().LoadAsync()).Single(t => t.Id == profile.LaunchTemplateId);
-if (!args.Contains("--direct")) {
+if (!args.Contains("--direct") && !args.Contains("--saved-proxy")) {
 template.ProxyHost = Console.ReadLine() ?? throw new ArgumentException("Proxy host is required.");
 template.ProxyPort = int.Parse(Console.ReadLine()!, CultureInfo.InvariantCulture);
 template.ProxyUser = Console.ReadLine() ?? "";
 template.ProxyPassword = Console.ReadLine() ?? "";
 template.ProxyEnabled = true;
-} else {
+} else if (args.Contains("--direct")) {
     template.ProxyEnabled = false;
     // Invalid stale values prove that disabled fields are never validated or contacted.
     template.ProxyHost = "invalid host:unused"; template.ProxyPort = -1;
@@ -44,7 +44,7 @@ if (args.Contains("--wfp-banner"))
 }
 profile.CollectionEnabled = false;
 profile.LastProcessId = null; profile.LastProcessStartUtc = null;
-profile.CharacterRotationEnabled = true;
+profile.CharacterRotationEnabled = !args.Contains("--no-rotation");
 profile.CharacterSlot = 0;
 Environment.SetEnvironmentVariable("PRICECHECK_TRACE_HARDWARE", "1");
 Environment.SetEnvironmentVariable("PRICECHECK_NETWORK_OBSERVE", "1");

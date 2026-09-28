@@ -12,9 +12,7 @@
 namespace {
 bool enabled = false;
 BYTE replacement[16]{};
-constexpr ULONG envelope_rva = 0x12ABD90;
-constexpr DWORD driver_timestamp = 0x6A75E39D;
-constexpr DWORD driver_image_size = 0x1317000;
+ULONG envelope_offset = 0;
 
 void status(const char* event, unsigned detail) {
     TraceEvent(event, detail);
@@ -100,42 +98,110 @@ bool supported_driver(HANDLE device) {
     if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew < sizeof(IMAGE_DOS_HEADER) ||
         dos->e_lfanew > sizeof(header) - sizeof(IMAGE_NT_HEADERS64)) return false;
     const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(header + dos->e_lfanew);
-    if (nt->Signature != IMAGE_NT_SIGNATURE || nt->FileHeader.TimeDateStamp != driver_timestamp ||
-        nt->OptionalHeader.SizeOfImage != driver_image_size) return false;
-    const BYTE expected[] = {0x0F,0x11,0x4C,0x01,0x10,0x0F,0x11,0x04,0x01};
-    BYTE actual[sizeof(expected)]{};
-    return read_driver(device, 0x9C481, actual, sizeof(actual)) &&
-        memcmp(actual, expected, sizeof(actual)) == 0;
+    // Version metadata is irrelevant. The envelope is located and checked
+    // cryptographically when the client opens its world connection.
+    if (nt->Signature != IMAGE_NT_SIGNATURE ||
+        nt->FileHeader.Machine != IMAGE_FILE_MACHINE_AMD64 ||
+        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
+        nt->OptionalHeader.SizeOfImage < 0x100000 ||
+        nt->OptionalHeader.SizeOfImage > 0x40000000) return false;
+    return true;
+}
+
+bool decode_envelope(const BYTE (&envelope)[78], BYTE (&middle)[16]) {
+    BYTE key[20]{}, digest[20]{}, plain[38]{};
+    memcpy(key, envelope + 20, sizeof(key));
+    memcpy(plain, envelope + 40, sizeof(plain));
+    rc4(key, plain, sizeof(plain));
+    const bool prefix = plain[0] == 1;
+    bool suffix = true;
+    for (unsigned index = 33; index < 38; ++index) suffix = suffix && plain[index] == 0xAA;
+    // The inexpensive plaintext marker filters the writable-image scan;
+    // the keyed digest is computed only for a matching candidate.
+    bool valid = prefix && suffix && sha1(envelope + 40, sizeof(plain), digest);
+    if (valid) {
+        rc4(key, digest, sizeof(digest));
+        valid = memcmp(digest, envelope, sizeof(digest)) == 0;
+    }
+    if (valid) memcpy(middle, plain + 9, sizeof(middle));
+    SecureZeroMemory(key, sizeof(key));
+    SecureZeroMemory(digest, sizeof(digest));
+    SecureZeroMemory(plain, sizeof(plain));
+    return valid;
+}
+
+bool find_envelope(HANDLE device, BYTE (&middle)[16]) {
+    BYTE header[4096]{};
+    if (!read_driver(device, 0, header, sizeof(header))) return false;
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(header);
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(header + dos->e_lfanew);
+    if (nt->FileHeader.NumberOfSections == 0 || nt->FileHeader.NumberOfSections > 64 ||
+        reinterpret_cast<const BYTE*>(IMAGE_FIRST_SECTION(nt) + nt->FileHeader.NumberOfSections) >
+            header + sizeof(header)) return false;
+    const auto* sections = IMAGE_FIRST_SECTION(nt);
+    ULONG matched = 0;
+    BYTE candidate[78]{};
+    for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+        const auto& section = sections[index];
+        if ((section.Characteristics & (IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE)) !=
+            (IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE)) continue;
+        const ULONG start = section.VirtualAddress;
+        const ULONG size = section.Misc.VirtualSize;
+        if (start >= nt->OptionalHeader.SizeOfImage ||
+            size > nt->OptionalHeader.SizeOfImage - start) return false;
+        for (ULONG position = 0; position + sizeof(candidate) <= size; position += 4096) {
+            BYTE page[4096 + sizeof(candidate)]{};
+            const ULONG length = (size - position) < 4096 ? size - position : 4096;
+            if (!read_driver(device, start + position, page, length)) continue;
+            ULONG available = length;
+            if (size - position > length &&
+                read_driver(device, start + position + length, page + length,
+                    static_cast<ULONG>(sizeof(candidate) - 1)))
+                available += static_cast<ULONG>(sizeof(candidate) - 1);
+            for (ULONG at = 0; at + sizeof(candidate) <= available; at += 8) {
+                bool first = false, key = false, cipher = false;
+                for (unsigned byte = 0; byte < 20; ++byte) {
+                    first |= page[at + byte] != 0;
+                    key |= page[at + 20 + byte] != 0;
+                }
+                for (unsigned byte = 40; byte < sizeof(candidate); ++byte)
+                    cipher |= page[at + byte] != 0;
+                if (!first || !key || !cipher) continue;
+                memcpy(candidate, page + at, sizeof(candidate));
+                BYTE found[16]{};
+                if (!decode_envelope(candidate, found)) continue;
+                if (matched) {
+                    const bool same = memcmp(middle, found, sizeof(middle)) == 0;
+                    SecureZeroMemory(found, sizeof(found));
+                    if (!same) return false;
+                    continue;
+                }
+                matched = start + position + at;
+                memcpy(middle, found, sizeof(middle));
+                SecureZeroMemory(found, sizeof(found));
+            }
+        }
+    }
+    envelope_offset = matched;
+    SecureZeroMemory(candidate, sizeof(candidate));
+    return matched != 0;
 }
 
 bool read_middle(BYTE (&middle)[16]) {
     HANDLE device = CreateFileW(L"\\\\.\\LU4Memory", GENERIC_READ, 0, nullptr,
                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (device == INVALID_HANDLE_VALUE) { status("world_identity_driver_error", GetLastError()); return false; }
-    BYTE envelope[78]{};
-    const bool read = supported_driver(device) && read_driver(device, envelope_rva, envelope, sizeof(envelope));
+    bool valid = supported_driver(device);
+    if (valid && envelope_offset) {
+        BYTE envelope[78]{};
+        valid = read_driver(device, envelope_offset, envelope, sizeof(envelope)) &&
+            decode_envelope(envelope, middle);
+        SecureZeroMemory(envelope, sizeof(envelope));
+        if (!valid) envelope_offset = 0;
+    }
+    if (valid && !envelope_offset) valid = find_envelope(device, middle);
     CloseHandle(device);
-    if (!read) { status("world_identity_layout_error", 1); return false; }
-    BYTE key[20]{}, digest[20]{}, plain[38]{};
-    memcpy(key, envelope + 20, sizeof(key));
-    memcpy(plain, envelope + 40, sizeof(plain));
-    bool valid = sha1(plain, sizeof(plain), digest);
-    rc4(key, digest, sizeof(digest));
-    const bool integrity = valid && memcmp(digest, envelope, sizeof(digest)) == 0;
-    valid = integrity;
-    rc4(key, plain, sizeof(plain));
-    const bool prefix = plain[0] == 1;
-    bool suffix = true, empty = true;
-    for (unsigned index = 33; index < 38; ++index) suffix = suffix && plain[index] == 0xAA;
-    for (BYTE value : envelope) empty = empty && value == 0;
-    valid = valid && prefix && suffix;
-    const unsigned diagnostic = (integrity ? 1u : 0u) | (prefix ? 2u : 0u) | (suffix ? 4u : 0u) | (empty ? 8u : 0u);
-    if (valid) memcpy(middle, plain + 9, sizeof(middle));
-    SecureZeroMemory(key, sizeof(key));
-    SecureZeroMemory(digest, sizeof(digest));
-    SecureZeroMemory(plain, sizeof(plain));
-    SecureZeroMemory(envelope, sizeof(envelope));
-    if (!valid) status("world_identity_envelope_error", diagnostic);
+    if (!valid) status("world_identity_envelope_error", 0);
     return valid;
 }
 }
@@ -181,7 +247,13 @@ bool CopyWorldIdentity(BYTE (&value)[16]) {
 bool RewriteWorldIdentity(const char* source, size_t size, char (&output)[69]) {
     if (!enabled || !source || size != sizeof(output)) return false;
     const HMODULE clmods = GetModuleHandleW(L"clmods64.dll");
-    if (!clmods || source != reinterpret_cast<const char*>(clmods) + 0x7F01D ||
+    MEMORY_BASIC_INFORMATION region{};
+    const bool source_in_clmods = clmods &&
+        VirtualQuery(source, &region, sizeof(region)) == sizeof(region) &&
+        region.Type == MEM_IMAGE && region.AllocationBase == clmods &&
+        reinterpret_cast<std::uintptr_t>(source) + sizeof(output) <=
+            reinterpret_cast<std::uintptr_t>(region.BaseAddress) + region.RegionSize;
+    if (!source_in_clmods ||
         static_cast<BYTE>(source[0]) != 69 || source[1] != 0) {
         status("world_identity_packet_error", 1);
         return false;

@@ -44,7 +44,7 @@ internal static class IncrementalLaunchProbe
                 while (!pulseStop.IsCancellationRequested) {
                     await Task.Delay(10000, pulseStop.Token);
                     Log("UPSTREAM_PROBE begin");
-                    await broker.VerifyUpstreamAsync(pulseStop.Token);
+                    await ProxyTcpBroker.VerifyUpstreamAsync(template, pulseStop.Token);
                     Log("UPSTREAM_PROBE passed");
                 }
             } catch (OperationCanceledException) when (pulseStop.IsCancellationRequested) { }

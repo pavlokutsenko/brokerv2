@@ -39,6 +39,8 @@ hosts' bindings to the shared HWID/proxy indicators. Live game acceptance
 remains separate: [LAUNCH_PROTECTION.md](../../docs/LAUNCH_PROTECTION.md).
 
 LaunchProtection.LiveSmoke supports --direct with the saved profile/template
-loaded into memory. It does not persist changes, validates two world entries
-with character rotation and monitors, then revokes its own route. Without
---direct the four proxy fields arrive through stdin and are never logged.
+loaded into memory. It does not persist changes. With --saved-proxy it uses
+the selected saved template's DPAPI-protected proxy without printing credentials.
+--no-rotation checks a single world entry when the roster hook is unavailable.
+The monitor and route are checked before shutdown. Without --direct or
+--saved-proxy the four proxy fields arrive through stdin and are never logged.

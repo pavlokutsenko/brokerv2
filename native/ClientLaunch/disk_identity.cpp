@@ -32,58 +32,6 @@ constexpr size_t aa_input_limit = 164;
     return hash;
   }
 
-  void trace_world_slot(DWORD code, bool after) {
-      if (GetEnvironmentVariableW(L"PRICECHECK_TEST_WORLD_SLOT_HASH", nullptr, 0) <= 1 ||
-          (code != 0x222158 && code != 0x22215C && code != 0x222160)) return;
-      const HMODULE clmods = GetModuleHandleW(L"clmods64.dll");
-      if (!clmods) return;
-      BYTE data[69]{};
-      SIZE_T copied = 0;
-      if (!ReadProcessMemory(GetCurrentProcess(),
-                             reinterpret_cast<const BYTE*>(clmods) + 0x7F01D,
-                             data, sizeof(data), &copied) || copied != sizeof(data)) return;
-      char category[40]{};
-      sprintf_s(category, "world_slot_%s_%03x", after ? "after" : "before", code & 0xFFF);
-      TraceEvent(category, fingerprint(data, sizeof(data)));
-  }
-
-  void trace_world_slot_pointers(DWORD code, const BYTE* input, DWORD length) {
-      if (GetEnvironmentVariableW(L"PRICECHECK_TEST_WORLD_SLOT_PTR", nullptr, 0) <= 1 ||
-          (code != 0x222158 && code != 0x22215C && code != 0x222160) ||
-          !input || length < sizeof(uintptr_t)) return;
-      const HMODULE clmods = GetModuleHandleW(L"clmods64.dll");
-      if (!clmods) return;
-      const auto base = reinterpret_cast<uintptr_t>(clmods);
-      const auto slot = base + 0x7F01D;
-      unsigned image_count = 0;
-      unsigned slot_count = 0;
-      char category[48]{};
-      for (DWORD offset = 0; offset + sizeof(uintptr_t) <= length; ++offset) {
-          uintptr_t address = 0;
-          memcpy(&address, input + offset, sizeof(address));
-          if (address < base || address >= base + 0x26AF000) continue;
-          ++image_count;
-          sprintf_s(category, "aa%03x_image_pointer_offset", code & 0xFFF);
-          TraceEvent(category, offset);
-          sprintf_s(category, "aa%03x_image_pointer_rva", code & 0xFFF);
-          TraceEvent(category, static_cast<unsigned>(address - base));
-          if (address >= slot && address < slot + 69) ++slot_count;
-      }
-      sprintf_s(category, "aa%03x_image_pointer_count", code & 0xFFF);
-      TraceEvent(category, image_count);
-      sprintf_s(category, "aa%03x_slot_pointer_count", code & 0xFFF);
-      TraceEvent(category, slot_count);
-  }
-
-  bool read_world_slot(BYTE (&data)[69]) {
-      const HMODULE clmods = GetModuleHandleW(L"clmods64.dll");
-      if (!clmods) return false;
-      SIZE_T copied = 0;
-      return ReadProcessMemory(GetCurrentProcess(),
-                               reinterpret_cast<const BYTE*>(clmods) + 0x7F01D,
-                               data, sizeof(data), &copied) && copied == sizeof(data);
-  }
-
   LONG NTAPI hooked_nt_device_io_control_file(HANDLE handle, HANDLE event, void* apc_routine,
       void* apc_context, void* io_status, ULONG code, void* input, ULONG input_size,
       void* output, ULONG output_size) {
@@ -94,10 +42,7 @@ constexpr size_t aa_input_limit = 164;
           GetEnvironmentVariableW(L"PRICECHECK_TEST_WORLD_NT_HOLD_MS", pause_text, 16) : 0;
       const DWORD pause_ms = pause_length > 0 && pause_length < 16 ?
           min(1500ul, wcstoul(pause_text, nullptr, 10)) : 0;
-      BYTE before[69]{};
-      const bool sample = code == 0x222160 && read_world_slot(before);
-      if (sample) TraceEvent("world_nt_slot_before", fingerprint(before, sizeof(before)));
-      if (sample && pause_ms) {
+      if (pause_ms) {
           TraceEvent("world_nt_before_hold", pause_ms);
           Sleep(pause_ms);
       }
@@ -105,15 +50,7 @@ constexpr size_t aa_input_limit = 164;
       const LONG status = real_nt_device_io_control_file(handle, event, apc_routine, apc_context,
           io_status, code, input, input_size, output, output_size);
       const DWORD last_error = GetLastError();
-      if (sample) {
-          BYTE after[69]{};
-          if (read_world_slot(after)) {
-              TraceEvent("world_nt_slot_after", fingerprint(after, sizeof(after)));
-              TraceEvent("world_nt_slot_changed",
-                         memcmp(before, after, sizeof(before)) != 0 ? 1u : 0u);
-          }
-      }
-      if (sample && pause_ms) {
+      if (pause_ms) {
           TraceEvent("world_nt_after_hold", pause_ms);
           Sleep(pause_ms);
       }
@@ -134,11 +71,6 @@ std::wstring env(const wchar_t* name) {
   BOOL WINAPI hooked_device_io_control(HANDLE handle, DWORD code, LPVOID input, DWORD input_size,
                                        LPVOID output, DWORD output_size, LPDWORD returned, LPOVERLAPPED overlapped) {
       const DWORD previous_error = GetLastError();
-      trace_world_slot(code, false);
-      const bool sample_slot_diff = code == 0x222160 &&
-          GetEnvironmentVariableW(L"PRICECHECK_TEST_WORLD_SLOT_DIFF", nullptr, 0) > 1;
-      BYTE slot_before[69]{};
-      const bool have_slot_before = sample_slot_diff && read_world_slot(slot_before);
     const bool sample_input =
         GetEnvironmentVariableW(L"PRICECHECK_TEST_AA_IOCTL_INPUT_HASH", nullptr, 0) > 1 &&
         (code == 0x222158 || code == 0x22215C || code == 0x222160) &&
@@ -148,8 +80,6 @@ std::wstring env(const wchar_t* name) {
       const bool have_before = sample_input &&
           ReadProcessMemory(GetCurrentProcess(), input, before, input_size, &copied) &&
           copied == input_size;
-      if (have_before)
-          trace_world_slot_pointers(code, before, input_size);
       SetLastError(previous_error);
       BOOL result = real_device_io_control(handle, code, input, input_size, output, output_size, returned, overlapped);
       const DWORD last_error = GetLastError();
@@ -157,27 +87,6 @@ std::wstring env(const wchar_t* name) {
         DWORD value;
         ~RestoreLastError() { SetLastError(value); }
       } restore_last_error{last_error};
-      trace_world_slot(code, true);
-      if (have_slot_before) {
-          BYTE slot_after[69]{};
-          if (read_world_slot(slot_after)) {
-              unsigned changed = 0;
-              unsigned first_changed = 69;
-              unsigned last_changed = 0;
-              unsigned block_mask = 0;
-              for (unsigned index = 0; index < 69; ++index) {
-                  if (slot_before[index] == slot_after[index]) continue;
-                  ++changed;
-                  if (first_changed == 69) first_changed = index;
-                  last_changed = index;
-                  block_mask |= 1u << (index / 8);
-              }
-              TraceEvent("world_slot_changed_count", changed);
-              TraceEvent("world_slot_changed_first", first_changed);
-              TraceEvent("world_slot_changed_last", last_changed);
-              TraceEvent("world_slot_changed_blocks", block_mask);
-          }
-      }
     TraceEvent("device_ioctl", code);
     TraceIoctl(code, input_size, output_size, result && returned ? *returned : 0,
                last_error, result != FALSE, _ReturnAddress());

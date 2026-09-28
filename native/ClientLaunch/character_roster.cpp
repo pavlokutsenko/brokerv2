@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <cstdint>
 #include <cwchar>
+#include <cstdio>
 #include "minhook/include/MinHook.h"
 #include "character_roster.h"
 
@@ -18,6 +19,20 @@ HANDLE mapping=nullptr;
 Shared* shared=nullptr;
 bool created=false;
 std::int32_t roster_name=-1;
+
+void roster_error(const char* stage, int code) {
+    wchar_t local[MAX_PATH]{}, directory[MAX_PATH]{}, logs[MAX_PATH]{}, path[MAX_PATH]{};
+    if (!GetEnvironmentVariableW(L"LOCALAPPDATA", local, MAX_PATH) ||
+        swprintf_s(directory, L"%s\\PriceCheckCollector", local) < 0 ||
+        swprintf_s(logs, L"%s\\logs", directory) < 0 ||
+        swprintf_s(path, L"%s\\character-roster-%lu.txt", logs, GetCurrentProcessId()) < 0) return;
+    CreateDirectoryW(directory, nullptr); CreateDirectoryW(logs, nullptr);
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, path, L"w") == 0 && file) {
+        fprintf(file, "%s status=%d\n", stage, code);
+        fclose(file);
+    }
+}
 
 bool IsRosterFunction(void* function) {
     if(function==hud_function || function==mode_function) return true;
@@ -54,14 +69,20 @@ bool StartCharacterRoster(void* process_event,void* hud,void* mode) {
     mapping=OpenFileMappingW(FILE_MAP_ALL_ACCESS,FALSE,name);
     if(!mapping) return true; // Existing manual-slot login retains its original path.
     shared=static_cast<Shared*>(MapViewOfFile(mapping,FILE_MAP_ALL_ACCESS,0,0,sizeof(Shared)));
-    if(!shared || shared->magic!=roster_magic || shared->version!=1) { StopCharacterRoster();return false; }
+    if(!shared || shared->magic!=roster_magic || shared->version!=1) {
+        roster_error("mapping", GetLastError()); StopCharacterRoster();return false;
+    }
     hud_function=hud;mode_function=mode;hooked_address=process_event;
     roster_name=*reinterpret_cast<const std::int32_t*>(reinterpret_cast<std::uintptr_t>(hud)+0x18);
     auto init=MH_Initialize();
-    if(init!=MH_OK && init!=MH_ERROR_ALREADY_INITIALIZED) { StopCharacterRoster();return false; }
-    if(MH_CreateHook(process_event,&ObserveRoster,reinterpret_cast<void**>(&original))!=MH_OK) { StopCharacterRoster();return false; }
+    if(init!=MH_OK && init!=MH_ERROR_ALREADY_INITIALIZED) {
+        roster_error("initialize", init); StopCharacterRoster();return false;
+    }
+    const auto created_status = MH_CreateHook(process_event,&ObserveRoster,reinterpret_cast<void**>(&original));
+    if(created_status!=MH_OK) { roster_error("create", created_status); StopCharacterRoster();return false; }
     created=true;
-    if(MH_EnableHook(process_event)!=MH_OK) { StopCharacterRoster();return false; }
+    const auto enabled_status = MH_EnableHook(process_event);
+    if(enabled_status!=MH_OK) { roster_error("enable", enabled_status); StopCharacterRoster();return false; }
     return true;
 }
 
