@@ -10,7 +10,8 @@ public sealed partial class CollectionModule
 {
     private async Task RunCycleRouteAsync(ProfileRuntime runtime,CycleRun cycle,IReadOnlyList<CycleTarget> targets,bool center)
     {
-        var spooled=new ConcurrentDictionary<string,byte>();
+        var spooled=center?new ConcurrentDictionary<string,byte>():cycle.PriceSpooled;
+        foreach(var target in targets)spooled.TryRemove(target.TraderKey,out _);
         var unsafeFailure=false;
         try {await RunCycleRouteCoreAsync(runtime,cycle,targets,center,spooled);}
         catch(Exception error){unsafeFailure=IsUnsafeNativeFailure(error);throw;}
@@ -31,23 +32,35 @@ public sealed partial class CollectionModule
         cycle.ProgressFile=prefix+".progress.json";
         if(!center)
         {
-            cycle.RadarFile=prefix+".radar.json";cycle.NextRadarWrite=default;
+            cycle.PriceStreamPrefix??=prefix;
+            cycle.RadarFile=cycle.PriceStreamPrefix+".radar.json";cycle.NextRadarWrite=default;
             if(runtime.Radar is {} radar)WriteCycleRadarTargets(cycle,radar);
         }
-        DurableJsonFile.Write(input,new {city="Giran",market=runtime.Profile.Name,profileId=runtime.Profile.Id,localSection=true,mode=center?"center":"prices",center=new[]{cycle.Center!.Value.X,cycle.Center.Value.Y},
-            previousDestination=cycle.PreviousDestination,duration=center?100:600,radarFile=center?null:cycle.RadarFile,
-            brokerKeys=cycle.BrokerKeys.ToArray(),targets=targets.Select(t=>new {traderKey=t.TraderKey,name=t.Name,x=t.X,y=t.Y,
-                object_id=t.ObjectId,kiosk_type=t.KioskType,rebind=t.RebindOnRead,verification_revision=t.VerificationRevision??t.Revision.ToString(),local_revision=t.Revision}).ToArray()},keepBackup:false);
+        DurableJsonFile.Write(input,new {city="Giran",market=runtime.Profile.Name,profileId=runtime.Profile.Id,localSection=true,mode=center?"center":"prices",center=new[]{cycle.Center!.Value.X,cycle.Center.Value.Y},centerRadius=cycle.Center.Value.Radius,
+            previousDestination=cycle.PreviousDestination,
+            duration=center?100:600,
+            traderPauseSeconds=runtime.Profile.TraderPauseSeconds,
+            radarFile=center?null:cycle.RadarFile,
+            preparationInput=prefix+".prepare.input.json",preparationOutput=prefix+".prepare.plan.json",
+            shopPrefix=cycle.PriceStreamPrefix,brokerKeys=cycle.BrokerKeys.ToArray(),targets=RouteTargets(targets),preparedPlan=center?null:PreparedRoute(cycle)},keepBackup:false);
         Log($"INFO {runtime.Profile.Name}: {(center?"return to center":"route section")} · {targets.Count} targets · PID {runtime.ProcessId}");
         Exception? failure=null;
         using var stop=new CancellationTokenSource();
         var byKey=targets.ToDictionary(t=>t.TraderKey);
-        var stream=center?Task.CompletedTask:StreamCyclePricesAsync(cycle,prefix,byKey,spooled,stop.Token);
-        try {await RunCycleWorkerAsync(runtime,cycle,"market-route",output,input);}
+        var streamPrefix=center?prefix:cycle.PriceStreamPrefix!;
+        var stream=center?Task.CompletedTask:StreamCyclePricesAsync(cycle,streamPrefix,byKey,spooled,stop.Token);
+        var preparation=center?Task.CompletedTask:PrepareFollowingRouteAsync(runtime,cycle,targets,prefix,stop.Token);
+        try
+        {
+            if(center)await RunCycleWorkerAsync(runtime,cycle,"market-route",output,input);
+            else await RunPriceSectionWorkerAsync(runtime,cycle,output,input);
+        }
         catch(Exception e){failure=e;}
         finally
         {
             cycle.RadarFile=null;stop.Cancel();
+            await preparation;
+            File.Delete(prefix+".prepare.input.json");File.Delete(prefix+".prepare.plan.json");
             try{await stream;}catch(OperationCanceledException) when(stop.IsCancellationRequested){}
             catch(Exception e){Log($"ERROR {runtime.Profile.Name}: live snapshot persistence · {e}");failure??=e;}
         }
@@ -83,7 +96,7 @@ public sealed partial class CollectionModule
                 var target=byKey.GetValueOrDefault(key)??ProvisionalCycleTarget(shop);
                 if(target is null)continue;
                 target=ResolveContinuationTarget(shop,target);if(target is null)continue;
-                var capture=ExactCycleCapture(shop,target,prefix);
+                var capture=ExactCycleCapture(shop,target,streamPrefix);
                 if(capture is null || spooled.ContainsKey(capture.SnapshotId))continue;
                 CommitLocalCapture(cycle,target,capture,shop);spooled.TryAdd(capture.SnapshotId,0);spooled.TryAdd(key,0);
             }
@@ -103,4 +116,5 @@ public sealed partial class CollectionModule
         UpdateCycleRadarCounters(runtime,cycle);
         if(failure is not null)throw failure;
     }
+
 }

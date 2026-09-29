@@ -13,7 +13,7 @@ internal sealed class LaunchGuardMapping : IDisposable
     public LaunchGuardMapping(string world, bool proxyRequired = true)
     {
         _world = Convert.FromHexString(world);
-        if (_world.Length != 16) throw new LaunchProtectionException("Неверная идентичность HWID.");
+        if (_world.Length != 16) throw new LaunchProtectionException("Invalid HWID identity.");
         IdentityTag = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(_world))[..12];
         _mapping = MemoryMappedFile.CreateNew(Name, 104);
         _view = _mapping.CreateViewAccessor();
@@ -25,7 +25,7 @@ internal sealed class LaunchGuardMapping : IDisposable
     public void Bind(int pid)
     {
         var session = PriceCheck.Windows.ClientProcessIdentity.Read(pid)
-            ?? throw new LaunchProtectionException("Драйвер не подтвердил время создания игрового PID.");
+            ?? throw new LaunchProtectionException("The driver did not confirm the game PID start time.");
         _view.Write(64, session.StartedAtUtc.UtcDateTime.ToFileTimeUtc());
         _view.Write(8, pid);
     }

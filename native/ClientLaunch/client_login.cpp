@@ -160,7 +160,7 @@ LONG select_character(Shared* shared) {
         auto vtable = *reinterpret_cast<std::uintptr_t*>(object);
         auto callback = *reinterpret_cast<ProcessEvent*>(vtable + process_event_slot * sizeof(void*));
         auto address = reinterpret_cast<std::uintptr_t>(callback);
-        if (address < base + 0x1000 || address >= base + expected_image_size) return -23;
+        if (address < base + 0x1000 || address >= end) return -23;
         callback(instance, function, &slot);
         CharacterRosterSelected(slot);
         StopCharacterRoster();
@@ -208,7 +208,8 @@ extern "C" __declspec(dllexport) LRESULT CALLBACK PriceCheckHookProc(int code, W
                 } else {
                     __try { result = select_character(shared); }
                     __except (EXCEPTION_EXECUTE_HANDLER) { result = -25; }
-                    if (result == -24 && GetTickCount() - server_tick < launch_timeouts::character_selection_ms) {
+                    if ((result == -24 || result == -31) &&
+                        GetTickCount() - server_tick < launch_timeouts::character_selection_ms) {
                         InterlockedExchange(&stage, 2);
                         result = 3;
                     } else InterlockedExchange(&stage, 4);

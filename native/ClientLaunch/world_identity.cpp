@@ -245,16 +245,16 @@ bool CopyWorldIdentity(BYTE (&value)[16]) {
 }
 
 bool RewriteWorldIdentity(const char* source, size_t size, char (&output)[69]) {
-    if (!enabled || !source || size != sizeof(output)) return false;
+    if (!enabled || !source || (size != 67 && size != sizeof(output))) return false;
     const HMODULE clmods = GetModuleHandleW(L"clmods64.dll");
     MEMORY_BASIC_INFORMATION region{};
     const bool source_in_clmods = clmods &&
         VirtualQuery(source, &region, sizeof(region)) == sizeof(region) &&
         region.Type == MEM_IMAGE && region.AllocationBase == clmods &&
-        reinterpret_cast<std::uintptr_t>(source) + sizeof(output) <=
+        reinterpret_cast<std::uintptr_t>(source) + size <=
             reinterpret_cast<std::uintptr_t>(region.BaseAddress) + region.RegionSize;
     if (!source_in_clmods ||
-        static_cast<BYTE>(source[0]) != 69 || source[1] != 0) {
+        static_cast<BYTE>(source[0]) != size || source[1] != 0) {
         status("world_identity_packet_error", 1);
         return false;
     }
@@ -264,12 +264,15 @@ bool RewriteWorldIdentity(const char* source, size_t size, char (&output)[69]) {
         SecureZeroMemory(middle, sizeof(middle));
         status("world_identity_not_new", 1); return false;
     }
-    memcpy(output, source, sizeof(output));
+    memcpy(output, source, size);
     // The driver's keyed XOR recurrence precedes RC4. Its ciphertext delta is
     // the prefix XOR of plaintext deltas; neither cipher state depends on data.
+    // Both verified world layouts end in the same 16-byte identity and 8-byte tail.
+    const auto identity_start = size - 24;
     BYTE delta = 0;
-    for (unsigned index = 45; index < sizeof(output); ++index) {
-        if (index < 61) delta ^= middle[index - 45] ^ replacement[index - 45];
+    for (size_t index = identity_start; index < size; ++index) {
+        if (index < identity_start + 16)
+            delta ^= middle[index - identity_start] ^ replacement[index - identity_start];
         output[index] = static_cast<char>(static_cast<BYTE>(output[index]) ^ delta);
     }
     SecureZeroMemory(middle, sizeof(middle));

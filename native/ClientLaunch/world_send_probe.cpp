@@ -20,17 +20,22 @@ WsaSendFn real_wsa_send = nullptr;
 volatile LONG captured = 0;
 volatile LONG lower_captured = 0;
 thread_local const char* pending_world_source = nullptr;
+thread_local int pending_world_length = 0;
+bool world_port(unsigned port) { return port == 7782 || port == 9971 || port == 9972 || port == 9973; }
+bool source_length(int length) { return length == 35 || length == 37; }
+bool wire_length(int length) { return length == 67 || length == 69; }
 
 void inspect(SOCKET socket, unsigned length) {
     if (length <= 100) TraceEvent("world_probe_send_length", length);
-    if ((length != 37 && length != 69) || InterlockedCompareExchange(&captured, 0, 0)) return;
+    if ((!source_length(length) && !wire_length(length)) ||
+        InterlockedCompareExchange(&captured, 0, 0)) return;
     sockaddr_storage peer{};
     int peer_length = sizeof(peer);
     if (getpeername(socket, reinterpret_cast<sockaddr*>(&peer), &peer_length) != 0 ||
         peer.ss_family != AF_INET) {TraceEvent("world_probe_peer_error", WSAGetLastError()); return;}
     const unsigned port = ntohs(reinterpret_cast<sockaddr_in*>(&peer)->sin_port);
     TraceEvent("world_probe_peer_port", port);
-    if (port != 7782) return;
+    if (!world_port(port)) return;
     if (InterlockedCompareExchange(&captured, 1, 0) == 0) {
         TraceEvent("world_probe_original_size", length);
         TraceWorldSendStack();
@@ -39,7 +44,7 @@ void inspect(SOCKET socket, unsigned length) {
 
 int WSAAPI hooked_send(SOCKET socket, const char* data, int length, int flags) {
     if (!LaunchGuardAllowsNetwork()) { LaunchGuardFail(6); WSASetLastError(WSAEACCES); return SOCKET_ERROR; }
-    if (data && length == 37) {
+    if (data && source_length(length)) {
         unsigned hash = 2166136261u;
         for (int index = 0; index < length; ++index)
             hash = (hash ^ static_cast<unsigned char>(data[index])) * 16777619u;
@@ -48,15 +53,17 @@ int WSAAPI hooked_send(SOCKET socket, const char* data, int length, int flags) {
             sockaddr_in peer{};
             int peer_length = sizeof(peer);
             if (getpeername(socket, reinterpret_cast<sockaddr*>(&peer), &peer_length) == 0 &&
-                peer.sin_family == AF_INET && ntohs(peer.sin_port) == 7782)
+                peer.sin_family == AF_INET && world_port(ntohs(peer.sin_port)))
             {
                 pending_world_source = data;
+                pending_world_length = length;
             }
         }
     }
     if (data && length > 0) inspect(socket, static_cast<unsigned>(length));
     const int result = real_send(socket, data, length, flags);
     pending_world_source = nullptr;
+    pending_world_length = 0;
     return result;
 }
 
@@ -74,29 +81,30 @@ int WSAAPI hooked_wsa_send(SOCKET socket, LPWSABUF buffers, DWORD count,
 int WSAAPI hooked_lower_send(SOCKET socket, const char* data, int length, int flags) {
     char isolated[69]{};
     const int previous_error = WSAGetLastError();
-    const bool isolate = pending_world_source && length == 69 && WorldIdentityEnabled();
+    const bool isolate = pending_world_source && wire_length(length) &&
+        length == pending_world_length + 32 && WorldIdentityEnabled();
     if (isolate) LaunchGuardBeginWorld();
     const bool rewritten = isolate && RewriteWorldIdentity(data, length, isolated);
     WSASetLastError(previous_error);
     if (isolate && !rewritten) { LaunchGuardFail(7); WSASetLastError(WSAEOPNOTSUPP); return SOCKET_ERROR; }
     if (data && length > 0 && length <= 100) TraceEvent("world_lower_send_length", length);
-    if (data && (length == 32 || length == 37 || length == 69) &&
+    if (data && (length == 32 || source_length(length) || wire_length(length)) &&
         InterlockedCompareExchange(&lower_captured, 0, 0) == 0) {
         sockaddr_in peer{};
         int peer_length = sizeof(peer);
         if (getpeername(socket, reinterpret_cast<sockaddr*>(&peer), &peer_length) == 0 &&
-            peer.sin_family == AF_INET && ntohs(peer.sin_port) == 7782 &&
+            peer.sin_family == AF_INET && world_port(ntohs(peer.sin_port)) &&
             InterlockedCompareExchange(&lower_captured, 1, 0) == 0) {
             TraceEvent("world_lower_original_size", length);
             TraceWorldSendStack();
-            if (length == 69 &&
+            if (wire_length(length) &&
                 GetEnvironmentVariableW(L"PRICECHECK_TEST_WORLD_SLOT_HASH", nullptr, 0) > 1) {
                 unsigned hash = 2166136261u;
                 for (int index = 0; index < length; ++index)
                     hash = (hash ^ static_cast<unsigned char>(data[index])) * 16777619u;
                 TraceEvent("world_slot_at_send", hash);
             }
-            if (length == 69 && pending_world_source &&
+            if (wire_length(length) && pending_world_source &&
                 GetEnvironmentVariableW(L"PRICECHECK_TEST_WORLD_BUFFER_LAYOUT", nullptr, 0) > 1) {
                 const auto source = reinterpret_cast<uintptr_t>(pending_world_source);
                 const auto wire = reinterpret_cast<uintptr_t>(data);
@@ -129,7 +137,7 @@ int WSAAPI hooked_lower_send(SOCKET socket, const char* data, int length, int fl
                 }
                 pending_world_source = nullptr;
             }
-            if (length == 69 &&
+            if (wire_length(length) &&
                 GetEnvironmentVariableW(L"PRICECHECK_TEST_AA_WINDOW_HASH", nullptr, 0) > 1) {
                 for (unsigned start = 0; start + 59 <= 69; ++start) {
                     unsigned hash = 2166136261u;
@@ -155,6 +163,17 @@ int WSAAPI hooked_lower_send(SOCKET socket, const char* data, int length, int fl
     return result;
 }
 }
+
+// Stable, read-only discovery for the collector's existing send trampoline.
+// Consumers validate the actual relay and retained instruction before use.
+struct PriceCheckSendLayout {
+    uint32_t magic, size, version, reserved;
+    SendFn callback;
+    SendFn* original_slot;
+};
+extern "C" __declspec(dllexport) const PriceCheckSendLayout PriceCheckSendHookLayout = {
+    0x5043534C, sizeof(PriceCheckSendLayout), 1, 0, hooked_send, &real_send
+};
 
 bool InstallWorldSendProbeHooks() {
     const bool installed = MH_CreateHookApi(L"ws2_32.dll", "send", hooked_send,

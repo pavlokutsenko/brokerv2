@@ -87,7 +87,7 @@ std::wstring env(const wchar_t* name) {
         DWORD value;
         ~RestoreLastError() { SetLastError(value); }
       } restore_last_error{last_error};
-    TraceEvent("device_ioctl", code);
+    // The selected IOCTL trace below retains diagnostics without exhausting the shared event limit.
     TraceIoctl(code, input_size, output_size, result && returned ? *returned : 0,
                last_error, result != FALSE, _ReturnAddress());
     if (have_before) {

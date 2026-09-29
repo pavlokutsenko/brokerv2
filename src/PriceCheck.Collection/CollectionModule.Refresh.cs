@@ -24,7 +24,12 @@ public sealed partial class CollectionModule
             if (radar is not null)
             {
                 runtime.Radar = radar; ObserveLocalState(runtime,radar);
-                if(_localStores.TryGetValue(runtime.Profile.Id,out var store))runtime.UploadStatus=$"Local outbox · {store.PendingUploads} individual operations pending";
+                if(_localStores.TryGetValue(runtime.Profile.Id,out var store))
+                {
+                    runtime.UploadStatus=$"Local outbox · {store.PendingUploads} individual operations pending";
+                    runtime.BrokerDelivery=store.LatestBrokerDelivery;
+                    runtime.Cycle=store.Status(runtime.Cycle);
+                }
             }
             if (radar is not null && runtime.IsCollectionEnabled)
             {

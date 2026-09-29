@@ -1,0 +1,91 @@
+<UserControl x:Class="PriceCheck.Collector.ProfileSidebarView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:ui="clr-namespace:PriceCheck.Collector">
+ <UserControl.Resources><ui:RussianUiTextConverter x:Key="RussianText"/></UserControl.Resources>
+ <Border Background="#0E131A" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+  <Grid Margin="18" TextElement.Foreground="{StaticResource TextBrush}">
+   <Grid.RowDefinitions>
+    <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+    <RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+   </Grid.RowDefinitions>
+   <StackPanel>
+    <TextBlock Text="PRICECHECK" FontWeight="SemiBold" FontSize="17"/>
+    <TextBlock Text="{Binding ProductLabel, RelativeSource={RelativeSource AncestorType=UserControl}}"
+               Foreground="{StaticResource PrimaryBrush}" FontWeight="Bold" FontSize="11"/>
+   </StackPanel>
+   <Grid Grid.Row="1" Margin="0,24,0,12">
+    <TextBlock Text="СЕРВЕРЫ / ПРОФИЛИ" Foreground="{StaticResource MutedBrush}" FontSize="11"
+               FontWeight="SemiBold" VerticalAlignment="Center"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+     <Button Content="+" Width="32" Height="30" Padding="0" Margin="0,0,6,0"
+             Click="Add_Click" ToolTip="Добавить профиль"/>
+     <Button x:Name="DeleteProfileButton" Content="&#xE74D;" FontFamily="Segoe MDL2 Assets"
+             FontSize="16" Width="32" Height="30" Padding="0" Click="Delete_Click"
+             Foreground="{StaticResource DangerBrush}" ToolTip="Удалить выбранный профиль">
+      <Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+       <Style.Triggers>
+        <DataTrigger Binding="{Binding SelectedRuntime}" Value="{x:Null}"><Setter Property="IsEnabled" Value="False"/></DataTrigger>
+        <DataTrigger Binding="{Binding SelectedRuntime.IsBusy}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger>
+        <DataTrigger Binding="{Binding Runtimes.Count}" Value="1"><Setter Property="IsEnabled" Value="False"/></DataTrigger>
+       </Style.Triggers>
+      </Style></Button.Style>
+     </Button>
+    </StackPanel>
+   </Grid>
+   <ListBox x:Name="ProfileList" Grid.Row="2" ItemsSource="{Binding Runtimes}"
+            SelectedItem="{Binding SelectedRuntime}" SelectionChanged="ProfileList_SelectionChanged"
+            Background="Transparent" BorderThickness="0"
+            ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+    <ListBox.ItemContainerStyle>
+     <Style TargetType="ListBoxItem">
+      <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,0,0,8"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+      <Style.Triggers>
+       <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#17241F"/></Trigger>
+      </Style.Triggers>
+     </Style>
+    </ListBox.ItemContainerStyle>
+    <ListBox.ItemTemplate>
+     <DataTemplate>
+      <Border Background="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=Background}"
+              BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+       <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <StackPanel>
+         <TextBlock Text="{Binding Profile.Name}" ToolTip="{Binding Profile.LoginName}"
+                    Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+         <TextBlock Text="{Binding ProcessLabel}" Foreground="{StaticResource MutedBrush}"
+                    FontSize="11" Margin="0,5,0,0"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+         <TextBlock Text="{Binding RoleLabel}" Foreground="{StaticResource PrimaryBrush}"
+                    FontSize="10" FontWeight="Bold" HorizontalAlignment="Right"/>
+         <TextBlock Text="{Binding Status, Converter={StaticResource RussianText}}" Foreground="{StaticResource MutedBrush}" FontSize="10"
+                    Margin="8,5,0,0" TextTrimming="CharacterEllipsis" MaxWidth="95"/>
+        </StackPanel>
+       </Grid>
+      </Border>
+     </DataTemplate>
+    </ListBox.ItemTemplate>
+   </ListBox>
+   <StackPanel Grid.Row="3" Margin="0,14,0,0">
+    <TextBlock Text="ЛОКАЛЬНЫЙ КОМПЬЮТЕР" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+    <TextBlock Text="Один клиент для каждого профиля" FontSize="11" Margin="0,4,0,14"/>
+    <Separator Background="{StaticResource BorderBrush}" Margin="0,0,0,14"/>
+    <Button x:Name="TemplatesButton" Content="Шаблоны" Click="Templates_Click"
+            HorizontalAlignment="Stretch" Height="38" ToolTip="Общие шаблоны запуска для всех профилей">
+     <Button.Style><Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Style.Triggers>
+       <DataTrigger Binding="{Binding IsTemplatesSelected, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+        <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+        <Setter Property="Foreground" Value="#07110D"/>
+       </DataTrigger>
+      </Style.Triggers>
+     </Style></Button.Style>
+    </Button>
+   </StackPanel>
+  </Grid>
+ </Border>
+</UserControl>

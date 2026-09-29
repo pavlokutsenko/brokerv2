@@ -2,44 +2,52 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:views="clr-namespace:PriceCheck.Collector;assembly=PriceCheck.Launching.UI"
- Title="PriceCheck Launcher" Width="1380" Height="840" MinWidth="1120" MinHeight="700" WindowStartupLocation="CenterScreen">
+ Title="PriceCheck Launcher — Запуск" Width="1380" Height="840" MinWidth="1120" MinHeight="700" WindowStartupLocation="CenterScreen">
  <Grid Background="{StaticResource WindowBrush}" TextElement.Foreground="{StaticResource TextBrush}">
-  <Grid.ColumnDefinitions><ColumnDefinition Width="240"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-  <Border Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0" Padding="16">
-   <DockPanel>
-    <StackPanel DockPanel.Dock="Top">
-     <TextBlock Text="PRICECHECK" FontSize="17" FontWeight="SemiBold"/>
-     <TextBlock Text="LAUNCHER" Foreground="{StaticResource PrimaryBrush}" FontWeight="Bold" Margin="0,4,0,20"/>
-     <Button Content="Добавить профиль" Click="AddProfile_Click" Margin="0,0,0,12"/>
-    </StackPanel>
-    <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-     <Button Content="Удалить профиль" Click="DeleteProfile_Click"/>
-     <TextBlock Text="Каждый профиль запускает свой клиент" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,0"/>
-    </StackPanel>
-    <ListBox ItemsSource="{Binding Runtimes}" SelectedItem="{Binding SelectedRuntime}" Background="Transparent" BorderThickness="0">
-     <ListBox.ItemTemplate><DataTemplate><StackPanel Margin="0,5">
-      <TextBlock Text="{Binding Profile.Name}" FontWeight="SemiBold"/>
-      <TextBlock Text="{Binding Profile.LoginName}" Foreground="{StaticResource MutedBrush}"/>
-      <TextBlock Text="{Binding ProcessLabel}" Foreground="{StaticResource MutedBrush}"/>
-     </StackPanel></DataTemplate></ListBox.ItemTemplate>
-    </ListBox>
-   </DockPanel>
-  </Border>
-  <TabControl x:Name="MainTabs" Grid.Column="1" Margin="20,12,20,18" Background="Transparent" BorderThickness="0">
-   <TabItem Header="ЗАПУСК"><DockPanel>
-    <DockPanel DockPanel.Dock="Top" Margin="8,12">
-     <TextBlock Text="Сервер профиля" VerticalAlignment="Center" Margin="0,0,12,0"/>
-     <ComboBox ItemsSource="{Binding LoginServerOptions}" SelectedItem="{Binding SelectedRuntime.Profile.Name}" SelectionChanged="ProfileSelection_Changed" Width="240" HorizontalAlignment="Left"/>
-    </DockPanel>
+  <Grid.ColumnDefinitions><ColumnDefinition Width="286"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <views:ProfileSidebarView x:Name="SidebarView" Grid.Column="0" ProductLabel="ЛАУНЧЕР"
+   AddProfileRequested="AddProfile_Click" DeleteProfileRequested="DeleteProfile_Click"
+   TemplatesRequested="ManageTemplates_Click" ProfileSelected="SidebarProfileSelected"/>
+  <TabControl x:Name="MainTabs" Grid.Column="1" Margin="20,12,20,18" Background="Transparent" BorderThickness="0"
+              SelectionChanged="MainTabs_SelectionChanged">
+   <TabControl.Template>
+    <ControlTemplate TargetType="TabControl">
+     <ContentPresenter ContentSource="SelectedContent"/>
+    </ControlTemplate>
+   </TabControl.Template>
+   <TabItem x:Name="ProfilesTab" Header="Профили">
+    <TabControl x:Name="ProfileTabs" Background="Transparent" BorderThickness="0">
+   <TabItem x:Name="LaunchTab" Header="Запуск">
     <views:LaunchPanelView x:Name="LaunchPanel"
      AutoLoginChangedRequested="AutoLogin_Changed" BrowseFolderClickRequested="BrowseFolder_Click"
      LaunchClickRequested="Launch_Click" StopClickRequested="Stop_Click"
      LaunchTemplateSelectionChangedRequested="ProfileSelection_Changed" LoginPasswordChangedRequested="LoginPassword_Changed"
      ManageTemplatesClickRequested="ManageTemplates_Click" ProfileFieldChangedRequested="ProfileField_Changed"
      ProfileSelectionChangedRequested="ProfileSelection_Changed"/>
-   </DockPanel></TabItem>
-   <TabItem x:Name="TemplatesTab" Header="HWID / ПРОКСИ"><views:LaunchTemplatesView x:Name="TemplatesView"/></TabItem>
-   <TabItem Header="ЖУРНАЛ"><ListBox ItemsSource="{Binding Events}" Background="{StaticResource PanelBrush}" BorderThickness="0"/></TabItem>
+   </TabItem>
+   <TabItem Header="Журнал">
+    <Grid Margin="8,10">
+     <Grid.Resources><views:RussianUiTextConverter x:Key="RussianText"/></Grid.Resources>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <TextBlock FontSize="22" FontWeight="SemiBold" Margin="0,0,0,12">
+      <Run Text="Журнал · "/><Run Text="{Binding SelectedRuntime.Profile.Name}"/>
+     </TextBlock>
+     <ListBox Grid.Row="1" ItemsSource="{Binding ProfileEvents}"
+       Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+      <ListBox.ItemTemplate>
+       <DataTemplate>
+        <StackPanel Orientation="Horizontal" Margin="4,3">
+         <TextBlock Text="{Binding Time, StringFormat={}{0:HH:mm:ss}}" Foreground="{StaticResource MutedBrush}" Margin="0,0,12,0"/>
+         <TextBlock Text="{Binding Message, Converter={StaticResource RussianText}}" TextWrapping="Wrap"/>
+        </StackPanel>
+       </DataTemplate>
+      </ListBox.ItemTemplate>
+     </ListBox>
+    </Grid>
+   </TabItem>
+    </TabControl>
+   </TabItem>
+   <TabItem x:Name="TemplatesTab" Header="Шаблоны"><views:LaunchTemplatesView x:Name="TemplatesView"/></TabItem>
   </TabControl>
  </Grid>
 </Window>

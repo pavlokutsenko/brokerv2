@@ -28,7 +28,7 @@ internal sealed partial class ProxyTcpBroker
             using var response = await http.SendAsync(request, cancellation);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentType?.MediaType != "application/dns-message")
-                throw new IOException("DNS через прокси: неверный тип ответа HTTPS.");
+                throw new IOException("Proxy DNS: invalid HTTPS response type.");
             var answer = await response.Content.ReadAsByteArrayAsync(cancellation);
             CountTraffic("client_to_proxy", 53, query.Length + 2);
             CountTraffic("proxy_to_client", 53, answer.Length + 2);
@@ -54,10 +54,10 @@ internal sealed partial class ProxyTcpBroker
             // Do not consume any bytes that belong to TLS after the CONNECT header.
             do
             {
-                if (used == header.Length) throw new IOException("DNS через прокси: слишком большой ответ CONNECT.");
+                if (used == header.Length) throw new IOException("Proxy DNS: CONNECT response is too large.");
                 await stream.ReadExactlyAsync(header.AsMemory(used++, 1), token).AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), token);
             } while (used < 4 || !header.AsSpan(used - 4, 4).SequenceEqual("\r\n\r\n"u8));
-            if (!IsConnectSuccess(header.AsSpan(0, used))) throw new IOException("DNS через прокси: CONNECT к HTTPS-резолверу отклонён.");
+            if (!IsConnectSuccess(header.AsSpan(0, used))) throw new IOException("Proxy DNS: CONNECT to the HTTPS resolver was rejected.");
             Interlocked.Increment(ref _connections);
             Trace("dns_proxy_http_200", 443);
             return stream;
@@ -77,12 +77,12 @@ internal sealed partial class ProxyTcpBroker
         {
             await game.ReadExactlyAsync(prefix.AsMemory(1, 1), token);
             var length = BinaryPrimitives.ReadUInt16BigEndian(prefix);
-            if (length < 12) throw new IOException("DNS через прокси: неполный запрос.");
+            if (length < 12) throw new IOException("Proxy DNS: incomplete request.");
             var query = new byte[length];
             await game.ReadExactlyAsync(query, token);
             var answer = await resolve(query, token);
             if (answer.Length is < 12 or > ushort.MaxValue || answer[0] != query[0] || answer[1] != query[1] || (answer[2] & 0x80) == 0)
-                throw new IOException("DNS через прокси: ответ не соответствует запросу.");
+                throw new IOException("Proxy DNS: response does not match the request.");
             BinaryPrimitives.WriteUInt16BigEndian(prefix, (ushort)answer.Length);
             await game.WriteAsync(prefix, token);
             await game.WriteAsync(answer, token);

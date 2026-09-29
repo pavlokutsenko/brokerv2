@@ -63,8 +63,11 @@ if ([string]::Equals($release.TrimEnd('\'), $launcherRelease.TrimEnd('\'), [Stri
 }
 $buildId = [guid]::NewGuid().ToString('N')
 $outputs = @{}
+$stagingDirectories=@()
+try {
 foreach ($product in @('Launcher','Collector')) {
     $staging = Join-Path $repo ("workspace\publish-$product-$buildId")
+    $stagingDirectories+=$staging
     & $dotnet publish (Join-Path $repo "src\PriceCheck.$product\PriceCheck.$product.csproj") `
         -c Release -r win-x64 --self-contained true -o $staging --nologo
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -92,3 +95,8 @@ if (-not $SkipPackages) {
     }
 }
 Write-Host "Ready: $launcherRelease and $release"
+} finally {
+    foreach($stagingPath in $stagingDirectories){
+        & (Join-Path $repo 'scripts\remove-generated-tree.ps1') -Path $stagingPath -Root (Join-Path $repo 'workspace')
+    }
+}

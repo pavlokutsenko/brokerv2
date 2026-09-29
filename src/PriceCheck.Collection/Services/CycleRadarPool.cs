@@ -16,6 +16,14 @@ public sealed class CycleRadarPool
     private readonly double[][]? _polygon;
     public CycleRadarPool(double[][]? polygon=null) { _polygon=polygon; }
 
+    // Include the full standing disk and 100 units of radar margin. Covering
+    // every polygon vertex covers its interior, even for a concave polygon.
+    public bool CoversCenter(MarketZone center) => double.IsFinite(center.X) && double.IsFinite(center.Y) &&
+        double.IsFinite(center.Radius) && center.Radius>0 && center.Radius<=500 &&
+        (_polygon is null || _polygon.Length>=3 && _polygon.All(p=>p.Length==2 &&
+            double.IsFinite(p[0]) && double.IsFinite(p[1]) &&
+            Math.Sqrt(Math.Pow(p[0]-center.X,2)+Math.Pow(p[1]-center.Y,2))+center.Radius<=2900));
+
     public static CycleRadarPool ForCity(string city)
     {
         var root=Path.Combine(AppContext.BaseDirectory,"BrokerRuntime","_internal","navigation","maps");

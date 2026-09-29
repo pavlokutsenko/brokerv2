@@ -1,0 +1,201 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+using System.Windows.Data;
+
+namespace PriceCheck.Collector;
+
+// Presentation-only translation. Protocol values, saved state, and guard messages stay unchanged.
+public sealed class RussianUiTextConverter : IValueConverter
+{
+    private static readonly IReadOnlyDictionary<string, string> Exact = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Not running"] = "Не запущен",
+        ["No process"] = "Нет процесса",
+        ["Stopped"] = "Остановлено",
+        ["Client exited"] = "Клиент закрыт",
+        ["Launch failed"] = "Ошибка запуска",
+        ["Client ready · log in manually"] = "Клиент готов · войдите вручную",
+        ["Client ready"] = "Клиент готов",
+        ["Profile is already launching."] = "Профиль уже запускается.",
+        ["Client exited during launch."] = "Клиент закрылся во время запуска.",
+        ["This profile does not own the client to be replaced."] = "Заменяемый клиент не принадлежит этому профилю.",
+        ["The previous client has not exited; character change was stopped."] = "Предыдущий клиент не закрылся; смена персонажа остановлена.",
+        ["Character rotation requires auto login."] = "Для ротации персонажей нужен автовход.",
+        ["Rotation interval must be 1–1440 minutes; random offset must be smaller than the interval."] = "Интервал ротации должен быть 1–1440 минут; разброс должен быть меньше интервала.",
+        ["The occupied character list has not been read."] = "Список занятых персонажей ещё не прочитан.",
+        ["Character rotation requires a client owned by this profile."] = "Для ротации нужен клиент этого профиля.",
+        ["Character change is already running."] = "Смена персонажа уже выполняется.",
+        ["The client exited before agent loading."] = "Клиент закрылся до загрузки агента.",
+        ["The agent has no window hook procedure."] = "У агента нет оконной процедуры перехвата.",
+        ["The client window did not appear within 5 minutes; the HWID agent was not loaded."] = "Окно клиента не появилось за 5 минут; агент HWID не загружен.",
+        ["The template contains invalid HWID values. Click Regenerate."] = "В шаблоне неверные значения HWID. Нажмите «Создать заново».",
+        ["The template contains invalid additional identifiers. Click Regenerate."] = "В шаблоне неверные дополнительные идентификаторы. Нажмите «Создать заново».",
+        ["The template contains an invalid world identity. Click Regenerate."] = "В шаблоне неверный игровой идентификатор. Нажмите «Создать заново».",
+        ["Enter an HTTP proxy hostname or IPv4 address without a scheme or port."] = "Введите хост или IPv4-адрес HTTP-прокси без схемы и порта.",
+        ["HTTP proxy port must be between 1 and 65535."] = "Порт HTTP-прокси должен быть от 1 до 65535.",
+        ["Enter the HTTP proxy username and password. The username cannot contain a colon, and neither field can contain a line break."] = "Введите логин и пароль HTTP-прокси. Логин не может содержать двоеточие, а оба поля — перевод строки.",
+        ["Invalid client path."] = "Неверный путь к клиенту.",
+        ["The client did not confirm its available character list."] = "Клиент не подтвердил список доступных персонажей.",
+        ["The client exited during auto login."] = "Клиент закрылся во время автовхода.",
+        ["Profile market does not match the login server. Auto login stopped to prevent sending data to the wrong market."] = "Рынок профиля не совпадает с сервером входа. Автовход остановлен, чтобы не отправить данные на другой рынок.",
+        ["Auto login requires a username and password of at most 120 characters."] = "Для автовхода нужны логин и пароль длиной не более 120 символов.",
+        ["Select a game server ID from 1 to 1000."] = "Выберите ID игрового сервера от 1 до 1000.",
+        ["Select a character slot from 0 to 6."] = "Выберите слот персонажа от 0 до 6.",
+        ["Protected lu4.bin did not appear within five minutes."] = "Защищённый lu4.bin не появился за 5 минут.",
+        ["The client exited during Active Anticheat checks."] = "Клиент закрылся во время проверки Active Anticheat.",
+        ["The game window did not appear within 5 minutes."] = "Окно игры не появилось за 5 минут.",
+        ["The client exited before the HWID agent started."] = "Клиент закрылся до запуска агента HWID.",
+        ["Recovery requires the profile's own client."] = "Для восстановления нужен клиент этого профиля.",
+        ["Client recovery is already running."] = "Восстановление клиента уже выполняется.",
+        ["Profile configuration is not valid; previous settings were preserved."] = "Настройки профиля неверны; предыдущие настройки сохранены.",
+        ["A proxy route is already bound to this process."] = "К этому процессу уже привязан прокси-маршрут.",
+        ["HTTP proxy rejected the username or password (407). Check this launch template."] = "HTTP-прокси отклонил логин или пароль (407). Проверьте шаблон запуска.",
+        ["Could not connect through the HTTP proxy. Check its host, port, and availability."] = "Не удалось подключиться через HTTP-прокси. Проверьте хост, порт и доступность.",
+        ["Character selected"] = "Персонаж выбран",
+        ["Launching client…"] = "Запуск клиента…",
+        ["Waiting for game window…"] = "Ожидание окна игры…",
+        ["Checking HWID…"] = "Проверка HWID…",
+        ["Checking HWID and proxy protection…"] = "Проверка HWID и прокси…",
+        ["Logging in…"] = "Вход в игру…",
+        ["Verifying HWID after character login…"] = "Проверка HWID после входа персонажа…",
+        ["Verifying HWID and proxy after character login…"] = "Проверка HWID и прокси после входа персонажа…",
+        ["Reader disconnected"] = "Ридер отключён",
+        ["Reader connected · collection stopped"] = "Ридер подключён · сбор остановлен",
+        ["Reader disconnected · client remains open"] = "Ридер отключён · клиент открыт",
+        ["Reader disconnected · client exited or changed"] = "Ридер отключён · клиент закрыт или сменился",
+        ["Client managed elsewhere · reader disconnected"] = "Клиент управляется другим процессом · ридер отключён",
+        ["Collection stopped"] = "Сбор остановлен",
+        ["Collection started"] = "Сбор запущен",
+        ["Character rotation is off"] = "Ротация персонажей выключена",
+        ["Character change failed · restart the client to retry"] = "Не удалось сменить персонажа · перезапустите клиент для повтора",
+        ["Starts with character 0 on the next launch"] = "При следующем запуске начнёт с персонажа 0",
+        ["Launch this profile here to enable character rotation"] = "Запустите этот профиль здесь для ротации персонажей",
+        ["Preparing character 0 and reading the available slots…"] = "Подготовка персонажа 0 и чтение доступных слотов…",
+        ["Only character 0 · no rotation needed"] = "Только персонаж 0 · ротация не нужна",
+        ["Finishing reader work before character change…"] = "Завершение чтения перед сменой персонажа…",
+        ["Set the center and start collection."] = "Укажите центр и запустите сбор.",
+        ["Return to center"] = "Возврат в центр",
+        ["Broker inventory"] = "Сбор брокера",
+        ["Reading prices"] = "Чтение цен",
+        ["Waiting for server"] = "Ожидание сервера",
+        ["Client recovery"] = "Восстановление клиента",
+        ["New client pass; local history and pending uploads retained."] = "Новый проход клиента; локальная история и ожидающие отправки сохранены.",
+        ["Settings changed. Restart collection to use the new center or market."] = "Настройки изменились. Перезапустите сбор для нового центра или рынка.",
+        ["Waiting for world character data after login"] = "Ожидание данных персонажа после входа",
+        ["Returning to a random safe point in the center zone"] = "Возврат в безопасную точку центральной зоны",
+        ["Outside center before broker retry; returning to center"] = "Перед повтором брокера клиент вне центра · возвращается",
+        ["Broker: collecting all listings and quantities"] = "Брокер: сбор всех объявлений и количеств",
+        ["Center radar incomplete; retaining history and retrying at center"] = "Центральный радар неполон · история сохранена, повтор в центре",
+        ["Local price queue is empty"] = "Локальная очередь цен пуста",
+        ["Shop read failed · retrying later"] = "Не удалось прочитать лавку · повтор позже",
+        ["Returning to center to refresh quantities…"] = "Возврат в центр для обновления количеств…",
+        ["At center · refreshing quantities with broker"] = "В центре · обновление количеств через брокера",
+        ["Could not return to center · retrying later"] = "Не удалось вернуться в центр · повтор позже",
+        ["Preparing collector…"] = "Подготовка сборщика…",
+        ["Finishing current reader operation…"] = "Завершение текущей операции ридера…",
+        ["Radar and broker active"] = "Радар и брокер работают",
+        ["Radar active · broker failed"] = "Радар работает · ошибка брокера",
+        ["Ready"] = "Готово",
+        ["Deferred"] = "Отложено",
+        ["Awaiting position"] = "Ожидание координат",
+        ["New shop"] = "Новая лавка",
+        ["Shop reopened"] = "Лавка снова открыта",
+        ["Shop returned"] = "Лавка снова появилась",
+        ["New listing"] = "Новое объявление",
+        ["Shop moved"] = "Лавка переместилась",
+        ["Shop type changed"] = "Изменился тип лавки",
+        ["Server retained historical read"] = "Сервер сохранил историческое чтение",
+        ["Absent from confirmed center radar"] = "Нет в подтверждённом радаре центра",
+        ["Closed: state confirmation needed"] = "Закрыта: требуется подтверждение состояния",
+        ["New broker positions"] = "Новые позиции брокера",
+        ["Server roster: awaiting live verification"] = "Список сервера: ожидание проверки в игре",
+        ["No runtime object after broker"] = "После брокера объект игры недоступен",
+        ["Server requires verification"] = "Сервер запрашивает проверку",
+        ["24-hour check"] = "Проверка через 24 часа",
+        ["Never checked"] = "Не проверялось",
+        ["Never read"] = "Не читалось",
+        ["Detected only"] = "Только обнаружено",
+        ["Scan unavailable"] = "Сканирование недоступно",
+        ["Access denied"] = "Нет доступа",
+        ["Read failed"] = "Ошибка чтения",
+        ["ARP unavailable"] = "ARP недоступен",
+        ["ARP unresolved"] = "ARP не определён",
+        ["Storage descriptor unavailable"] = "Дескриптор накопителя недоступен",
+        ["Physical disks"] = "Физические диски",
+        ["Monitors"] = "Мониторы",
+        ["PCI devices"] = "Устройства PCI",
+        ["No snapshot"] = "Нет снимка",
+        ["No pass yet"] = "Проходов пока нет",
+        ["Current price"] = "Актуальная цена",
+        ["System"] = "Система",
+        ["INFO"] = "Информация",
+        ["WARNING"] = "Предупреждение",
+        ["ERROR"] = "Ошибка"
+    };
+
+    private static readonly (string English, string Russian)[] Phrases =
+    [
+        ("Broker: reading all shops", "Брокер: чтение всех лавок"),
+        ("Reading nearby shops", "Чтение ближайших лавок"),
+        ("Reading prices on the move", "Чтение цен на ходу"),
+        ("Reading prices on route", "Чтение цен на маршруте"),
+        ("Reading on route", "Чтение на маршруте"),
+        ("Route stopped", "Маршрут остановлен"),
+        ("unbound traders", "трейдеров без привязки"),
+        ("shops/s", "лавок/с"),
+        ("exact prices", "точных цен"), ("shops", "лавок"),
+        ("Route ", "Маршрут "), ("smooth pass-by reads", "чтение на ходу"),
+        ("Broker complete", "Брокер завершён"), ("traders", "трейдеров"),
+        ("quantities updated", "количества обновлены"),
+        ("Moving to ", "Движение к "), ("attempt ", "попытка "),
+        ("targets", "целей"), ("continuous reader session", "непрерывная сессия ридера"),
+        ("Local outbox", "Локальная очередь отправки"),
+        ("individual operations pending", "операций ожидают отправки"),
+        ("Server queue", "Очередь сервера"),
+        ("Restarting client", "Перезапуск клиента"),
+        ("Reader drain failed", "Не удалось завершить работу ридера"),
+        ("Closing client", "Закрытие клиента"), ("selecting character", "выбор персонажа"),
+          ("Character ", "Персонаж "), ("switch in", "смена через"),
+          ("Account ", "Аккаунт "),
+        ("Broker incomplete", "Брокер неполон"), ("replies", "ответов"),
+        ("rows", "строк"),
+        ("safe data retained", "достоверные данные сохранены"),
+        ("continuing local route", "локальный маршрут продолжается"),
+        ("Collection stopped; automatic restart is disabled", "Сбор остановлен; автоматический перезапуск отключён"),
+        ("Prices:", "Цены:"), ("At center", "В центре"),
+        ("Auto login did not finish within 180 seconds", "Автовход не завершился за 180 секунд"),
+        ("stage:", "этап:"),
+        ("HTTP proxy could not reach the LU4 login server", "HTTP-прокси не смог подключиться к серверу входа LU4"),
+        ("Retrying launch", "Повтор запуска"), ("seconds", "секунд"),
+        (" · hooked", " · перехвачено"), (" · gateway hook", " · перехват шлюза"),
+        ("System · ", "Система · "), ("Baseboard · ", "Плата · "),
+        ("Chassis · ", "Корпус · "), ("Processor · ", "Процессор · "),
+        ("Memory ", "Память "), ("Disk ", "Диск "), ("Disks · ", "Диски · "),
+        ("Volume ", "Том "), ("Monitor ", "Монитор "), ("Gateway ", "Шлюз "),
+        (" · vendor", " · производитель"), (" · version", " · версия"),
+        (" · model", " · модель"), (" · serial", " · серийный номер"),
+        (" · revision", " · ревизия"), ("PC name", "Имя ПК"),
+        ("Secure Boot", "Безопасная загрузка"),
+        ("Showing the first 24 devices", "Показаны первые 24 устройства")
+    ];
+
+    public static string Translate(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return value ?? "";
+        if (Exact.TryGetValue(value, out var translated)) return translated;
+        var result = value;
+        foreach (var (english, russian) in Phrases)
+            result = result.Replace(english, russian, StringComparison.OrdinalIgnoreCase);
+        result = Regex.Replace(result, @"\bof\b", "из", RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"\bat\b(?= \d{1,2}:\d{2})", "в", RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"(?<=\d) h\b", " ч", RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"^At (.+)'s sector · reading shops$", "В секторе $1 · чтение лавок", RegexOptions.IgnoreCase);
+        return result;
+    }
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        Translate(value?.ToString());
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}

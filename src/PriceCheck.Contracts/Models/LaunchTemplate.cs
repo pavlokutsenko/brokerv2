@@ -15,6 +15,8 @@ public sealed class LaunchIdentity
     public string ChassisSerial { get; set; } = "";
     public string ProcessorId { get; set; } = "";
     public string ProcessorSerial { get; set; } = "";
+    public string ProcessorModel { get; set; } = "";
+    public string ProcessorRevision { get; set; } = "";
     public string MemorySerial { get; set; } = "";
     public string DiskSerial { get; set; } = "";
     public string HardwareProfileGuid { get; set; } = "";
@@ -22,6 +24,7 @@ public sealed class LaunchIdentity
     public string DiskGuid { get; set; } = "";
     public string DiskSignature { get; set; } = "";
     public string SusClientId { get; set; } = "";
+    public string SqmMachineId { get; set; } = "";
     public string VideoIdentifier { get; set; } = "";
     public string RegistryComputerName { get; set; } = "";
     public uint InstallDate { get; set; }
@@ -30,7 +33,7 @@ public sealed class LaunchIdentity
 
 public sealed class LaunchTemplate : INotifyPropertyChanged
 {
-    private string _name = "New template";
+    private string _name = "Новый шаблон";
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name
     {
@@ -50,10 +53,10 @@ public sealed class LaunchTemplate : INotifyPropertyChanged
     public string ProxyPassword { get; set; } = "";
 
     [System.Text.Json.Serialization.JsonIgnore]
-    public string Summary => Id == Guid.Empty ? "Запуск запрещён: выберите шаблон HWID" :
-        (!HardwareEnabled ? "Запуск запрещён: включите HWID · " : "") +
-        $"HWID: {(HardwareEnabled ? RotateEachLaunch ? "new on each launch" : "fixed" : "off")}  ·  " +
-        $"HTTP proxy: {(ProxyEnabled ? $"{ProxyHost}:{ProxyPort}" : "off")}";
+    public string Summary => Id == Guid.Empty ? "Запуск недоступен: выберите шаблон HWID" :
+        (!HardwareEnabled ? "Запуск недоступен: включите HWID · " : "") +
+        $"HWID: {(HardwareEnabled ? RotateEachLaunch ? "новый при каждом запуске" : "постоянный" : "выключен")}  ·  " +
+        $"HTTP-прокси: {(ProxyEnabled ? $"{ProxyHost}:{ProxyPort}" : "выключен")}";
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

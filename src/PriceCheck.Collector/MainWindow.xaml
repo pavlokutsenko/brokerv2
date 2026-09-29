@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:PriceCheck.Collector.Controls"
         xmlns:views="clr-namespace:PriceCheck.Collector" xmlns:launchviews="clr-namespace:PriceCheck.Collector;assembly=PriceCheck.Launching.UI"
-        Title="PriceCheck Collector" Width="1380" Height="840"
+        Title="PriceCheck Collector — Сборщик" Width="1380" Height="840"
         MinWidth="1120" MinHeight="700" WindowStartupLocation="CenterScreen">
     <Grid Background="{StaticResource WindowBrush}" TextElement.Foreground="{StaticResource TextBrush}">
         <Grid.ColumnDefinitions>
@@ -11,99 +11,46 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Column="0" Background="#0E131A" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
-            <Grid Margin="18">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <StackPanel>
-                    <TextBlock Text="PRICECHECK" FontWeight="SemiBold" FontSize="17" />
-                    <TextBlock Text="COLLECTOR" Foreground="{StaticResource PrimaryBrush}" FontWeight="Bold" FontSize="11" />
-                </StackPanel>
-                <Grid Grid.Row="1" Margin="0,24,0,12">
-                    <TextBlock Text="CLIENT PROFILES" Foreground="{StaticResource MutedBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <Button Content="+" Width="32" Height="30" Padding="0" HorizontalAlignment="Right" Click="AddProfile_Click" ToolTip="Add profile" />
-                </Grid>
-                <ListBox Grid.Row="2" ItemsSource="{Binding Runtimes}" SelectedItem="{Binding SelectedRuntime}"
-                         Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
-                            <Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,0,8" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Background" Value="Transparent" />
-                            <Setter Property="BorderThickness" Value="0" />
-                            <Style.Triggers>
-                                <Trigger Property="IsSelected" Value="True">
-                                    <Setter Property="Background" Value="#17241F" />
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Background="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, Path=Background}"
-                                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Profile.Name}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding ProcessLabel}" Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,5,0,0" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                        <TextBlock Text="{Binding RoleLabel}" Foreground="{StaticResource PrimaryBrush}" FontSize="10" FontWeight="Bold" HorizontalAlignment="Right" />
-                                        <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedBrush}" FontSize="10" Margin="8,5,0,0" TextTrimming="CharacterEllipsis" MaxWidth="95" />
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-                <StackPanel Grid.Row="3" Margin="0,14,0,0">
-                    <Separator Background="{StaticResource BorderBrush}" Margin="0,0,0,14" />
-                    <TextBlock Text="LOCAL MACHINE" Foreground="{StaticResource MutedBrush}" FontSize="11" />
-                    <TextBlock Text="Each profile owns one client" FontSize="11" Margin="0,4,0,0" />
-                </StackPanel>
-            </Grid>
-        </Border>
+        <launchviews:ProfileSidebarView x:Name="SidebarView" Grid.Column="0" ProductLabel="СБОРЩИК"
+            AddProfileRequested="AddProfile_Click" DeleteProfileRequested="DeleteProfile_Click"
+            TemplatesRequested="ManageTemplates_Click" ProfileSelected="SidebarProfileSelected"/>
 
         <TabControl x:Name="MainTabs" Grid.Column="1" Margin="20,12,20,18" Background="Transparent" BorderThickness="0"
                     SelectionChanged="MainTabs_SelectionChanged">
-          <TabItem x:Name="LaunchTab" Header="LAUNCH"><TabControl x:Name="LaunchTabs" SelectionChanged="MainTabs_SelectionChanged" Background="Transparent" BorderThickness="0"><TabItem Header="PROFILE"><launchviews:LaunchPanelView x:Name="LaunchPanel"
+          <TabControl.Template>
+           <ControlTemplate TargetType="TabControl">
+            <ContentPresenter ContentSource="SelectedContent"/>
+           </ControlTemplate>
+          </TabControl.Template>
+          <TabItem x:Name="ProfilesTab" Header="Профили">
+           <TabControl x:Name="ProfileTabs" Background="Transparent" BorderThickness="0">
+          <TabItem x:Name="LaunchTab" Header="Запуск"><launchviews:LaunchPanelView x:Name="LaunchPanel"
               AutoLoginChangedRequested="AutoLogin_Changed"
               BrowseFolderClickRequested="BrowseFolder_Click"
               LaunchClickRequested="Launch_Click"
               LaunchTemplateSelectionChangedRequested="LaunchTemplateSelection_Changed"
-              LoginPasswordChangedRequested="LoginPassword_Changed"
+                LoginPasswordChangedRequested="LoginPassword_Changed"
+                RotationAccountsClickRequested="RotationAccounts_Click"
               ManageTemplatesClickRequested="ManageTemplates_Click"
               ProfileFieldChangedRequested="ProfileField_Changed"
               ProfileSelectionChangedRequested="ProfileSelection_Changed"
               StopClickRequested="Stop_Click"
               /></TabItem>
-          <TabItem x:Name="TemplatesTab" Header="TEMPLATES">
-              <launchviews:LaunchTemplatesView x:Name="TemplatesView"/>
-          </TabItem>
-            </TabControl></TabItem>
-          <TabItem Header="COLLECTION"><views:CollectionPanelView x:Name="CollectionPanel"
-              AttachReaderClickRequested="AttachReader_Click"
+          <TabItem Header="Сбор"><views:CollectionPanelView x:Name="CollectionPanel"
               ClearCenterZoneClickRequested="ClearCenterZone_Click"
-              DeleteProfileClickRequested="DeleteProfile_Click"
-              DetachReaderClickRequested="DetachReader_Click"
               MarkCenterZoneClickRequested="MarkCenterZone_Click"
               ProfileFieldChangedRequested="ProfileField_Changed"
               ProfileSelectionChangedRequested="ProfileSelection_Changed"
-              RefreshClientsClickRequested="RefreshClients_Click"
               RoleDropDownClosedRequested="Role_DropDownClosed"
               ToggleCollectionClickRequested="ToggleCollection_Click"
               /></TabItem>
 
-          <TabItem Header="ЖУРНАЛ"><views:JournalPanelView/></TabItem>
+          <TabItem Header="Журнал"><views:JournalPanelView x:Name="JournalPanel"/></TabItem>
+           </TabControl>
+          </TabItem>
+          <TabItem x:Name="TemplatesTab" Header="Шаблоны">
+              <launchviews:LaunchTemplatesView x:Name="TemplatesView"/>
+          </TabItem>
         </TabControl>
     </Grid>
 </Window>

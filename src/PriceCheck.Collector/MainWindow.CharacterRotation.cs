@@ -30,7 +30,7 @@ public partial class MainWindow
                     resumeReader ? CaptureReaderBeforeLogin(runtime) : null);
                 runtime.RefreshProfile();
                 OnPropertyChanged(nameof(CharacterOptions));
-                Log($"{runtime.Profile.Name}: changed to character {runtime.Profile.CharacterSlot} of {runtime.Profile.RotationCharacterCount}");
+                Log($"{runtime.Profile.Name}: changed to account {runtime.Profile.RotationAccountIndex+1}/{runtime.Profile.RotationAccountCount}, character {runtime.Profile.CharacterSlot+1}/{runtime.Profile.RotationCharacterCount}");
             }
             catch(Exception e)
             {
@@ -52,7 +52,6 @@ public partial class MainWindow
                 runtime.IsBusy=false;
                 await SaveProfilesAsync();
                 if(template?.RotateEachLaunch==true) await SaveTemplatesAsync();
-                RefreshClientList();
             }
             return true;
         }

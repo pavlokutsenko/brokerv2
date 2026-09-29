@@ -29,16 +29,16 @@ public sealed partial class ClientProcessService : IClientProcessService
         try
         {
             if (template is not { HardwareEnabled: true })
-                throw new LaunchProtectionException("Запуск запрещён: выберите шаблон с включённым HWID.");
+                throw new LaunchProtectionException("Launch blocked: select a template with HWID enabled.");
             using (var device = new PriceCheck.Collector.Runtime.Driver.Lu4Device())
                 if (device.QueryProxyGuard().Capabilities != 31)
-                    throw new LaunchProtectionException("Драйвер не поддерживает обязательную защиту от прямого трафика.");
+                    throw new LaunchProtectionException("The driver does not support mandatory direct-traffic protection.");
             await ProxyTcpBroker.VerifyUpstreamAsync(template, cancellationToken);
             var before = CurrentClientPids().ToHashSet();
             var executable = ResolveLaunchFile(profile);
             var start = new ProcessStartInfo { FileName = executable, WorkingDirectory = Path.GetDirectoryName(executable)!, UseShellExecute = false };
             var agentPath = ClientLaunchConfiguration.Apply(start, template, profile.Id)
-                ?? throw new LaunchProtectionException("HWID-агент не подготовлен.");
+                ?? throw new LaunchProtectionException("HWID agent is not ready.");
             mapping = new(start.Environment["PRICECHECK_WORLD_IDENTITY"]!, template.ProxyEnabled);
             start.Environment["PRICECHECK_LAUNCH_GUARD"] = mapping.Name;
             // The experimental early loader is excluded from the mandatory guarded path.
@@ -84,11 +84,11 @@ public sealed partial class ClientProcessService : IClientProcessService
                     throw new ClientStartupException($"The launcher exited with code {root.ExitCode} before creating lu4.bin.");
                 await Task.Delay(100, cancellationToken);
             }
-            throw new TimeoutException("Защищённый lu4.bin не появился в течение 5 минут.");
+            throw new TimeoutException("Protected lu4.bin did not appear within five minutes.");
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException ||
             error is InvalidOperationException and not LaunchProtectionException)
-        { throw new LaunchProtectionException("Запуск запрещён: драйвер HWID/прокси не прошёл проверку. " + error.Message, error); }
+        { throw new LaunchProtectionException("Launch blocked: HWID/proxy driver verification failed. " + error.Message, error); }
         finally
         {
             if (!accepted)
@@ -150,7 +150,7 @@ public sealed partial class ClientProcessService : IClientProcessService
             hook?.Pulse();
             await Task.Delay(100, cancellationToken);
         }
-        throw new LaunchProtectionException($"HWID: агент PID {pid} не подтвердил готовность в течение 60 секунд.");
+            throw new LaunchProtectionException($"HWID: agent PID {pid} did not confirm readiness within 60 seconds.");
     }
 
     private static DateTime ProcessStartTime(int pid)

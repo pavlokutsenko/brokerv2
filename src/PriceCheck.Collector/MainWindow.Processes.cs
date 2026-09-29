@@ -21,19 +21,21 @@ public partial class MainWindow
         var template = LaunchTemplates.FirstOrDefault(value => value.Id == runtime.Profile.LaunchTemplateId && value.Id != Guid.Empty);
         try
         {
-            if (Runtimes.Count(other => other.Session is { } active && ClientProcessIdentity.IsCurrent(active)) >= 4)
-                throw new InvalidOperationException("Одновременно поддерживаются от 1 до 4 игровых клиентов.");
             if (Runtimes.Any(other => other != runtime && other.Session is not null &&
                 ClientProcessIdentity.IsCurrent(other.Session) &&
                 other.Profile.Name.Equals(runtime.Profile.Name, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("На этом рынке уже работает другой профиль.");
             PriceCheck.Launching.CharacterRotationSchedule.Validate(runtime.Profile);
-            if (runtime.Profile.CharacterRotationEnabled && !resumeCharacter)
-                runtime.Profile.CharacterSlot = 0;
+            if(!resumeCharacter)
+            {
+                runtime.Profile.RotationAccountIndex=0;
+                if(runtime.Profile.CharacterRotationEnabled)runtime.Profile.CharacterSlot=0;
+            }
             if (runtime.ReaderAttached) await _collection.DetachAsync(runtime);
             runtime.Session = await _launcher.LaunchAsync(runtime.Profile, template,
                 status => { runtime.LaunchStatus = status; runtime.Protection = _launcher.Protection(runtime.Profile.Id); }, CancellationToken.None,
                 CaptureReaderBeforeLogin(runtime));
+            await EnsureReaderAttachedAsync(runtime);
             _characterRotation.Started(runtime.Profile,runtime.Session,DateTimeOffset.UtcNow);
             OnPropertyChanged(nameof(CharacterOptions));
             runtime.Profile.LastProcessId = runtime.Session.ProcessId;
@@ -62,7 +64,6 @@ public partial class MainWindow
                 await SaveTemplatesAsync();
                 TemplatesView.RefreshAfterLaunch(LaunchTemplates.Where(value => value.Id != Guid.Empty));
             }
-            RefreshClientList();
         }
     }
 
@@ -104,7 +105,8 @@ public partial class MainWindow
         _journal.Append(new(DateTimeOffset.UtcNow, "ERROR", runtime.Profile.Name, runtime.Profile.Name, "",
             PriceCheck.Collector.Services.CollectorJournal.Redact(exception.ToString())));
         Log($"ERROR {runtime.Profile.Name}: {exception.GetBaseException().Message}");
-        MessageBox.Show(this, exception.GetBaseException().Message, "PriceCheck Collector", MessageBoxButton.OK, MessageBoxImage.Warning);
+        MessageBox.Show(this, RussianUiTextConverter.Translate(exception.GetBaseException().Message),
+            "PriceCheck Collector", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private async void MainWindow_Closing(object? sender, CancelEventArgs e)
@@ -114,7 +116,7 @@ public partial class MainWindow
         if (_closing) return;
         if (Runtimes.Any(runtime => runtime.IsBusy))
         {
-            Log("Wait for the current module operation before closing.");
+            Log("Дождитесь завершения текущей операции перед закрытием.");
             return;
         }
         _closing = true;
@@ -139,7 +141,7 @@ public partial class MainWindow
         catch (Exception exception)
         {
             Log($"Close postponed: {exception}");
-            MessageBox.Show(this, $"Reader cleanup is not finished: {exception.GetBaseException().Message}\nClients remain open. Try closing again after the current operation completes.", "PriceCheck Collector");
+            MessageBox.Show(this, $"Очистка ридера не завершена: {RussianUiTextConverter.Translate(exception.GetBaseException().Message)}\nКлиенты остаются открытыми. Повторите закрытие после завершения операции.", "PriceCheck Collector");
             _closing = false;
             _refreshTimer.Start();
         }

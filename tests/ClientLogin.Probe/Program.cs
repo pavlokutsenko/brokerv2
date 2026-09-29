@@ -235,3 +235,79 @@ for (var chunkIndex = 0; chunkIndex < 8; chunkIndex++)
         catch (Exception) { }
     }
 }
+
+void DumpStructFields(ulong type, string label)
+{
+    Console.WriteLine($"Schema {label} ptr=0x{type:X}");
+    var fieldPointer = U64(type + 0x50);
+    var seen = new HashSet<ulong>();
+    for (var fieldIndex = 0; fieldIndex < 256 && fieldPointer != 0 && seen.Add(fieldPointer); fieldIndex++)
+    {
+        var field = device.Read(pid, fieldPointer, 0x90);
+        var next = BinaryPrimitives.ReadUInt64LittleEndian(field.AsSpan(0x18));
+        var fieldId = BinaryPrimitives.ReadUInt32LittleEndian(field.AsSpan(0x20));
+        Console.WriteLine($"SchemaField {label} {fieldIndex} name={Name(fieldId)} ptr=0x{fieldPointer:X} data={Convert.ToHexString(field.AsSpan(0x28, 0x48))}");
+        fieldPointer = next;
+    }
+}
+DumpStructFields(ObjectAt(11257), "GameServerInfo");
+DumpStructFields(ObjectAt(11258), "GameServersInfo");
+DumpStructFields(loginModeClass, "LU4LoginMode");
+DumpStructFields(loginLibraryClass, "NetLoginLibrary");
+DumpStructFields(U64(ObjectAt(218957) + 0x10), "LogIn_GameMode_C");
+DumpStructFields(ObjectAt(52742), "Wid_Login_Servers_Item_C");
+DumpStructFields(ObjectAt(191365), "Wid_Login_Servers_C");
+DumpStructFields(ObjectAt(218848), "Wid_Login_Servers_View_C");
+var serverItemClass = ObjectAt(52742);
+for (var chunkIndex = 0; chunkIndex < 8; chunkIndex++)
+{
+    var chunk = U64(chunkTable + (ulong)chunkIndex * 8);
+    if (chunk == 0) break;
+    for (var index = 0; index < 65536; index++)
+    {
+        ulong obj;
+        try { obj = U64(chunk + (ulong)index * 0x18); }
+        catch (Exception) { break; }
+        if (obj < 0x1000000000 || obj > 0x00007FFFFFFFFFFF) continue;
+        try
+        {
+            if (U64(obj + 0x10) != serverItemClass) continue;
+            var structId = U32(obj + 0x318);
+            var itemId = U32(obj + 0x368);
+            var namePointer = U64(obj + 0x318 + 0x28);
+            var nameLength = U32(obj + 0x318 + 0x30);
+            var serverName = namePointer != 0 && nameLength is > 0 and < 128
+                ? System.Text.Encoding.Unicode.GetString(device.Read(pid, namePointer, checked((int)nameLength * 2))).TrimEnd('\0')
+                : "<empty>";
+            Console.WriteLine($"ServerItem index={chunkIndex * 65536 + index} ptr=0x{obj:X} structId={structId} widgetId={itemId} name={serverName}");
+        }
+        catch (Exception) { }
+    }
+}
+var listedTypes = new HashSet<ulong>();
+for (var chunkIndex = 0; chunkIndex < 8; chunkIndex++)
+{
+    var chunk = U64(chunkTable + (ulong)chunkIndex * 8);
+    if (chunk == 0) break;
+    for (var index = 0; index < 65536; index++)
+    {
+        ulong obj;
+        try { obj = U64(chunk + (ulong)index * 0x18); }
+        catch (Exception) { break; }
+        if (obj < 0x1000000000 || obj > 0x00007FFFFFFFFFFF) continue;
+        try
+        {
+            var name = Name(U32(obj + 0x18));
+            if (name.Contains("GameInstance", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("Login", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("GameServer", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"NamedObject index={chunkIndex * 65536 + index} name={name} ptr=0x{obj:X}");
+                if ((name.Contains("GameInstance", StringComparison.OrdinalIgnoreCase) ||
+                     name is "LU4LoginMode" or "NetLoginLibrary") && listedTypes.Add(obj))
+                    DumpStructFields(obj, name);
+            }
+        }
+        catch (Exception) { }
+    }
+}

@@ -23,7 +23,7 @@ internal sealed class SuspendedClientProcess : IDisposable
                 ? string.Join(' ', start.ArgumentList.Select(Quote)) : start.Arguments;
             if (!CreateProcessW(start.FileName, new StringBuilder(Quote(start.FileName) + " " + arguments), 0, 0, false,
                 0x4 | 0x400 | (start.CreateNoWindow ? 0x8000000u : 0), pointer, start.WorkingDirectory, ref info, out _native))
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "Не удалось создать защищённый процесс.");
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not create the protected process.");
             Process = Process.GetProcessById((int)_native.Pid);
         }
         finally { Marshal.FreeHGlobal(pointer); }
@@ -35,7 +35,7 @@ internal sealed class SuspendedClientProcess : IDisposable
     public void Resume()
     {
         if (ResumeThread(_native.Thread) == uint.MaxValue)
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Не удалось запустить защищённый процесс.");
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not start the protected process.");
         _resumed = true;
     }
     public void Dispose()

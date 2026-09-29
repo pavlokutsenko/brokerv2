@@ -31,7 +31,7 @@ $required = @("PriceCheck.$product.dll","PriceCheck.$product.runtimeconfig.json"
     'hostfxr.dll','hostpolicy.dll','coreclr.dll','PresentationFramework.dll',
     'ClientLaunchRuntime\PriceCheck.ClientAgent.dll','ClientLaunchRuntime\PriceCheck.ClientLogin.dll',
     'DriverRuntime\lu4_memory_wfp.sys','DriverRuntime\load-driver.ps1','DriverRuntime\kdu.exe','DriverRuntime\drv64.dll','DriverRuntime\Taigei64.dll')
-if ($product -eq 'Collector') { $required += @('PriceCheck.Collection.dll','BrokerRuntime\BrokerWorker.exe','BrokerRuntime\_internal\python314.dll','BrokerRuntime\_internal\base_library.zip') }
+if ($product -eq 'Collector') { $required += @('PriceCheck.Collection.dll','BrokerRuntime\BrokerWorker.exe','BrokerRuntime\_internal\python314.dll','BrokerRuntime\_internal\base_library.zip','Market-History.ps1') }
 elseif ((Test-Path -LiteralPath (Join-Path $payload 'PriceCheck.Collection.dll')) -or (Test-Path -LiteralPath (Join-Path $payload 'BrokerRuntime'))) { throw 'Launcher contains collection components' }
 if ($manifest.schema -ge 2) {
     $required += 'PriceCheck.Launching.UI.dll'

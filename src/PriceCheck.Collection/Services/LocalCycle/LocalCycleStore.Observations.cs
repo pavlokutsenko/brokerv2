@@ -5,7 +5,8 @@ namespace PriceCheck.Collector.Services;
 public sealed partial class LocalCycleStore
 {
     // Runs regardless of active native operation. No HTTP or native work under the DB lock.
-    public void Observe(RadarSnapshot radar, CycleRadarPool boundary, MarketZone center, DateTimeOffset centerEntered)
+    public void Observe(RadarSnapshot radar, CycleRadarPool boundary, MarketZone center, DateTimeOffset centerEntered,
+        bool publishNewPresence=false)
     {
         lock (_sync) Transaction(() => {
             _collectionBoundary=boundary;
@@ -23,7 +24,9 @@ public sealed partial class LocalCycleStore
                 if(t.ObjectId==p.ObjectId && t.X==p.X && t.Y==p.Y && t.KioskType==p.KioskType &&
                     t.StateAt==stateAt && t.ObservedAt==p.LastSeenAtUtc && !t.ClosedThisSession)continue;
                 if (stateAt < t.StateAt && t.ClosedThisSession) continue;
-                var reopen = p.LastReopenedAtUtc is {} reopenAt && reopenAt>t.StateAt || t.ClosedThisSession && stateAt>t.StateAt;
+                var reopen = p.LastReopenedAtUtc is {} reopenAt && reopenAt>t.StateAt ||
+                    (t.ClosedThisSession || t.ConfirmedClosed) && stateAt>t.StateAt ||
+                    publishNewPresence && !_serverActiveTradingKeys.Contains(key);
                 var moved = t.HasPosition && (Distance(t.X,t.Y,p.X,p.Y)>=20 || t.LastRead is not null &&
                     !t.Dirty && Distance(t.CheckedX,t.CheckedY,p.X,p.Y)>=20);
                 var changedType = t.KioskType is 1 or 3 or 8 && t.KioskType!=p.KioskType;
@@ -38,6 +41,7 @@ public sealed partial class LocalCycleStore
                 t.StateAt=stateAt>t.StateAt?stateAt:t.StateAt; t.Name=p.Name; t.KioskType=p.KioskType;
                 t.X=p.X; t.Y=p.Y; t.HasPosition=true; t.ObservedAt=p.LastSeenAtUtc;
                 t.ObjectId=p.ObjectId; t.Session=_session; Save(t);
+                if(publishNewPresence)_serverActiveTradingKeys.Add(key);
                 InsertPassTarget(t,radar.PlayerX,radar.PlayerY);
             }
             foreach (var p in radar.ClosedTraders) ObserveClosedCore(p,center,centerEntered,radar.LivePlayerPositionAvailable);
@@ -53,7 +57,7 @@ public sealed partial class LocalCycleStore
         if(p.KioskType!=0 || !double.IsFinite(p.X) || !double.IsFinite(p.Y) || !_collectionBoundary.Inside(p.X,p.Y) ||
             !_traders.TryGetValue(key,out var t) || at<t.StateAt) return;
         var freshCenter = livePosition && p.StateObservedPlayerX is {} x && p.StateObservedPlayerY is {} y &&
-            Distance(x,y,center.X,center.Y)<=500 && at>=centerEntered && _clock()-at<=TimeSpan.FromSeconds(5);
+            Distance(x,y,center.X,center.Y)<=center.Radius && at>=centerEntered && _clock()-at<=TimeSpan.FromSeconds(5);
         if(!t.ClosedThisSession || at>t.StateAt)
         {
             var transition=!t.ClosedThisSession;
@@ -68,7 +72,7 @@ public sealed partial class LocalCycleStore
         if(freshCenter && !t.ConfirmedClosed)
         {
             t.ConfirmedClosed=true; StateEvent(t,"closed_confirmed",at,p,center);
-            Message?.Invoke($"INFO {_profile.Name}: {p.Name} trader={key} · current closure confirmed inside saved center500");
+            Message?.Invoke($"INFO {_profile.Name}: {p.Name} trader={key} · current closure confirmed inside saved center{center.Radius:F0}");
         }
         Save(t);
     }

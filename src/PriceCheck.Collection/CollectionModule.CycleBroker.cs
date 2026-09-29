@@ -9,6 +9,9 @@ public sealed partial class CollectionModule
     private async Task<bool> RunCycleBrokerAsync(ProfileRuntime runtime, CycleRun cycle, RadarSnapshot before)
     {
         if (!before.IsInsideCenterZone) throw new InvalidOperationException("Broker requires the configured center zone.");
+        if (!cycle.RadarPool.CoversCenter(cycle.Center!.Value))
+            throw new InvalidOperationException("Center standing zone does not cover the collection polygon with radar margin.");
+        await cycle.Store.ImportActiveServerRosterAsync(cycle.RadarPool);
         var started = DateTimeOffset.UtcNow;
         Log($"INFO {runtime.Profile.Name}: broker started · PID {runtime.ProcessId} · epoch {started:O}");
         cycle.CollectingBrokerRadar=true;
@@ -44,9 +47,23 @@ public sealed partial class CollectionModule
             beforeIdentities=before.BrokerIdentities.Count,afterIdentities=after.BrokerIdentities.Count,
             packetRecovered=wantedIds.Where(id=>!nativeIds.Contains(id) && names.ContainsKey(id)).Select(id=>names[id]),
             unbound=wantedIds.Where(id=>!names.ContainsKey(id)).ToArray() }));
-        var complete = raw.Complete && rows.All(r => r.TraderName.Length > 0) && after.IsInsideCenterZone &&
+        var stationary = after.IsInsideCenterZone &&
             cycle.Center == GetCenterZone(runtime.Profile) && runtime.IsCollectionEnabled && !File.Exists(cycle.StopFile) &&
             Math.Abs(before.PlayerX-after.PlayerX)<10 && Math.Abs(before.PlayerY-after.PlayerY)<10;
+        var complete = raw.Complete && rows.All(r => r.TraderName.Length > 0) && stationary;
+        var radarComplete = stationary && CenterRadarEvidence.IsComplete(raw,runtime.ProcessId!.Value,
+            cycle.Center!.Value,started,DateTimeOffset.UtcNow);
+        if(radarComplete)
+        {
+            runtime.ConfirmCenterRadarTraderCount(CenterRadarEvidence.CountShopTraders(raw.NativeStateObservations),
+                raw.NativeRadar!.ObservedAtUtc);
+            var live=new RadarSnapshot{CapturedAtUtc=raw.NativeRadar!.ObservedAtUtc,
+                ProcessId=runtime.ProcessId.Value,WorldCharacterDataAvailable=true,LivePlayerPositionAvailable=true,
+                IsInsideCenterZone=true,PlayerX=raw.NativeRadar.CollectorX,PlayerY=raw.NativeRadar.CollectorY,
+                Traders=raw.NativeStateObservations.Where(t=>t.KioskType is 1 or 3 or 8)
+                    .Select(t=>new RadarPoint(t.ObjectId,t.Name,t.KioskType,t.X,t.Y,0,true,t.ObservedAt){StateObservedAtUtc=t.ObservedAt}).ToArray()};
+            cycle.Store.Observe(live,cycle.RadarPool,cycle.Center.Value,cycle.CenterEnteredAt,publishNewPresence:true);
+        }
         var inventory = new BrokerInventoryFile { Complete=complete, StartedAtUtc=started,
             CapturedAtUtc=raw.CapturedAtUtc, ElapsedSeconds=raw.ElapsedSeconds, Summary=raw.Summary, Rows=rows };
         var reopened=cycle.Bindings.Apply(inventory,enriched);
@@ -66,6 +83,9 @@ public sealed partial class CollectionModule
         cycle.RemainingVisitKeys.UnionWith(rows.Where(r=>r.TraderName.Length>0).Select(r=>CycleQueue.Key(r.TraderName)));
         cycle.BrokerBatch=$"broker-{runtime.Profile.Id:N}-{Guid.NewGuid():N}";
         cycle.Store.ApplyBroker(inventory,enriched,cycle.BrokerBatch,cycle.RadarPool);
+        var retired=cycle.Store.ReconcileCenterRadar(after,cycle.Center!.Value,started,cycle.BrokerBatch,radarComplete,raw.NativeStateObservations);
+        Log($"INFO {runtime.Profile.Name}: center radar · complete={radarComplete} · native identities {raw.NativeStateObservations.Count} · retired {retired}");
+        if(retired>0)Log($"INFO {runtime.Profile.Name}: center radar · {retired} historical traders retired · history retained");
         foreach(var observation in raw.NativeStateObservations.Where(t=>t.KioskType==0))
             cycle.Store.ObserveClosed(new(observation.ObjectId,observation.Name,0,observation.X,observation.Y,0,true,observation.ObservedAt) {
                 StateObservedAtUtc=observation.ObservedAt,StateObservedPlayerX=observation.CollectorX,StateObservedPlayerY=observation.CollectorY},
@@ -80,10 +100,10 @@ public sealed partial class CollectionModule
             runtime.Status = $"WARNING Broker incomplete · replies {raw.Summary.ItemResponses}/{raw.Summary.ItemRequests} · {missing.Select(r=>r.TraderObjectId).Distinct().Count()} unbound traders / {missing.Length} rows · safe data retained; continuing local route";
             Log($"WARNING {runtime.Profile.Name}: {runtime.Status}");
             foreach(var warning in raw.Warnings)Log($"WARNING {runtime.Profile.Name}: broker · {warning}");
-            return false;
+            return radarComplete;
         }
         runtime.Status = $"Broker complete · {raw.Summary.UniqueTraders} traders · quantities updated";
         Log($"{runtime.Profile.Name}: {runtime.Status} · replies {raw.Summary.ItemResponses}/{raw.Summary.ItemRequests}");
-        return true;
+        return radarComplete;
     }
 }

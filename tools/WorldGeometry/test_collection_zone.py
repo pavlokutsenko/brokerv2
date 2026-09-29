@@ -17,3 +17,9 @@ class CollectionZoneTests(unittest.TestCase):
             self.assertTrue(in_collection_zone(self.zone,*point))
         self.assertTrue(in_collection_zone(None,100,100))
         self.assertFalse(in_collection_zone(self.zone,float('nan'),148000))
+
+    def test_northeast_extension_includes_the_two_missed_live_shops_only(self):
+        for point in ((84693,147700),(84662,147581)):
+            self.assertTrue(in_collection_zone(self.zone,*point),point)
+        self.assertFalse(in_collection_zone(self.zone,84693,148000))
+        self.assertFalse(in_collection_zone(self.zone,84781,147700))

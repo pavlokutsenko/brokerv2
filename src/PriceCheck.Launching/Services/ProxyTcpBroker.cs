@@ -24,6 +24,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
     private readonly string _authorization;
     private readonly Task _acceptLoop;
     private readonly bool _trace = Environment.GetEnvironmentVariable("PRICECHECK_TRACE_HARDWARE") == "1";
+    private readonly bool _tracePorts = Environment.GetEnvironmentVariable("PRICECHECK_TRACE_PORTS") == "1";
     private readonly bool _captureWorldPrefix =
         Environment.GetEnvironmentVariable("PRICECHECK_TEST_CAPTURE_WORLD_PREFIX") == "1";
     private readonly object _traceGate = new();
@@ -100,7 +101,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
                 Trace("destination_port", port);
                 var destination = $"{address}:{port}";
                 Trace("destination_ipv4", BinaryPrimitives.ReadInt32BigEndian(context.AsSpan(8, 4)));
-                if (_guarded && port is 2108 or 7782)
+                if (_guarded && (port == 2108 || IsWorldPort(port)))
                 {
                     while (!AllowLogin) await Task.Delay(100, session.Token);
                 }
@@ -123,7 +124,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
                 var network = upstream.GetStream();
                 var extra = ProxyEnabled ? await OpenConnectAsync(network, destination, session.Token) : [];
                 if (ProxyEnabled) Interlocked.Increment(ref _connections);
-                if (port == 7782) {
+                if (IsWorldPort(port)) {
                     Interlocked.Increment(ref _worldConnections);
                     Interlocked.Increment(ref _worldActive); worldSession = true;
                     Interlocked.Exchange(ref _worldOpenedAt, Environment.TickCount64);
@@ -142,7 +143,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
                 var incoming = PumpAsync(network, game, "proxy_to_client", port, session.Token);
                 await Task.WhenAny(outgoing, incoming);
                 if (!_stop.IsCancellationRequested && (outgoing.IsFaulted || incoming.IsFaulted))
-                    SetError(ProxyEnabled ? "Обмен игровыми данными через прокси прерван ошибкой сети." : "Обмен игровыми данными прерван ошибкой сети.");
+                SetError(ProxyEnabled ? "Game traffic through proxy was interrupted by a network error." : "Game traffic was interrupted by a network error.");
                 Trace("tunnel_ended", port);
                 session.Cancel();
                 upstream.Dispose();
@@ -151,7 +152,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
             }
             catch (Exception error) {
                 if (!_stop.IsCancellationRequested && (error is not OperationCanceledException || !session.IsCancellationRequested))
-                    SetError(error is IOException ? error.Message : ProxyEnabled ? "Соединение через прокси не прошло проверку или было прервано." : "Прямое соединение с игровым сервером прервано.");
+                SetError(error is IOException ? error.Message : ProxyEnabled ? "Proxy connection failed verification or was interrupted." : "Direct connection to the game server was interrupted.");
                 Trace("tunnel_error", error.HResult);
             }
             finally { if (worldSession && Interlocked.Decrement(ref _worldActive) == 0) Interlocked.Exchange(ref _worldOpenedAt, 0); }

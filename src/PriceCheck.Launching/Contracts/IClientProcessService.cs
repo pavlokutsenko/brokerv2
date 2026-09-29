@@ -1,4 +1,5 @@
 using PriceCheck.Collector.Models;
+using PriceCheck.Contracts;
 
 namespace PriceCheck.Collector.Contracts;
 
@@ -9,6 +10,7 @@ public interface IClientProcessService
     void Terminate(int pid);
     Task<int> LaunchAndBindAsync(CollectorProfile profile, LaunchTemplate? template, CancellationToken cancellationToken);
     Task WaitForGameWindowAsync(int pid, CancellationToken cancellationToken);
+    bool TryPlaceGameWindow(ClientSession session, GameWindowCorner corner);
     Task ActivateLateAgentAsync(int pid, CancellationToken cancellationToken);
     PriceCheck.Contracts.ClientProtectionStatus Protection(int pid);
     Task ValidateProtectionAsync(int pid, bool requireWorld, CancellationToken cancellationToken);

@@ -8,12 +8,12 @@ public sealed record ClientProtectionStatus(bool HardwareReady, bool WorldIdenti
     public bool Failed => Error is not null;
     public string HardwareLabel => Failed ? (Error!.StartsWith("HWID:", StringComparison.Ordinal)
         ? "HWID · ОШИБКА" : "HWID · проверка прервана") : WorldIdentityApplied
-        ? $"HWID · применён в мире · {IdentityTag}" : HardwareReady
+        ? $"HWID · применён в игровом мире · {IdentityTag}" : HardwareReady
         ? $"HWID · проверен, ожидание входа · {IdentityTag}" : "HWID · не проверен";
-    public string ProxyLabel => !ProxyRequired ? "ПРОКСИ · выключен в шаблоне" : Failed ? "ПРОКСИ · ОШИБКА" : ProxyReady
-        ? $"ПРОКСИ · защита активна · {ProxiedConnections} CONNECT · ↑ {SentBytes:N0} / ↓ {ReceivedBytes:N0} Б · блокировано {BlockedConnections}"
+    public string ProxyLabel => !ProxyRequired ? "ПРОКСИ · отключён в шаблоне" : Failed ? "ПРОКСИ · ОШИБКА" : ProxyReady
+        ? $"ПРОКСИ · активен · {ProxiedConnections} CONNECT · ↑ {SentBytes:N0} / ↓ {ReceivedBytes:N0} Б · заблокировано {BlockedConnections}"
         : "ПРОКСИ · не проверен";
     public string Detail => Error ?? (ProxyRequired
-        ? "Трафик игровых процессов: IPv4/TCP через HTTP CONNECT. UDP/IPv6 и прямые подключения блокируются."
-        : "Прокси выключен: IPv4/TCP идёт напрямую к серверам через локальный relay проверки HWID. UDP/raw и IPv6 блокируются.");
+        ? "Игровой трафик: IPv4/TCP через HTTP CONNECT. UDP/IPv6 и прямые соединения заблокированы."
+        : "Прокси отключён: IPv4/TCP через локальный HWID-ретранслятор. UDP/raw и IPv6 заблокированы.");
 }

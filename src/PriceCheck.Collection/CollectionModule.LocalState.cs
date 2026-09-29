@@ -41,7 +41,8 @@ public sealed partial class CollectionModule
         var session=$"{radar.ProcessId}:{runtime.Session?.StartedAtUtc:O}";
         if(!_localStoreSessions.TryGetValue(runtime.Profile.Id,out var previous)||previous!=session)
         {
-            store.BeginSession(session);_localStoreSessions[runtime.Profile.Id]=session;
+            store.BeginSession(session,_cycles.TryGetValue(runtime.Profile.Id,out var pendingCycle) && pendingCycle.ContinueAfterClientChange);
+            _localStoreSessions[runtime.Profile.Id]=session;
             _insideCenters[runtime.Profile.Id]=false;
         }
         if(radar.WorldCharacterDataAvailable&&radar.LivePlayerPositionAvailable&&_worldLoggedSessions.GetValueOrDefault(runtime.Profile.Id)!=session)
@@ -49,7 +50,7 @@ public sealed partial class CollectionModule
             _worldLoggedSessions[runtime.Profile.Id]=session;
             Log($"INFO {runtime.Profile.Name}: world loaded · PID {runtime.ProcessId} · reader data and current player position available");
         }
-        var inside=radar.LivePlayerPositionAvailable&&Math.Sqrt(Math.Pow(radar.PlayerX-center.X,2)+Math.Pow(radar.PlayerY-center.Y,2))<=500;
+        var inside=radar.LivePlayerPositionAvailable&&Math.Sqrt(Math.Pow(radar.PlayerX-center.X,2)+Math.Pow(radar.PlayerY-center.Y,2))<=center.Radius;
         if(inside&&!_insideCenters.GetValueOrDefault(runtime.Profile.Id))_enteredCenters[runtime.Profile.Id]=DateTimeOffset.UtcNow;
         _insideCenters[runtime.Profile.Id]=inside;
         var entered=_enteredCenters.GetValueOrDefault(runtime.Profile.Id,DateTimeOffset.MaxValue);

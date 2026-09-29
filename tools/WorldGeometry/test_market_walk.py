@@ -21,12 +21,33 @@ from city_maps import load_navigation
 from functools import partial
 from types import SimpleNamespace
 import threading
+from collections import deque
+from walk_trader_pause import wait_after_capture
 
 GIRAN_RULES=load_navigation('Giran')['navigationRules']
 temple_gate_direct_allowed=partial(temple_gate_direct_allowed,rules=GIRAN_RULES)
 
 
 class MarketWalkTests(unittest.TestCase):
+    def test_exact_read_pause_precedes_next_route_move(self):
+        order=[];position=[0,0,0]
+        active=threading.Event();active.set()
+        shops=SimpleNamespace(active=active,error=None,captured_keys={'shop'},
+            ignored_outside_keys=set(),anchor_positions=[],needs_resume=lambda:False,
+            lock=threading.Lock(),pause_queue=deque(['shop']),trader_pause_seconds=.01,
+            pause_seconds_spent=0.0,stats={'captured_shops':1,'exact_shops':1})
+        shops.wait_after_capture=lambda client,log,progress=None:wait_after_capture(shops,client,log,progress)
+        client=SimpleNamespace(shops=shops,initial_selected=0,world={'controller':0},
+            m=SimpleNamespace(u64=lambda _:0),position=lambda:tuple(position),cancelled=lambda:False,
+            move=lambda goal:order.append('move') or position.__setitem__(slice(0,2),goal),
+            stop=lambda:order.append('final_stop'),
+            pause_for_plan=lambda:order.append('trader_stop') or active.clear())
+        nav=SimpleNamespace(clear=lambda *_:True)
+        result=follow(client,nav,[(0,0),(100,0)],lambda _:None,max_seconds=2)
+        self.assertEqual(result['reason'],'completed')
+        self.assertLess(order.index('trader_stop'),order.index('move'))
+        self.assertGreaterEqual(shops.pause_seconds_spent,.01)
+
     def test_game_accepted_endpoint_reads_instead_of_waiting_for_immobility(self):
         shops=SimpleNamespace(active=threading.Event(),error=None,captured_keys=set(),
                               ignored_outside_keys=set(),anchor_positions=[(100,0)],needs_resume=lambda:False)
@@ -60,6 +81,29 @@ class MarketWalkTests(unittest.TestCase):
         class Nav:
             def clear(self,start,end): return True
         self.assertEqual(lookahead_goal(path,Nav(),(97,0,0),97,95),(100,0))
+
+    def test_hairpin_does_not_command_backwards_before_reaching_the_bend(self):
+        path=Path([(0,0),(25,0),(-100,0)])
+        nav=SimpleNamespace(clear=lambda *_:True)
+        goal=lookahead_goal(path,nav,(0,0,0),0,125)
+        self.assertGreaterEqual(goal[0],8)
+
+    def test_blocked_forward_hairpin_replans_instead_of_reversing(self):
+        path=Path([(0,0),(25,0),(-100,0)])
+        nav=SimpleNamespace(clear=lambda _,goal:goal[0]<0)
+        self.assertIsNone(lookahead_goal(path,nav,(0,0,0),0,125))
+
+    def test_hairpin_direction_does_not_average_across_the_turn(self):
+        path=Path([(0,0),(25,0),(-100,0)])
+        nav=SimpleNamespace(clear=lambda *_:True)
+        self.assertIsNone(lookahead_goal(path,nav,(19,0,0),19,72))
+        self.assertLess(lookahead_goal(path,nav,(25,0,0),25,72)[0],25)
+
+    def test_forward_arc_still_gets_an_ordinary_ahead_goal(self):
+        path=Path([(72*math.cos(a),72*math.sin(a)) for a in
+            [i*math.pi/48 for i in range(13)]])
+        nav=SimpleNamespace(clear=lambda *_:True)
+        self.assertEqual(lookahead_goal(path,nav,(*path.points[0],0),0,72),path.points[-1])
 
     def navigation(self):
         return Navigation({"extent":[0,700,0,600],"obstacles":[{"rings":[[[280,120],[350,120],[350,440],[280,440],[280,120]]]}],
@@ -95,7 +139,7 @@ class MarketWalkTests(unittest.TestCase):
     def test_price_anchor_prevents_a_lookahead_skip(self):
         class Shops:
             anchor_positions=[(150,0)]
-        self.assertEqual(shop_lookahead((0,0,0),Shops(),210),95)
+        self.assertEqual(shop_lookahead((0,0,0),Shops(),210),72)
         self.assertEqual(shop_lookahead((500,0,0),Shops(),210),210)
 
     def test_diagonal_gate_approach_shortens_goal_before_entering_gate_y_band(self):
@@ -258,7 +302,7 @@ class MarketWalkTests(unittest.TestCase):
         self.assertEqual(events[0]['type'],'unstick_success')
         self.assertEqual(events[0]['position'][:2],(35,100))
 
-    def test_radar_detour_reads_before_escaping_another_anchor_disk(self):
+    def test_radar_detour_reads_before_discarding_old_anchor_clearance(self):
         start=(80100,147080);end=(80210,147180)
         nav=self.navigation();nav.add_blocker(Point(end).buffer(45))
         class Shops:
@@ -274,21 +318,21 @@ class MarketWalkTests(unittest.TestCase):
         def move(c,n,points,*args):
             calls.append(points)
             reason='radar_detour' if len(calls)==1 else 'completed'
-            if len(calls)>1: client.point=(*points[-1],0)
+            if len(calls)>1:
+                client.point=(*points[-1],0);client.shops.requested_keys.add('new')
             return {'reason':reason,'progress':0,'commands':0,'traveled':0,
                     'peak_route_error':0,'position':client.point}
         data={'extent':[0,700,0,600],'obstacles':[],'unknown':[]}
-        def leave(*_):
-            client.point=(*start,0)
-            return True
         with patch('walk_recovery.follow',side_effect=move), \
                 patch('walk_recovery.radar_pass_route',return_value=None), \
                 patch('walk_recovery.recheck_route',return_value=([start,end],self.navigation(),False)), \
-                patch('walk_recovery.escape',side_effect=leave):
+                patch('walk_recovery.escape',side_effect=AssertionError('escape before remaining replanned')):
             result=follow_with_recovery(client,nav,[start,(80350,147080)],events.append,60,None,Guard(),data)
-        self.assertEqual(result['reason'],'completed')
+        self.assertEqual(result['reason'],'replan_required')
         self.assertEqual(calls[1],[start,end])
-        self.assertIn('radar_detour_rejoin_needs_escape',[e['type'] for e in events])
+        self.assertIn('new',client.shops.requested_keys)
+        self.assertEqual(result['position'],(*end,0))
+        self.assertTrue(any(e.get('avoided_old_rejoin') for e in events))
 
     def test_step_retry_requires_a_clear_raised_sweep(self):
         class Ground:
@@ -345,13 +389,14 @@ class MarketWalkTests(unittest.TestCase):
             def __init__(self): self.pages={1:b'old snapshot'}
             def u64(self,_): return 100 if self.pages else 200
         client=object.__new__(WalkClient)
-        client.m=Memory();client.base=0;client.world={'world':100}
+        client.m=Memory();client.base=0;client.rvas={'gworld':GWORLD};client.world={'world':100}
         with self.assertRaisesRegex(RuntimeError,'world/pawn changed'):
             client.position()
 
     def test_new_client_waits_for_validated_spawn_capsule(self):
         client=object.__new__(WalkClient)
         client.base=100
+        client.rvas={'gworld':GWORLD}
         client.world={'world':1,'controller':200,'player_actor':300,'player_capsule':400}
         client.cancelled=lambda:False
         class Memory:

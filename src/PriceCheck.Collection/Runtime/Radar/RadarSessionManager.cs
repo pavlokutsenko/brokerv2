@@ -15,6 +15,9 @@ public sealed class RadarSessionManager : PriceCheck.Collection.IRadarSessions
     public RadarSnapshot? Snapshot(int pid, MarketZone? zone, bool collectionEnabled) =>
         _sessions.TryGetValue(pid, out var session) ? session.Snapshot(zone, collectionEnabled) : null;
 
+    public void RememberTraderKeys(int pid,IReadOnlyList<string> keys)
+    { if(_sessions.TryGetValue(pid,out var session))session.RememberTraderKeys(keys); }
+
     public async Task StopAsync(int pid)
     {
         if (!_sessions.Remove(pid, out var session)) return;

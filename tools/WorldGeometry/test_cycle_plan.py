@@ -12,7 +12,7 @@ class CyclePlanTests(unittest.TestCase):
         for seed in range(8):
             plan=center_route(DATA,(79800,147000),(80000,147000),previous,random.Random(seed))
             destination=plan['destination']
-            self.assertLessEqual(math.dist(destination,(80000,147000)),470)
+            self.assertLessEqual(math.dist(destination,(80000,147000)),170)
             if previous:self.assertGreaterEqual(math.dist(previous,destination),100)
             self.assertTrue(all(nav.clear(a,b) for a,b in zip(plan['points'],plan['points'][1:])))
             seen.append(destination);previous=destination
@@ -31,11 +31,17 @@ class CyclePlanTests(unittest.TestCase):
             self.assertGreaterEqual(nearest,54)
             self.assertLess(nearest,85)
 
-    def test_open_market_passes_continue_forward_without_shop_circles(self):
+    def test_open_market_passes_use_short_forward_arcs(self):
         data={**DATA,'obstacles':[]}
         targets=[{'key':str(i),'x':80000+500*i,'y':147500} for i in range(3)]
         plan=price_route(data,(79500,147500),targets)
         self.assertEqual(len(plan['anchors']),3)
+        self.assertEqual([a['mode'] for a in plan['approaches']],['arc']*3)
+        for target,approach in zip(plan['anchors'],plan['approaches']):
+            arc=approach['points'][:-1]
+            self.assertEqual(len(arc),13)
+            self.assertTrue(all(abs(math.dist(p,(target['x'],target['y']))-72)<1e-6 for p in arc))
+            self.assertAlmostEqual(sum(math.dist(a,b) for a,b in zip(arc,arc[1:])),56.539,places=2)
         line=LineString(plan['points'])
         self.assertLess(line.length,1800)  # 1,500 direct plus safe offsets.
         for target in targets:
@@ -46,5 +52,15 @@ class CyclePlanTests(unittest.TestCase):
         plan=price_route(DATA,(79500,146500),[{'key':'blocked','x':80250,'y':147000},{'key':'ok','x':80800,'y':147800}])
         self.assertEqual([t['key'] for t in plan['anchors']],['ok'])
         self.assertIn('blocked',[t['key'] for t in plan['deferred']])
+
+    def test_blocked_arc_keeps_safe_side_fallback(self):
+        data={'origin':[0,0],'extent':[-2000,2000,-2000,2000],
+            'unknown':[],'obstacles':[{'rings':[[[-15,y],[-5,y],[-5,y+15],[-15,y+15]]]}
+                for y in (65,-80)]}
+        plan=price_route(data,(-900,0),[{'key':'corridor','x':0,'y':0}])
+        self.assertEqual([a['mode'] for a in plan['approaches']],['blocked_arc_fallback'])
+        self.assertGreaterEqual(LineString(plan['points']).distance(Point(0,0)),55)
+        nav=Navigation(data)
+        self.assertTrue(all(nav.clear(a,b) for a,b in zip(plan['points'],plan['points'][1:])))
 
 if __name__=='__main__':unittest.main()

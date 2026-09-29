@@ -8,12 +8,20 @@ var root = Path.Combine(Path.GetTempPath(), "PriceCheck-storage-tests", Guid.New
 Directory.CreateDirectory(root);
 var profiles = new ProfileStore(root);
 var profile = new CollectorProfile { Name = "Gamma", City = "Giran",
+    LoginName="primary-account",LoginPassword="primary-secret-test",
+    RotationAccounts=[new(){LoginName="secondary-account",LoginPassword="secondary-secret-test"}],
+    RotationAccountIndex=1,
     CenterZonesByCity = new() { ["Giran"] = new() { X = 82414, Y = 148117 } } };
 await profiles.SaveAsync([profile]);
 await profiles.SaveAsync([profile]);
+var storedJson=File.ReadAllText(Path.Combine(root,"profiles.json"));
+Check(!storedJson.Contains("primary-secret-test") && !storedJson.Contains("secondary-secret-test"),
+    "all rotation passwords are protected in persisted settings");
 File.WriteAllBytes(Path.Combine(root,"profiles.json"),new byte[300]);
 var loaded = (await profiles.LoadAsync()).Single();
 Check(loaded.Id == profile.Id && loaded.CenterZonesByCity["Giran"].X == 82414,"profile and center restored");
+Check(loaded.RotationAccountIndex==1 && loaded.RotationAccounts.Single().LoginPassword=="secondary-secret-test" &&
+      loaded.LoginPassword=="primary-secret-test","additional account and active slot restore from protected backup");
 var templates = new LaunchTemplateStore(root);
 var template = new LaunchTemplate { Name = "Fixture", HardwareEnabled = false, ProxyEnabled = false };
 await templates.SaveAsync([template]);await templates.SaveAsync([template]);

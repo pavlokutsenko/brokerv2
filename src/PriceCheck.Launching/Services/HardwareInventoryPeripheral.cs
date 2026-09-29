@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.Win32;
 
 namespace PriceCheck.Collector.Services;
@@ -11,8 +13,7 @@ internal static class HardwareInventoryPeripheral
     {
         ScanPci(rows);
         ScanVideoIdentifiers(rows);
-        ScanUsb(rows, "USB", 24);
-        ScanUsb(rows, "HID", 24);
+        ScanDeviceIds(rows);
     }
 
     private static void ScanVideoIdentifiers(List<HardwareScanRow> rows)
@@ -64,26 +65,59 @@ internal static class HardwareInventoryPeripheral
         catch (Exception e) { rows.Add(new("PCI devices", e.Message, "Access denied")); }
     }
 
-    private static void ScanUsb(List<HardwareScanRow> rows, string branch, int limit)
+    private static void ScanDeviceIds(List<HardwareScanRow> rows)
     {
+        var set = SetupDiGetClassDevsW(IntPtr.Zero, null, IntPtr.Zero, 0x06);
+        if (set == new IntPtr(-1))
+        {
+            rows.Add(new("USB/HID API", "Device enumeration unavailable", "Scan unavailable"));
+            return;
+        }
         try
         {
-            using var root = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\" + branch);
-            if (root is null) return;
-            var count = 0;
-            foreach (var device in root.GetSubKeyNames())
-            using (var deviceKey = root.OpenSubKey(device))
+            var usb = 0;
+            var hid = 0;
+            for (uint index = 0; index < 4096; index++)
             {
-                if (deviceKey is null) continue;
-                foreach (var instance in deviceKey.GetSubKeyNames())
-                {
-                    if (count++ >= limit) break;
-                    rows.Add(new($"{branch} · {device}", instance, "Detected only"));
-                }
-                if (count >= limit) break;
+                var info = new DeviceInfoData { Size = (uint)Marshal.SizeOf<DeviceInfoData>() };
+                if (!SetupDiEnumDeviceInfo(set, index, ref info)) break;
+                var id = new StringBuilder(512);
+                if (!SetupDiGetDeviceInstanceIdW(set, ref info, id, id.Capacity, out _)) continue;
+                var value = id.ToString();
+                var isUsb = value.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase);
+                var isHid = value.StartsWith("HID\\", StringComparison.OrdinalIgnoreCase);
+                if (!isUsb && !isHid) continue;
+                if (isUsb && usb++ >= 24 || isHid && hid++ >= 24) continue;
+                rows.Add(new($"{(isUsb ? "USB" : "HID")} API · {value.Split('\\')[1]}",
+                    value, "SetupAPI/CM · hooked"));
             }
-            if (count >= limit) rows.Add(new($"{branch} · more", "Showing the first 24 devices", "Detected only"));
+            if (usb > 24) rows.Add(new("USB · more", "Showing the first 24 devices", "Detected only"));
+            if (hid > 24) rows.Add(new("HID · more", "Showing the first 24 devices", "Detected only"));
         }
-        catch (Exception e) { rows.Add(new($"{branch} devices", e.Message, "Access denied")); }
+        catch (Exception e) { rows.Add(new("USB/HID API", e.Message, "Scan unavailable")); }
+        finally { SetupDiDestroyDeviceInfoList(set); }
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct DeviceInfoData
+    {
+        public uint Size;
+        public Guid ClassGuid;
+        public uint DevInst;
+        public IntPtr Reserved;
+    }
+
+    [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr SetupDiGetClassDevsW(IntPtr classGuid, string? enumerator,
+        IntPtr parent, uint flags);
+    [DllImport("setupapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetupDiEnumDeviceInfo(IntPtr set, uint index, ref DeviceInfoData info);
+    [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetupDiGetDeviceInstanceIdW(IntPtr set, ref DeviceInfoData info,
+        StringBuilder id, int capacity, out int required);
+    [DllImport("setupapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetupDiDestroyDeviceInfoList(IntPtr set);
 }

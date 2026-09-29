@@ -20,6 +20,9 @@ PRICECHECK COLLECTOR — WINDOWS X64
    Сервер PriceCheck устанавливается отдельно; текущий адрес по умолчанию:
    https://pog-sandbox.com/api. В этом ZIP нет сайта, сервера или его базы.
    Автовход проверен только для Gamma; рынок должен совпадать с сервером входа.
+   Новые цели радара сразу попадают в пул. Пауза между чтениями этих целей
+   задаётся для профиля в настройках сбора (30 секунд по умолчанию).
+   Повторная проверка цены настраивается отдельно.
 
 3. Настройки и история: %LOCALAPPDATA%\PriceCheckCollector.
    При переносе профилей и HWID копируйте profiles.json и launch-templates.json
@@ -33,6 +36,13 @@ PRICECHECK COLLECTOR — WINDOWS X64
    завершает работу сборщика и останавливает запущенные им игры и прокси.
    Для обновления закройте программу и распакуйте новый ZIP в новую папку.
    Профили, центр, локальная история и outbox в LocalAppData сохранятся.
+
+Историю отдельного рынка переносите отдельным архивом. На исходном ПК:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\runtime\Market-History.ps1 -Action Export -Market Gamma -Archive C:\Gamma-history.zip
+На новом ПК при закрытом Collector:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\runtime\Market-History.ps1 -Action Import -Market Gamma -Archive C:\Gamma-history.zip
+Повторите отдельно для каждого рынка. Импорт проверяет архив и оставляет старую
+историю в резервной папке; ZIP приложения не содержит историю или пароли.
 
 Включены Windows x64 .NET/WPF, native-agent, автовход, драйвер с loader,
 BrokerWorker и Python. runtime\Verify-Package.ps1 проверяет SHA256 всех файлов,

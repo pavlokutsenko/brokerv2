@@ -105,7 +105,7 @@ function Start-DevCollector {
             throw "Collector reported a startup failure.`n$tail"
         }
         $driver = Get-CimInstance Win32_SystemDriver -Filter "Name='LU4Memory'" -ErrorAction SilentlyContinue
-        if ($process -and $process.MainWindowTitle -eq 'PriceCheck Collector' -and $driver.State -eq 'Running') {
+        if ($process -and $process.MainWindowTitle -like 'PriceCheck Collector*' -and $driver.State -eq 'Running') {
             Write-Host "Collector: ready (PID $($process.Id)); LU4Memory: RUNNING."
             return
         }

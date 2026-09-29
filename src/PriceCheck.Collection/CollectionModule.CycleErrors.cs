@@ -37,10 +37,8 @@ public sealed partial class CollectionModule
         {
             // Do not reuse or reset an armed/running native command. Owned-client
             // recovery drains the reader and resumes this same cycle on a new PID.
-            runtime.ClientFault=summary;
-            File.WriteAllText(cycle.StopFile,"unsafe native command: owned client recovery required");
-            cycle.Next=DateTimeOffset.UtcNow.AddSeconds(30);
-            summary=$"Client command stalled; restarting client. {summary}";
+            RequestCycleRecovery(runtime,cycle,summary,unsafeCommand:true);
+            summary=runtime.Status;
         }
         else if (error is HttpRequestException or TaskCanceledException)
         {
@@ -50,15 +48,18 @@ public sealed partial class CollectionModule
         }
         else if (phase == "Broker inventory")
         {
-            cycle.Phase="Reading prices";
-            cycle.Next=DateTimeOffset.MinValue;
-            if(runtime.Radar is {} radar)cycle.Store.BeginPass(radar.PlayerX,radar.PlayerY,cycle.RadarPool);
-            summary=$"WARNING Broker operation failed safely; continuing available local route. {summary}";
+            cycle.Next=DateTimeOffset.UtcNow.AddSeconds(15);
+            summary=$"WARNING Center broker/radar failed; retaining history and retrying before price movement. {summary}";
+            if(++cycle.BrokerFailures>=3)
+            {
+                RequestCycleRecovery(runtime,cycle,summary);
+                summary=runtime.Status;
+            }
         }
         else if (phase == "Return to center" && ++cycle.ReturnFailures >= 3)
         {
-            runtime.IsCollectionEnabled = runtime.Profile.CollectionEnabled = false;
-            cycle.Phase = "Stopped";
+            RequestCycleRecovery(runtime,cycle,summary);
+            summary=runtime.Status;
         }
         else if (phase == "Reading prices")
         {
@@ -68,5 +69,24 @@ public sealed partial class CollectionModule
         else { cycle.Phase = "Return to center"; cycle.Next = DateTimeOffset.UtcNow.AddSeconds(30); }
         runtime.Status = summary;
         runtime.Cycle = runtime.Cycle with { Phase = cycle.Phase, Detail = summary };
+    }
+
+    private void RequestCycleRecovery(ProfileRuntime runtime,CycleRun cycle,string reason,bool unsafeCommand=false)
+    {
+        if(runtime.Profile.AutoRestartEnabled || unsafeCommand)
+        {
+            runtime.ClientFault=reason;
+            File.WriteAllText(cycle.StopFile,"owned client recovery required");
+            cycle.Phase="Client recovery";
+            runtime.Status=runtime.Profile.AutoRestartEnabled
+                ? $"Recovering client; collection will resume. {reason}"
+                : $"Client recovery required; enable automatic restart. {reason}";
+        }
+        else
+        {
+            runtime.IsCollectionEnabled=runtime.Profile.CollectionEnabled=false;
+            cycle.Phase="Stopped";
+            runtime.Status=$"Collection stopped; automatic restart is disabled. {reason}";
+        }
     }
 }

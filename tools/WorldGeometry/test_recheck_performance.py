@@ -10,6 +10,7 @@ from cycle_revisit import add_live_radar_targets
 from walk_geometry import Navigation
 from walk_shops import WalkShops
 from walk_follow import Path, follow
+from walk_navigation import execution_navigation
 
 
 class RecheckPerformanceTests(unittest.TestCase):
@@ -29,6 +30,27 @@ class RecheckPerformanceTests(unittest.TestCase):
         self.assertFalse(base.clear_forbidden((150,0),(300,0)))
         self.assertFalse(direct)
         self.assertAlmostEqual(math.dist(points[-1],(0,0)),68)
+
+    def test_session_recovery_geometry_is_reused_and_learned_blockers_stay_local(self):
+        base=Navigation(self.data,clearance=24)
+        client=SimpleNamespace(route_navigation=(None,base),execution_clearance=24)
+        with patch('walk_navigation.Navigation',side_effect=AssertionError('city rebuilt between sections')):
+            first=execution_navigation(client,self.data)
+            first.add_blocker(Point(-120,0).buffer(35))
+            second=execution_navigation(client,self.data)
+        self.assertFalse(first.clear((-120,0),(-120,0)))
+        self.assertTrue(second.clear((-120,0),(-120,0)))
+        self.assertFalse(second.clear_forbidden((150,0),(300,0)))
+
+    def test_completed_session_coverage_handoff_has_no_technical_stop_or_sleep(self):
+        shops=SimpleNamespace(active=SimpleNamespace(set=lambda:None,clear=lambda:None),
+                              error=None,captured_keys=set(),ignored_outside_keys=set())
+        client=SimpleNamespace(shops=shops,section_handoff=True,position=lambda:(0,0,0),
+            cancelled=lambda:False,stop=lambda:(_ for _ in ()).throw(AssertionError('section stop')))
+        with patch('walk_follow.time.sleep') as sleep:
+            result=follow(client,None,[(0,0),(0,0)],lambda _:None)
+        sleep.assert_not_called();self.assertTrue(result['handoff'])
+        self.assertIsNone(result['stop_drift'])
 
     def test_nearest_clear_approach_does_not_run_other_23_searches(self):
         base=Navigation(self.data,clearance=24)
@@ -55,6 +77,24 @@ class RecheckPerformanceTests(unittest.TestCase):
         shops.dynamic_detour_attempted={'a','b','c','d'};shops.requested_keys=set()
         shops.dynamic_seen_live={'fifth':{'key':'fifth','x':100,'y':200,'seen_at':time.monotonic()}}
         self.assertEqual(shops.claim_dynamic_detour((0,0,0),Path([(0,0),(1000,0)]),0)['key'],'fifth')
+
+    def test_future_planned_anchor_does_not_interrupt_for_its_own_detour(self):
+        shops=object.__new__(WalkShops)
+        shops.collection_zone=None;shops.radius=95;shops.dynamic_detours_enabled=True
+        shops.dynamic_detour_attempted=set();shops.requested_keys=set()
+        shops.coverage_anchor_keys={'later'}
+        shops.dynamic_seen_live={'later':{'key':'later','x':1400,'y':200,'seen_at':time.monotonic()}}
+        self.assertIsNone(shops.claim_dynamic_detour((0,0,0),Path([(0,0),(1000,0),(1400,200)]),0))
+        self.assertEqual(shops.dynamic_detour_attempted,set())
+
+    def test_unplanned_shop_still_interrupts_beside_future_planned_anchor(self):
+        shops=object.__new__(WalkShops)
+        shops.collection_zone=None;shops.radius=95;shops.dynamic_detours_enabled=True
+        shops.dynamic_detour_attempted=set();shops.requested_keys=set()
+        shops.coverage_anchor_keys={'later'}
+        shops.dynamic_seen_live={key:{'key':key,'x':x,'y':200,'seen_at':time.monotonic()}
+            for key,x in [('later',1400),('new',1500)]}
+        self.assertEqual(shops.claim_dynamic_detour((0,0,0),Path([(0,0),(1000,0)]),0)['key'],'new')
 
     def test_native_admitted_shop_survives_a_long_last_approach(self):
         now=time.monotonic()

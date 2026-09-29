@@ -7,10 +7,13 @@ internal static class ClientRecoveryTests
     private static void Check(bool ok,string reason) { if(!ok) throw new Exception(reason); }
     public static async Task Run()
     {
-        var profile=new CollectorProfile {AutoLoginEnabled=true,AutoRestartEnabled=true,
-            LoginName="fixture",LoginPassword="fixture",CharacterSlot=3};
-        var processes=new FakeProcesses();var loginFails=false;
-        var launcher=new LaunchModule(processes,(_,_,_)=>loginFails?Task.FromException(new IOException("Login disconnected")):Task.CompletedTask,processes.Identity,
+        var profile=new CollectorProfile {LoginServerId=1,AutoLoginEnabled=true,AutoRestartEnabled=true,
+            CharacterRotationEnabled=true,LoginName="fixture",LoginPassword="fixture",CharacterSlot=3,
+            RotationAccountIndex=1,RotationAccounts=[new(){LoginName="second",LoginPassword="second-secret"}]};
+        var processes=new FakeProcesses();var loginFails=false;var logins=new List<(int Account,int Slot,string Name)>();
+        var launcher=new LaunchModule(processes,(_,p,_)=>
+            {logins.Add((p.RotationAccountIndex,p.CharacterSlot,p.ActiveLogin().Name));
+                return loginFails?Task.FromException(new IOException("Login disconnected")):Task.CompletedTask;},processes.Identity,
             _=>Task.CompletedTask);
         var recovery=new ClientRecoveryService(launcher);
         var session=await launcher.LaunchAsync(profile,null,_=>{},CancellationToken.None);
@@ -28,7 +31,9 @@ internal static class ClientRecoveryTests
         var restarting=recovery.RestartAsync(profile,request,null,()=>drain.Task,_=>{resumes++;return Task.CompletedTask;},_=>{},CancellationToken.None);
         Check(!restarting.IsCompleted && processes.Terminations==0,"Restart waits for reader cleanup.");
         drain.SetResult();session=await restarting;
-        Check(resumes==1 && profile.CharacterSlot==3 && !recovery.Pending(profile.Id,session),"Recovery restores same character and immediately allows collection refresh.");
+        Check(resumes==1 && profile.CharacterSlot==3 && profile.RotationAccountIndex==1 &&
+              logins.All(login=>login==(1,3,"second")) && !recovery.Pending(profile.Id,session),
+            "Recovery restores the same account and character and immediately allows collection refresh.");
         Observe(healthy,at);
         var exited=new ClientHealth(false,false,false,null);
         processes.Terminate(session.ProcessId);

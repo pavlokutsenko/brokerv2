@@ -21,21 +21,24 @@ class BrokerPoolTests(unittest.TestCase):
         class Client:
             execution_clearance=45
             cleanup_callbacks=[]
-            def __init__(self,pid): pass
+            def __init__(self,pid): self.pid=pid;self.shops=None;self.owned=False
             def __enter__(self): return self
             def __exit__(self,*args): pass
             def cancelled(self): return False
             def wait_navigation_capsule(self): pass
-            def install(self): pass
+            def install(self): self.owned=True
             def position(self): return (0,0,0)
             def close(self): pass
         class Nav:
             def __init__(self,*args,**kwargs): pass
             def clear(self,*args): return True
+            def fork(self): return Nav()
         class Shops:
             def __init__(self,client,prefix,*args):
                 instances.append(self);self.path=prefix.with_suffix('.shops.jsonl')
                 self.active=threading.Event();self.discovery_ready=threading.Event()
+                self.lock=threading.RLock();self.stats={'captured_shops':0}
+                client.shops=self
                 self.captured_keys=set();self.unavailable_keys=set();self.ignored_outside_keys=set()
                 self.dynamic_targets={'new':{'name':'New','object_id':12,'x':2500,'y':0}}
                 self.error=None;self.started=False
@@ -54,7 +57,7 @@ class BrokerPoolTests(unittest.TestCase):
             with patch.multiple(cycle_route,WalkClient=Client,WalkGuard=lambda *args:None,
                     Navigation=Nav,WalkShops=Shops,load_navigation=lambda city:{},
                     price_navigation_data=lambda data:data,publish=lambda *args:None,
-                    price_route=lambda *args:{'points':[],'anchors':[],'blockers':[],'deferred':[]},
+                    price_route=lambda *args,**kwargs:{'points':[],'anchors':[],'blockers':[],'deferred':[]},
                     revisit_missed=revisit):
                 cycle_route.run(1,input_file,output)
             result=json.loads(output.read_text())

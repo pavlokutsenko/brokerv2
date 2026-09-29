@@ -4,6 +4,7 @@ namespace PriceCheck.Collector.Models;
 
 public sealed class BrokerInventoryFile
 {
+    [JsonPropertyName("native_radar")] public BrokerNativeRadar? NativeRadar { get; init; }
     [JsonPropertyName("native_state_observations")] public IReadOnlyList<BrokerNativeStateObservation> NativeStateObservations { get; init; } = [];
     [JsonPropertyName("warnings")] public IReadOnlyList<string> Warnings { get; init; } = [];
     [JsonPropertyName("binding_pid")] public int BindingPid { get; init; }
@@ -14,6 +15,18 @@ public sealed class BrokerInventoryFile
     [JsonPropertyName("elapsed_seconds")] public double ElapsedSeconds { get; init; }
     [JsonPropertyName("summary")] public BrokerInventorySummary Summary { get; init; } = new();
     [JsonPropertyName("rows")] public IReadOnlyList<BrokerInventoryRow> Rows { get; init; } = [];
+}
+
+public sealed record BrokerNativeRadar
+{
+    [JsonPropertyName("pid")] public int ProcessId { get; init; }
+    [JsonPropertyName("complete")] public bool Complete { get; init; }
+    [JsonPropertyName("started_at")] public DateTimeOffset StartedAtUtc { get; init; }
+    [JsonPropertyName("observed_at")] public DateTimeOffset ObservedAtUtc { get; init; }
+    [JsonPropertyName("actor_count")] public int ActorCount { get; init; }
+    [JsonPropertyName("identity_count")] public int IdentityCount { get; init; }
+    [JsonPropertyName("collector_x")] public double CollectorX { get; init; }
+    [JsonPropertyName("collector_y")] public double CollectorY { get; init; }
 }
 
 public sealed class BrokerNativeStateObservation

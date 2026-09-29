@@ -8,33 +8,44 @@ namespace PriceCheck.Collector;
 
 public partial class MainWindow
 {
-    private bool _syncingMarketSelection;
     private async void AddProfile_Click(object sender, RoutedEventArgs e)
     {
-        if (Runtimes.Count >= 4) { Log("WARNING: Доступны от 1 до 4 профилей, один профиль на рынок."); return; }
-        var name = MarketOptions.FirstOrDefault(market =>
-            !Runtimes.Any(runtime => runtime.Profile.Name.Equals(market, StringComparison.OrdinalIgnoreCase)))
-            ?? throw new InvalidOperationException("Все рынки уже настроены.");
-        var profile = new CollectorProfile { Name = name };
+        var dialog = new AddServerProfileDialog(this, Runtimes.Select(runtime => runtime.Profile.Name));
+        if (dialog.ShowDialog() != true) return;
+        var profile = new CollectorProfile
+        {
+            Name = dialog.ServerName, LoginServerName = dialog.ServerName,
+            LoginServerId = dialog.ServerId
+        };
         var runtime = new ProfileRuntime { Profile = profile };
         Runtimes.Add(runtime);
         ApplySavedGiranCenter();
         SelectedRuntime = runtime;
         await SaveProfilesAsync();
-        Log($"Added profile '{profile.Name}'");
+        Log($"Добавлен профиль «{profile.Name}»");
     }
 
     private async void DeleteProfile_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedRuntime is not { IsBusy: false } runtime || Runtimes.Count <= 1) return;
-        var answer = MessageBox.Show($"Delete profile '{runtime.Profile.Name}'?",
+        if (!_loaded || _closing || SelectedRuntime is not { IsBusy: false } runtime || Runtimes.Count <= 1) return;
+        var answer = MessageBox.Show($"Удалить профиль «{runtime.Profile.Name}»?",
             "PriceCheck Collector", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes) return;
+        await RemoveProfileAsync(runtime);
+    }
+
+    private async Task<bool> RemoveProfileAsync(ProfileRuntime runtime)
+    {
+        if (!_loaded || _closing || runtime.IsBusy || Runtimes.Count <= 1 || !Runtimes.Contains(runtime)) return false;
         var index = Runtimes.IndexOf(runtime);
-        if (!await StopProfileAsync(runtime)) return;
+        if (!await StopProfileAsync(runtime)) return false;
+        var wasSelected = SelectedRuntime == runtime;
         Runtimes.Remove(runtime);
-        SelectedRuntime = Runtimes.Count == 0 ? null : Runtimes[Math.Clamp(index, 0, Runtimes.Count - 1)];
+        if (wasSelected || SelectedRuntime is null)
+            SelectedRuntime = Runtimes[Math.Clamp(index, 0, Runtimes.Count - 1)];
         await SaveProfilesAsync();
+        Log($"Удалён профиль «{runtime.Profile.Name}»");
+        return true;
     }
 
     private async void BrowseFolder_Click(object sender, RoutedEventArgs e)
@@ -43,10 +54,10 @@ public partial class MainWindow
         var currentFile = SelectedRuntime.Profile.LaunchFile;
         var dialog = new OpenFileDialog
         {
-            Title = "Lineage 2 client executable",
+            Title = "Исполняемый файл клиента Lineage 2",
             Multiselect = false,
             CheckFileExists = true,
-            Filter = "Lineage 2 client (*.exe;*.bin)|*.exe;*.bin|All files (*.*)|*.*",
+            Filter = "Клиент Lineage 2 (*.exe;*.bin)|*.exe;*.bin|Все файлы (*.*)|*.*",
             InitialDirectory = File.Exists(currentFile)
                 ? Path.GetDirectoryName(currentFile)
                 : Directory.Exists(SelectedRuntime.Profile.ClientFolder)
@@ -58,26 +69,43 @@ public partial class MainWindow
         SelectedRuntime.Profile.ClientFolder = Path.GetDirectoryName(dialog.FileName) ?? "";
         OnPropertyChanged(nameof(SelectedRuntime));
         await SaveProfilesAsync();
-        Log($"Client executable: {dialog.FileName}");
+        Log($"Исполняемый файл клиента: {dialog.FileName}");
     }
 
     private async void ProfileField_Changed(object sender, TextChangedEventArgs e)
     {
-        if (!_loaded || SelectedRuntime is null) return;
-        SelectedRuntime.RefreshProfile();
+        if (!CanSaveProfileFields(sender)) return;
+        _syncingProfileFields = true;
+        try { SelectedRuntime!.RefreshProfile(); }
+        finally { _syncingProfileFields = false; }
         await SaveProfilesAsync();
     }
 
+    private bool CanSaveProfileFields(object sender) =>
+        _loaded && !_closing && !_syncingProfileFields && SelectedRuntime is not null &&
+        sender is FrameworkElement field && ReferenceEquals(field.DataContext, SelectedRuntime);
+
     private async void AutoLogin_Changed(object sender, RoutedEventArgs e)
     {
-        if (!_loaded || SelectedRuntime is null) return;
+        if (!CanSaveProfileFields(sender)) return;
         await SaveProfilesAsync();
     }
 
     private async void LoginPassword_Changed(object sender, RoutedEventArgs e)
     {
-        if (!_loaded || _syncingLoginPassword || SelectedRuntime is null || sender is not PasswordBox box) return;
-        SelectedRuntime.Profile.LoginPassword = box.Password;
+        if (!CanSaveProfileFields(sender) || _syncingLoginPassword || sender is not PasswordBox box) return;
+        SelectedRuntime!.Profile.LoginPassword = box.Password;
+        await SaveProfilesAsync();
+    }
+
+    private async void RotationAccounts_Click(object sender,RoutedEventArgs e)
+    {
+        if(SelectedRuntime is not {CanEditMarket:true} runtime)return;
+        var dialog=new RotationAccountsDialog(this,runtime.Profile);
+        if(dialog.ShowDialog()!=true)return;
+        runtime.Profile.RotationAccounts=dialog.Accounts.ToList();
+        runtime.Profile.RotationAccountIndex=0;
+        runtime.RefreshProfile();
         await SaveProfilesAsync();
     }
 
@@ -121,7 +149,10 @@ public partial class MainWindow
                 other.Profile.Name.Equals(runtime.Profile.Name, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("На этом рынке уже работает другой профиль.");
             if (!runtime.IsCollectionEnabled)
+            {
                 await _launcher.ValidateProtectionAsync(runtime.Profile.Id, true, CancellationToken.None);
+                await EnsureReaderAttachedAsync(runtime);
+            }
             await _collection.SetCollectionAsync(runtime, !runtime.IsCollectionEnabled);
             _clientRecovery.Forget(runtime.Profile.Id);
             await SaveProfilesAsync();
@@ -146,36 +177,37 @@ public partial class MainWindow
 
     private async void ProfileSelection_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (!_loaded || _syncingMarketSelection || SelectedRuntime is null) return;
-        var selectionPath = sender is ComboBox selector
-            ? System.Windows.Data.BindingOperations.GetBindingExpression(selector, ComboBox.SelectedItemProperty)?.ParentBinding.Path?.Path
-            : null;
-        var marketChanged = selectionPath == "Profile.Name" && e.RemovedItems.Count > 0 &&
-            e.RemovedItems[0] is string previousMarket && previousMarket != SelectedRuntime.Profile.Name;
-        if (marketChanged && !SelectedRuntime.CanEditMarket)
+        if (!CanSaveProfileFields(sender)) return;
+        var runtime = SelectedRuntime!;
+        _syncingProfileFields = true;
+        try
         {
-            _syncingMarketSelection = true;
-            try
+            var selectionPath = sender is ComboBox selector
+                ? System.Windows.Data.BindingOperations.GetBindingExpression(selector, ComboBox.SelectedItemProperty)?.ParentBinding.Path?.Path
+                : null;
+            var marketChanged = selectionPath == "Profile.Name" && e.RemovedItems.Count > 0 &&
+                e.RemovedItems[0] is string previousMarket && previousMarket != runtime.Profile.Name;
+            if (marketChanged && !runtime.CanEditMarket)
             {
                 if (e.RemovedItems[0] is string boundMarket)
-                    SelectedRuntime.TryChangeMarket(boundMarket, SelectedRuntime.Profile.Name);
+                    runtime.TryChangeMarket(boundMarket, runtime.Profile.Name);
                 if (sender is ComboBox marketSelector)
                     marketSelector.GetBindingExpression(ComboBox.SelectedItemProperty)?.UpdateTarget();
+                Log("WARNING: Сначала остановите профиль и отключите его клиент, чтобы изменить рынок.");
+                return;
             }
-            finally { _syncingMarketSelection = false; }
-            Log("WARNING: Сначала остановите профиль и отключите его клиент, чтобы изменить рынок.");
-            return;
+            if (marketChanged && Runtimes.Any(other => other != runtime &&
+                other.Profile.Name.Equals(runtime.Profile.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (e.RemovedItems[0] is string previous) runtime.Profile.Name = previous;
+                runtime.RefreshProfile();
+                Log("WARNING: Один рынок может принадлежать только одному профилю.");
+                return;
+            }
+            if (marketChanged) runtime.Profile.LoginServerName = runtime.Profile.Name;
+            runtime.RefreshProfile();
         }
-        if (marketChanged && Runtimes.Any(other => other != SelectedRuntime &&
-            other.Profile.Name.Equals(SelectedRuntime.Profile.Name, StringComparison.OrdinalIgnoreCase)))
-        {
-            if (e.RemovedItems.Count > 0 && e.RemovedItems[0] is string previous)
-                SelectedRuntime.Profile.Name = previous;
-            SelectedRuntime.RefreshProfile();
-            Log("WARNING: Один рынок может принадлежать только одному профилю.");
-            return;
-        }
-        SelectedRuntime.RefreshProfile();
+        finally { _syncingProfileFields = false; }
         await SaveProfilesAsync();
     }
 

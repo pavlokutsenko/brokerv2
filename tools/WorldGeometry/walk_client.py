@@ -15,6 +15,7 @@ import process_event_shop_capture as capture
 from invoke_process_event import invoke
 from capsule_profile import supported_capsule
 from lu4_target_controller import read_exact
+from walk_runtime import resolve_runtime
 
 FUNCTIONS = {
     "move": (248406, "Move to Location by Keyboard", "ControllerPC_C", 32),
@@ -37,10 +38,7 @@ class WalkClient:
         self.base = self.client.process_base(pid)
         self.m = Memory(self.client, pid)
         pe = pe_info(self.m, self.base)
-        if (pe["timestamp"], pe["image_size"]) != BUILD:
-            raise RuntimeError("unsupported client build")
-        self.s = Survey(self.m, self.base)
-        self.world = validate_world_slot(self.m, self.base+GWORLD, self.base, BUILD[1])
+        self.rvas, self.function_indices, self.world, self.s = resolve_runtime(self.m, self.base, pe)
         if not self.world:
             raise RuntimeError("world/controller guard failed")
         capsule=self.world['player_capsule']
@@ -60,7 +58,8 @@ class WalkClient:
         self.shops=None
         self.stopped_at=0
         self.stopped_position=None
-        self.functions = {key: self.function(*value) for key, value in FUNCTIONS.items()}
+        self.functions = {key: self.function(self.function_indices[key], *value[1:])
+                          for key, value in FUNCTIONS.items()}
         self.owned = False
         self.mutex = None
         self.original_paths = capture.STATE_PATH, capture.ROUTE_PATH, capture.FUNCTIONS_PATH
@@ -79,7 +78,7 @@ class WalkClient:
             if self.cancelled():
                 raise RuntimeError('navigation readiness cancelled')
             self.m.pages.clear()
-            if self.m.u64(self.base+GWORLD)!=self.world['world'] or \
+            if self.m.u64(self.base+self.rvas['gworld'])!=self.world['world'] or \
                     self.m.u64(self.world['controller']+0x2D0)!=self.world['player_actor']:
                 raise RuntimeError('world/pawn changed during navigation readiness')
             radius=self.m.unpack('<f',capsule+0x544,0)
@@ -98,7 +97,11 @@ class WalkClient:
         raise RuntimeError(f'navigation capsule did not settle to a native-confirmed profile; observed {effective}')
 
     def function(self, index, name, owner, size):
-        obj = read_object(self.m, self.base+GOBJECTS, index)
+        index = self.function_indices.get({
+            'CapsuleTraceSingleForObjects':'trace_objects',
+            'CapsuleTraceSingleByProfile':'trace_profile',
+        }.get(name, ''), index)
+        obj = read_object(self.m, self.base+self.rvas['gobjects'], index)
         d = self.s.describe(obj)
         if d["class"] != "Function" or d["name"] != name or self.s.name(self.m.u64(obj+0x20)) != owner or self.m.unpack("<H",obj+0xB6,0) != size:
             raise RuntimeError(f"function guard failed: {name}")
@@ -109,7 +112,7 @@ class WalkClient:
         # controller must refresh world/pawn/target pages on every observation.
         self.m.pages.clear()
         w = self.world
-        if self.m.u64(self.base+GWORLD) != w["world"] or self.m.u64(w["controller"]+0x2D0) != w["player_actor"]:
+        if self.m.u64(self.base+self.rvas['gworld']) != w["world"] or self.m.u64(w["controller"]+0x2D0) != w["player_actor"]:
             raise RuntimeError("world/pawn changed")
         p = struct.unpack("<3d",self.m.read(w["player_capsule"]+0x1F0,24))
         if not all(math.isfinite(v) and abs(v)<1e7 for v in p):
@@ -137,14 +140,17 @@ class WalkClient:
             if saved is None or current != bytes.fromhex(saved['patch_hex']):
                 raise RuntimeError("ProcessEvent already modified by another owner")
         matches=[]
-        for index,name,size in SHOP_FUNCTIONS:
-            obj=read_object(self.m,self.base+GOBJECTS,index)
+        for key,(index,name,size) in zip(('shop_buy','shop_new_buy','shop_new_sell','shop_sell'),SHOP_FUNCTIONS):
+            obj=read_object(self.m,self.base+self.rvas['gobjects'],self.function_indices[key])
             d=self.s.describe(obj)
             if d["name"]!=name or d["class"]!="Function" or self.m.unpack("<H",obj+0xB6,0)!=size:
                 raise RuntimeError("capture event guard failed")
             matches.append({"name":name,"object":obj,"name_id":self.m.i32(obj+0x18)})
         capture.ROUTE_PATH.write_text(json.dumps({"pid":self.pid,"process_event":hex(self.world["process_event"])}),encoding="utf-8")
         capture.FUNCTIONS_PATH.write_text(json.dumps({"pid":self.pid,"matches":matches}),encoding="utf-8")
+        capture.TARGET_UI_NAME_INDICES = tuple(
+            self.m.i32(read_object(self.m, self.base+self.rvas['gobjects'], self.function_indices[key])+0x18)
+            for key in ('target_ui_self','target_ui_other'))
         with contextlib.redirect_stdout(io.StringIO()):
             capture.install(self.pid)
         self.owned=True
@@ -189,12 +195,24 @@ class WalkClient:
             raise TimeoutError("stop did not settle within 3.5 seconds")
 
     def pause_for_plan(self):
-        """Ordinary stop command before a short replan, without final-stop waiting."""
+        """Observe brief rest before replanning; final close keeps its strict stop."""
         if self.shops: self.shops.active.clear()
         self.stopped_position=None
         if self.owned:
-            invoke(self.world['controller'],self.functions['stop'],
-                   struct.pack('<Q',self.world['player_actor']))
+            start=time.monotonic();stable=start;last_sent=-float('inf');anchor=self.position()
+            while time.monotonic()-start<.8:
+                now=time.monotonic()
+                if now-last_sent>=.15:
+                    invoke(self.world['controller'],self.functions['stop'],
+                           struct.pack('<Q',self.world['player_actor']))
+                    last_sent=time.monotonic()
+                current=self.position()
+                if math.dist(current[:2],anchor[:2])>1:
+                    anchor=current;stable=time.monotonic()
+                if time.monotonic()-stable>=.18: return
+                time.sleep(.03)
+            # Late movement still unsettled: retain the existing strict guard.
+            self.stop(force=True)
 
     def camera_direction(self):
         raw=invoke(self.world["controller"],self.functions["camera"],bytes(24))

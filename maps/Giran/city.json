@@ -5,8 +5,8 @@
   "validatedCapsule": [9, 23],
   "coordinateOrigin": [80000, 147000],
   "collectionZone": {
-    "revision": "giran-2026-09-26-approved",
-    "polygon": [[80640,147430],[83590,147430],[83590,147020],[84560,147020],[84560,149830],[80640,149830]]
+    "revision": "giran-2026-09-27-northeast",
+    "polygon": [[80640,147430],[83590,147430],[83590,147020],[84780,147020],[84780,147900],[84560,147900],[84560,149830],[80640,149830]]
   },
   "hardExclusions": [
     {"name": "Manor_Giran2 cart", "bounds": [81850, 82166, 149574, 149802], "evidence": "Native scene footprint plus 15 units; user confirmed trap 2026-09-26"}

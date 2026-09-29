@@ -12,7 +12,7 @@ CollectorProfile[] FourProfiles() => [
 void CheckPoint(CollectorProfile profile)
 {
     var point=CollectionModule.GetCenterZone(profile);
-    Require(point is { } value && value.X==savedX && value.Y==savedY && value.Radius==500,"Exact saved Giran center was not reused");
+    Require(point is { } value && value.X==savedX && value.Y==savedY && value.Radius==200,"Exact saved Giran center was not reused");
     Require(new ProfileRuntime {Profile=profile}.CenterZoneLabel!="Center not set","UI and collection centers differ");
 }
 

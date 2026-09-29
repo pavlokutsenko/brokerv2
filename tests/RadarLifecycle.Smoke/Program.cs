@@ -40,6 +40,17 @@ foreach(var type in new[]{1,3,8}) fresh.Apply(new CharacterPacket(type,$"Shop{ty
 Check(fresh.Snapshot(43,null,null).Traders.All(t=>t.LastReopenedAtUtc is null),
     "A new client accepts all three shop types without treating first sight as reopening.");
 Check(!store.Snapshot(42,null,null).IsInsideCenterZone,"A stale player position cannot authorize center confirmation.");
+store.SetObservationZone(new(100,100,200),new(301,100,0),true);
+Check(!store.Snapshot(42,null,new(301,100,0)).IsInsideCenterZone,"Reduced center radius excludes observer at 201.");
+Check(store.Snapshot(42,null,new(300,100,0)).IsInsideCenterZone,"Reduced center radius includes observer at 200.");
+var history=new RadarEntityStore();
+history.RememberTraderKeys([" FormerShop "]);
+Check(history.NeedsClosurePosition("FormerShop"),"Historical nickname requests a current observer position.");
+history.Apply(new CharacterPacket(99,"FormerShop","",0,123,456,0),start,100,100);
+history.Apply(new CharacterPacket(100,"Stranger","",0,123,456,0),start,100,100);
+var historicalClose=history.Snapshot(44,null,new(100,100,0)).ClosedTraders.Single();
+Check(historicalClose.Name=="FormerShop" && historicalClose.ObjectId==99 && historicalClose.StateObservedPlayerX==100,
+    "First explicit zero state after restart closes known history without carrying an old ObjectID or admitting strangers.");
 Console.WriteLine("RADAR_LIFECYCLE_OK early_reader rapid_reopen stable_open no_visibility_close observer_position current_client");
 
 namespace PriceCheck.Collector.Runtime.Radar

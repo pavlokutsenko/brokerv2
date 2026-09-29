@@ -21,5 +21,5 @@ public sealed partial class CollectionModule
         endpoint=[x,y];return true;
     }
     private static bool InsideSavedCenter(double x,double y,MarketZone center)=>
-        double.IsFinite(x)&&double.IsFinite(y)&&Math.Sqrt(Math.Pow(x-center.X,2)+Math.Pow(y-center.Y,2))<=500;
+        double.IsFinite(x)&&double.IsFinite(y)&&Math.Sqrt(Math.Pow(x-center.X,2)+Math.Pow(y-center.Y,2))<=center.Radius;
 }

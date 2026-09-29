@@ -57,6 +57,10 @@
 #define THREAD_ACCESS \
     (THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION | THREAD_SET_CONTEXT)
 
+// Explicitly scoped to the roster observer's target while its driver-backed
+// writable-page window is open. Other hooks retain MinHook's normal behavior.
+static LPVOID volatile g_writablePageTarget = NULL;
+
 // Hook information.
 typedef struct _HOOK_ENTRY
 {
@@ -403,8 +407,18 @@ static MH_STATUS EnableHookLL(UINT pos, BOOL enable)
         patchSize    += sizeof(JMP_REL_SHORT);
     }
 
+    BOOL alreadyWritable = FALSE;
     if (!VirtualProtect(pPatchTarget, patchSize, PAGE_EXECUTE_READWRITE, &oldProtect))
-        return MH_ERROR_MEMORY_PROTECT;
+    {
+        MEMORY_BASIC_INFORMATION region;
+        if (pHook->pTarget != g_writablePageTarget ||
+            VirtualQuery(pPatchTarget, &region, sizeof(region)) != sizeof(region) ||
+            region.State != MEM_COMMIT || region.Protect != PAGE_EXECUTE_READWRITE ||
+            pPatchTarget < (LPBYTE)region.BaseAddress ||
+            (SIZE_T)((LPBYTE)region.BaseAddress + region.RegionSize - pPatchTarget) < patchSize)
+            return MH_ERROR_MEMORY_PROTECT;
+        alreadyWritable = TRUE;
+    }
 
     if (enable)
     {
@@ -427,7 +441,8 @@ static MH_STATUS EnableHookLL(UINT pos, BOOL enable)
             memcpy(pPatchTarget, pHook->backup, sizeof(JMP_REL));
     }
 
-    VirtualProtect(pPatchTarget, patchSize, oldProtect, &oldProtect);
+    if (!alreadyWritable)
+        VirtualProtect(pPatchTarget, patchSize, oldProtect, &oldProtect);
 
     // Just-in-case measure.
     FlushInstructionCache(GetCurrentProcess(), pPatchTarget, patchSize);
@@ -774,10 +789,30 @@ MH_STATUS WINAPI MH_EnableHook(LPVOID pTarget)
     return EnableHook(pTarget, TRUE);
 }
 
+MH_STATUS WINAPI MH_EnableHookOnWritablePage(LPVOID pTarget)
+{
+    if (pTarget == MH_ALL_HOOKS ||
+        InterlockedCompareExchangePointer((PVOID volatile*)&g_writablePageTarget, pTarget, NULL) != NULL)
+        return MH_ERROR_UNSUPPORTED_FUNCTION;
+    MH_STATUS status = EnableHook(pTarget, TRUE);
+    InterlockedExchangePointer((PVOID volatile*)&g_writablePageTarget, NULL);
+    return status;
+}
+
 //-------------------------------------------------------------------------
 MH_STATUS WINAPI MH_DisableHook(LPVOID pTarget)
 {
     return EnableHook(pTarget, FALSE);
+}
+
+MH_STATUS WINAPI MH_DisableHookOnWritablePage(LPVOID pTarget)
+{
+    if (pTarget == MH_ALL_HOOKS ||
+        InterlockedCompareExchangePointer((PVOID volatile*)&g_writablePageTarget, pTarget, NULL) != NULL)
+        return MH_ERROR_UNSUPPORTED_FUNCTION;
+    MH_STATUS status = EnableHook(pTarget, FALSE);
+    InterlockedExchangePointer((PVOID volatile*)&g_writablePageTarget, NULL);
+    return status;
 }
 
 //-------------------------------------------------------------------------

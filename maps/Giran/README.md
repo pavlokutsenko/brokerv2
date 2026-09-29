@@ -30,18 +30,28 @@ survey obstacle does not remove a confirmed hard exclusion.
 
 ## Approved collection zone
 
-User approved `city.json` collectionZone revision `giran-2026-09-26-approved`:
-X/Y polygon (80640,147430),(83590,147430),(83590,147020),(84560,147020),
-(84560,149830),(80640,149830). The stepped contour includes the plaza, temple
-and upper extension:1690 of1692 snapshot traders inside, only Entombment and
-UebanXXX outside. Boundary points are included. Outside shops are ignored for
+Calculated center(82710,148425), standing radius200. The polygon stays within
+2701.784 from any point in that disk, leaving298.216 of the3000-unit radar.
+See `docs/analysis/collection-live/CENTER_COVERAGE.md`.
+
+User approved `city.json` collectionZone revision `giran-2026-09-27-northeast`:
+X/Y polygon (80640,147430),(83590,147430),(83590,147020),(84780,147020),
+(84780,147900),(84560,147900),(84560,149830),(80640,149830).
+The 2026-09-27 extension adds 220 units east only above Y147900, admitting
+CapitanMORGAN (84693,147700) and xawkNagiBator (84662,147581) from the live
+radar capture. The remaining contour retains the previous approved boundary.
+Boundary points are included. Outside shops are ignored for
 price approaches/radar discovery, without deleting broker presence or prices.
 Changing quantities/reopening outside does not override this coordinate rule;
 moving inside makes the same trader eligible again. This is a collection
 boundary, not a wall: movement may use a necessary connector outside it.
 
-Server PostgreSQL `city_collection_zones` stores the same approved polygon;
-all collectors and both queue claim APIs use it. Synchronize a future approved
-city descriptor using broker-server `apps/api/scripts/sync-collection-zone.ts`.
-Neither repo reads the other's files at runtime. Cities without a zone keep
-their own unrestricted policy and never inherit Giran's geometry.
+The production Market repository `C:\PriceCheck\market` applies the matching
+polygon in `apps/api/src/ingest/local-cycle.policy.ts`. It does not read the
+collector descriptor at runtime. The experimental `C:\broker-server` is not
+the site's ingestion service.
+
+Both new targets lie just beyond the saved navigation survey's eastern edge.
+Offline planning from (84400,147700) produces a bounded ordinary movement
+probe ending 68 units from each target. It does not invent floor samples;
+native collision checks remain active. Live approach acceptance is pending.

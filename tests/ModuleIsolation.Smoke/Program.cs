@@ -3,6 +3,22 @@ using PriceCheck.Contracts;
 using PriceCheck.Launching;
 using PriceCheck.Collector.Models;
 
+if (args.Contains("--route-continuation-only"))
+{
+    await LocalRouteContinuationTests.Run();
+    return;
+}
+
+if (args.Contains("--rotation-recovery-only"))
+{
+    await WindowCornerTests.Run();
+    await LocalNativeFailureTests.Run();
+    await CharacterRotationTests.Run();
+    await ClientRecoveryTests.Run();
+    Console.WriteLine("ModuleIsolation.Smoke rotation/native recovery: PASS");
+    return;
+}
+
 if (args.Contains("--recovery-only"))
 {
     await ClientRecoveryTests.Run();
@@ -25,7 +41,9 @@ var radar = new FakeRadar();
 var reader = new CollectionModule(radar, session => processes.Identity(session.ProcessId) == session);
 var profiles = Enumerable.Range(0, 2).Select(index => new CollectorProfile
 {
-    Name = "Gamma", AutoLoginEnabled = true, LoginName = "test-user", LoginPassword = "synthetic-password"
+    Name = index == 0 ? "Gamma" : "Black", LoginServerName = index == 0 ? "Gamma" : "Black",
+    LoginServerId = index == 0 ? 1 : 10, AutoLoginEnabled = true,
+    LoginName = "test-user", LoginPassword = "synthetic-password"
 }).ToArray();
 var runtimes = new List<ProfileRuntime>();
 foreach (var profile in profiles)
@@ -66,7 +84,7 @@ Check(processes.Terminations == 1 && processes.Proxies.Count == 0, "Explicit lau
 
 var failedLaunch = new LaunchModule(processes, (_, _, _) => throw new InvalidOperationException("Synthetic login failure"), processes.Identity);
 var startsBeforeFailure = radar.Starts;
-await Reject(async () => { await failedLaunch.LaunchAsync(new CollectorProfile { AutoLoginEnabled = true, LoginName = "test", LoginPassword = "test" }, null, _ => { }, CancellationToken.None); });
+await Reject(async () => { await failedLaunch.LaunchAsync(new CollectorProfile { LoginServerId = 1, AutoLoginEnabled = true, LoginName = "test", LoginPassword = "test" }, null, _ => { }, CancellationToken.None); });
 Check(processes.Terminations == 2 && radar.Starts == startsBeforeFailure, "Failed launch cleanup is entirely launcher-owned.");
 
 // A delayed attach failure must release its reservation so another profile can retry.
@@ -109,12 +127,14 @@ Check(processes.Terminations == 2, "Draining collection must never terminate a g
 // Active architecture tests use private synthetic markets, offline transport and
 // a temp SQLite store. Historical lease/cohort fixtures remain in separate files.
 await LocalCoordinatorTests.Run();
+await LocalRouteContinuationTests.Run();
 await LocalBrokerWarningTests.Run();
 await LocalNativeFailureTests.Run();
 await LocalCenterArrivalTests.Run();
 await LocalApproachErrorTests.Run();
 RadarFrameSharingTests.Run();
 await CharacterRotationTests.Run();
+await WindowCornerTests.Run();
 await ClientRecoveryTests.Run();
 await BrokerIdentityTests.Run();
 var launchRefs=typeof(LaunchModule).Assembly.GetReferencedAssemblies().Select(v=>v.Name).ToArray();

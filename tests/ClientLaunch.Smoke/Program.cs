@@ -42,6 +42,28 @@ if (args.Contains("--child"))
     var installDate = Native.ReadRegistryDword(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallDate");
     if (installDate.ToString() != Environment.GetEnvironmentVariable("PRICECHECK_HW_INSTALL_DATE"))
         throw new InvalidOperationException($"InstallDate registry mismatch: {installDate}");
+    var processorPath = @"HARDWARE\DESCRIPTION\System\CentralProcessor\0";
+    var processorModel = Native.ReadRegistryValue(processorPath, "ProcessorNameString");
+    if (processorModel != Environment.GetEnvironmentVariable("PRICECHECK_HW_PROCESSOR_MODEL"))
+        throw new InvalidOperationException("ProcessorNameString registry mismatch");
+    if (Native.ReadRegistryValueAnsi(processorPath, "ProcessorNameString") != processorModel)
+        throw new InvalidOperationException("ProcessorNameString ANSI registry mismatch");
+    var processorRevision = Native.ReadRegistryBinary(processorPath, "Update Revision");
+    if (processorRevision != Environment.GetEnvironmentVariable("PRICECHECK_HW_PROCESSOR_REVISION"))
+        throw new InvalidOperationException("Update Revision registry mismatch");
+    if (Native.ReadRegistryBinaryAnsi(processorPath, "Update Revision") != processorRevision)
+        throw new InvalidOperationException("Update Revision ANSI registry mismatch");
+    var sqmMachineId = Native.ReadRegistryValue(@"SOFTWARE\Microsoft\SQMClient", "MachineId");
+    if (sqmMachineId != Environment.GetEnvironmentVariable("PRICECHECK_HW_SQM_MACHINE_ID"))
+        throw new InvalidOperationException("SQM MachineId registry mismatch");
+    if (Native.ReadRegistryValueAnsi(@"SOFTWARE\Microsoft\SQMClient", "MachineId") != sqmMachineId)
+        throw new InvalidOperationException("SQM MachineId ANSI registry mismatch");
+    try
+    {
+        if (Native.ReadRegistryValue(@"SOFTWARE\Microsoft\Cryptography", "ProcessorNameString") == processorModel)
+            throw new InvalidOperationException("Processor model leaked into an unrelated registry key");
+    }
+    catch (InvalidOperationException exception) when (exception.Message == "cannot read ProcessorNameString") { }
     var gateway = NetworkInterface.GetAllNetworkInterfaces()
         .SelectMany(adapter => adapter.GetIPProperties().GatewayAddresses)
         .Select(value => value.Address)
@@ -114,6 +136,7 @@ if (args.Contains("--child"))
         if (disk.LayoutKind == "MBR" && disk.LayoutId != Environment.GetEnvironmentVariable("PRICECHECK_HW_DISK_SIGNATURE"))
             throw new InvalidOperationException($"disk MBR signature mismatch: {disk.LayoutId}");
     }
+    DeviceWmiChecks.VerifyChild();
     using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
     if (Environment.GetEnvironmentVariable("PRICECHECK_TEST_BIND") == "1")
     {
@@ -156,6 +179,8 @@ child.Environment["PRICECHECK_HW_SYSTEM_SERIAL"] = "ABCDEF123456";
 child.Environment["PRICECHECK_HW_CHASSIS_SERIAL"] = "BCDEF1234567";
 child.Environment["PRICECHECK_HW_PROCESSOR_ID"] = "0123456789ABCDEF";
 child.Environment["PRICECHECK_HW_PROCESSOR_SERIAL"] = "CDEF12345678";
+child.Environment["PRICECHECK_HW_PROCESSOR_MODEL"] = "Processor Smoke 1234";
+child.Environment["PRICECHECK_HW_PROCESSOR_REVISION"] = "0102030405060708";
 child.Environment["PRICECHECK_HW_MEMORY_SERIAL"] = "D1234567";
 child.Environment["PRICECHECK_HW_DISK_SERIAL"] = "E123456789ABCDEF";
 child.Environment["PRICECHECK_HW_PROFILE_GUID"] = Guid.NewGuid().ToString("B");
@@ -163,10 +188,13 @@ child.Environment["PRICECHECK_HW_PRODUCT_ID"] = "00330-12345-67890-AAOEM";
 child.Environment["PRICECHECK_HW_DISK_GUID"] = Guid.NewGuid().ToString("D");
 child.Environment["PRICECHECK_HW_DISK_SIGNATURE"] = "A1B2C3D4";
 child.Environment["PRICECHECK_HW_SUS_CLIENT_ID"] = Guid.NewGuid().ToString("D");
+child.Environment["PRICECHECK_HW_SQM_MACHINE_ID"] = Guid.NewGuid().ToString("B");
 child.Environment["PRICECHECK_HW_VIDEO_ID"] = Guid.NewGuid().ToString("B");
 child.Environment["PRICECHECK_HW_COMPUTER_NAME"] = "PC-TEST1234";
 child.Environment["PRICECHECK_HW_INSTALL_DATE"] = "1600000000";
 child.Environment["PRICECHECK_HW_ROUTER_MAC"] = "02AABBCCDDEE";
+child.Environment["PRICECHECK_TEST_DEVICE_ID"] = DeviceWmiChecks.FindOriginalDeviceId();
+child.Environment["PRICECHECK_TEST_PCI_ID"] = DeviceWmiChecks.FindOriginalDeviceId("PCI");
 var targetGateway = NetworkInterface.GetAllNetworkInterfaces()
     .SelectMany(adapter => adapter.GetIPProperties().GatewayAddresses)
     .Select(address => address.Address)
@@ -285,6 +313,51 @@ internal static class Native
         finally { RegCloseKey(key); }
     }
 
+    public static string ReadRegistryBinary(string path, string name)
+    {
+        if (RegOpenKeyExW(new IntPtr(unchecked((int)0x80000002)), path, 0, 0x20019, out var key) != 0)
+            throw new InvalidOperationException($"cannot open {name} key");
+        try
+        {
+            var data = new byte[32];
+            uint size = (uint)data.Length;
+            if (RegQueryValueExW(key, name, IntPtr.Zero, out var type, data, ref size) != 0 || type != 3)
+                throw new InvalidOperationException($"cannot read {name} as REG_BINARY");
+            return Convert.ToHexString(data, 0, checked((int)size));
+        }
+        finally { RegCloseKey(key); }
+    }
+
+    public static string ReadRegistryValueAnsi(string path, string name)
+    {
+        if (RegOpenKeyExA(new IntPtr(unchecked((int)0x80000002)), path, 0, 0x20019, out var key) != 0)
+            throw new InvalidOperationException($"cannot open {name} ANSI key");
+        try
+        {
+            var data = new byte[256];
+            uint size = (uint)data.Length;
+            if (RegQueryValueExA(key, name, IntPtr.Zero, out var type, data, ref size) != 0 || type != 1)
+                throw new InvalidOperationException($"cannot read {name} as ANSI REG_SZ");
+            return Encoding.ASCII.GetString(data, 0, checked((int)size)).TrimEnd('\0');
+        }
+        finally { RegCloseKey(key); }
+    }
+
+    public static string ReadRegistryBinaryAnsi(string path, string name)
+    {
+        if (RegOpenKeyExA(new IntPtr(unchecked((int)0x80000002)), path, 0, 0x20019, out var key) != 0)
+            throw new InvalidOperationException($"cannot open {name} ANSI key");
+        try
+        {
+            var data = new byte[32];
+            uint size = (uint)data.Length;
+            if (RegQueryValueExA(key, name, IntPtr.Zero, out var type, data, ref size) != 0 || type != 3)
+                throw new InvalidOperationException($"cannot read {name} as ANSI REG_BINARY");
+            return Convert.ToHexString(data, 0, checked((int)size));
+        }
+        finally { RegCloseKey(key); }
+    }
+
     public static string? ReadRouterMac(IPAddress gateway)
     {
         var data = new byte[8];
@@ -319,6 +392,12 @@ internal static class Native
 
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)]
     private static extern int RegQueryValueExW(IntPtr key, string name, IntPtr reserved, out uint type, byte[] data, ref uint size);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Ansi)]
+    private static extern int RegOpenKeyExA(IntPtr root, string subkey, uint options, uint access, out IntPtr key);
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Ansi)]
+    private static extern int RegQueryValueExA(IntPtr key, string name, IntPtr reserved, out uint type, byte[] data, ref uint size);
 
     [DllImport("advapi32.dll")]
     private static extern int RegCloseKey(IntPtr key);

@@ -12,6 +12,7 @@
   <ItemGroup><ProjectReference Include="..\PriceCheck.Launching.UI\PriceCheck.Launching.UI.csproj" /><ProjectReference Include="..\PriceCheck.Collection\PriceCheck.Collection.csproj" /></ItemGroup>
   <ItemGroup>
     <Content Include="BrokerRuntime\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\maps\**\city.json" Link="Maps\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="..\..\native\ClientLaunch\Runtime.props" />
 </Project>

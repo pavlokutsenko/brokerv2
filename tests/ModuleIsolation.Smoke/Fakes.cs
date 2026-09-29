@@ -8,6 +8,7 @@ internal sealed class FakeProcesses : IClientProcessService
     private readonly Dictionary<int, ClientSession> _sessions = [];
     private int _next = 100;
     public HashSet<int> Proxies { get; } = [];
+    public List<(int Pid, GameWindowCorner Corner)> WindowPlacements { get; } = [];
     public int Terminations { get; private set; }
     public int Releases { get; private set; }
     public ClientSession? Identity(int pid) => _sessions.GetValueOrDefault(pid);
@@ -20,6 +21,11 @@ internal sealed class FakeProcesses : IClientProcessService
         return Task.FromResult(pid);
     }
     public Task WaitForGameWindowAsync(int pid, CancellationToken token) => Task.CompletedTask;
+    public bool TryPlaceGameWindow(ClientSession session, GameWindowCorner corner)
+    {
+        WindowPlacements.Add((session.ProcessId, corner));
+        return true;
+    }
     public Task ActivateLateAgentAsync(int pid, CancellationToken token) => Task.CompletedTask;
     public ClientProtectionStatus Protection(int pid) => new(true, true, true, 2, 64, 64, "TEST", null);
     public Task ValidateProtectionAsync(int pid, bool requireWorld, CancellationToken token) => Task.CompletedTask;

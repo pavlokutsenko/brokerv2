@@ -76,6 +76,7 @@ class Code:
 
 def build_stub(
     name_indices: list[int],
+    buy_name_indices: tuple[int, int],
     data_address: int,
     record_addresses: list[int],
     command_address: int,
@@ -198,7 +199,7 @@ def build_stub(
     # at +08h; normal/New Sell share it at +10h.
     code.emit(bytes.fromhex("45 8B 10"))  # object id = [r8]
     code.emit(bytes.fromhex("44 89 50 70"))
-    for buy_name_index in (71700, 71723):
+    for buy_name_index in buy_name_indices:
         code.emit(bytes.fromhex("41 81 FB") + struct.pack("<I", buy_name_index))
         code.branch32(bytes.fromhex("0F 84"), "buy_array")
     code.branch32(b"\xE9", "sell_array")
@@ -355,6 +356,10 @@ def install(pid: int) -> None:
         command_address = history_cave + 0xF000
         stub = build_stub(
             [item["name_index"] for item in functions.values()],
+            (
+                functions["PlayerShopBuyItemsList"]["name_index"],
+                functions["PlayerShopNewBuyItemsList"]["name_index"],
+            ),
             data_address,
             record_addresses,
             command_address,

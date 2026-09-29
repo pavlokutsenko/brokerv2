@@ -100,7 +100,33 @@ internal static class GuardMonitorChecks
             Console.WriteLine("CONTINUOUS_GUARD_OK " + failure + " failure terminated client");
         }
         fixture.Reject = false;
+        await ExitDuringRouteQueryAsync(template);
         await WorldAsync(template, fixture);
+    }
+    private static async Task ExitDuringRouteQueryAsync(LaunchTemplate template)
+    {
+        using var mapping = new LaunchGuardMapping("11223344556677889900AABBCCDDEEFF");
+        using var child = Process.Start(StartInfo("--child-wait"))!;
+        using var broker = new ProxyTcpBroker(template, true); broker.Bind(child.Id);
+        using var viewMap = MemoryMappedFile.OpenExisting(mapping.Name);
+        using var view = viewMap.CreateViewAccessor();
+        view.Write(24, 1); view.Write(72, Environment.TickCount64);
+        var armed = 0; var calls = 0;
+        bool Alive(int pid)
+        {
+            if (Volatile.Read(ref armed) == 1 && Interlocked.Increment(ref calls) == 2)
+            {
+                child.Kill(); child.WaitForExit();
+                return true; // Last sample predates the driver's exit notification.
+            }
+            return !child.HasExited;
+        }
+        using var guard = new ClientLaunchGuard(mapping, broker, child.Id, Alive, () => { if (!child.HasExited) child.Kill(); });
+        guard.Bind(child.Id); Volatile.Write(ref armed, 1);
+        await UntilAsync(() => child.HasExited);
+        await Task.Delay(700);
+        if (guard.Status.Failed) throw new Exception("Exit between liveness sample and route query became a protection failure.");
+        Console.WriteLine("ROUTE_QUERY_EXIT_RACE_OK natural exit during route query remains recoverable");
     }
     private static async Task WorldAsync(LaunchTemplate template, GuardProxyFixture fixture)
     {

@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\src\PriceCheck.Launching\Services\WorldIdentityConfiguration.cs" Link="WorldIdentityConfiguration.cs" />
+    <Compile Include="..\..\src\PriceCheck.Launching\Services\DeviceIdentityPreview.cs" Link="DeviceIdentityPreview.cs" />
   </ItemGroup>
 </Project>

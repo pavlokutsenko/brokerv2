@@ -19,6 +19,7 @@ public sealed record MarketCycleStatus
     public int Deferred { get; init; }
     public int Overdue { get; init; }
     public int Checked { get; init; }
+    public int CurrentPriceTraders { get; init; }
     public int IgnoredOutsideZone { get; init; }
     public int Cycles { get; init; }
     public int PassNewFound { get; init; }

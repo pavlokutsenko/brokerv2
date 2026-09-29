@@ -84,8 +84,11 @@ bool LaunchGuardAllowsLogin(bool character) {
     if (!state) return true;
     if (!LaunchGuardLeaseValid()) return denied(7);
     if (!(state->flags & 1)) return denied(8);
-    return !character || ((state->flags & 2) && state->world_opened_tick > 0 &&
-        state->applied_tick >= state->world_opened_tick);
+    // The world handshake starts only after character selection on some
+    // servers. The caller must still validate the current world exchange
+    // before reporting launch success or starting collection.
+    (void)character;
+    return true;
 }
 bool LaunchGuardAllowsNetwork() {
     if (!open_state()) return false;

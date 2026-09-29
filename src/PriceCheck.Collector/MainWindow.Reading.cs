@@ -6,47 +6,16 @@ namespace PriceCheck.Collector;
 
 public partial class MainWindow
 {
-    private void RefreshClients_Click(object sender, RoutedEventArgs e) => RefreshClientList();
-    private void RefreshClientList()
+    private async Task EnsureReaderAttachedAsync(ProfileRuntime runtime)
     {
-        var selected = SelectedClient;
-        AvailableClients.Clear();
-        foreach (var session in ClientProcessIdentity.Discover()) AvailableClients.Add(session);
-        SelectedClient = AvailableClients.FirstOrDefault(value => value == selected) ?? AvailableClients.FirstOrDefault();
-        OnPropertyChanged(nameof(SelectedClient));
-    }
-
-    private async void AttachReader_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is not { IsBusy: false } runtime || _closing) return;
-        runtime.IsBusy = true;
-        try
-        {
-            var session = runtime.Session is { } current && ClientProcessIdentity.IsCurrent(current) ? current : SelectedClient;
-            if (session is null) throw new InvalidOperationException("Launch a client or select an existing process.");
-            await _launcher.ValidateProtectionAsync(runtime.Profile.Id, false, CancellationToken.None);
-            if (Runtimes.Count(other => other != runtime && other.ReaderAttached) >= 4)
-                throw new InvalidOperationException("Одновременно поддерживаются от 1 до 4 коллекторов.");
-            if (Runtimes.Any(other => other != runtime && other.Session == session))
-                throw new InvalidOperationException("This client already belongs to another profile.");
-            runtime.Session = session;
-            runtime.Status = "Connecting reader…";
-            await _collection.AttachAsync(runtime, CancellationToken.None);
-            runtime.Profile.LastProcessId = session.ProcessId;
-            runtime.Profile.LastProcessStartUtc = session.StartedAtUtc;
-            await SaveProfilesAsync();
-        }
-        catch (Exception exception) { runtime.Status = "Reader connection failed"; ShowModuleError(runtime, exception); }
-        finally { runtime.IsBusy = false; }
-    }
-
-    private async void DetachReader_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is not { IsBusy: false } runtime) return;
-        runtime.IsBusy = true;
-        try { _clientRecovery.Forget(runtime.Profile.Id);runtime.ClientFault=null;await _collection.DetachAsync(runtime); await SaveProfilesAsync(); }
-        catch (Exception exception) { ShowModuleError(runtime, exception); }
-        finally { runtime.IsBusy = false; }
+        if (runtime.Session is not { } session || !ClientProcessIdentity.IsCurrent(session) ||
+            !_launcher.Owns(runtime.Profile.Id, session))
+            throw new InvalidOperationException("Сначала запустите клиент выбранного профиля.");
+        if (runtime.ReaderAttached) return;
+        if (Runtimes.Any(other => other != runtime && other.Session?.ProcessId == session.ProcessId))
+            throw new InvalidOperationException("Этот клиент уже принадлежит другому профилю.");
+        await _launcher.ValidateProtectionAsync(runtime.Profile.Id, false, CancellationToken.None);
+        await _collection.AttachAsync(runtime, CancellationToken.None);
     }
 
     private Task RefreshSelectedAsync() => SelectedRuntime is null ? Task.CompletedTask : RefreshRuntimesAsync([SelectedRuntime]);

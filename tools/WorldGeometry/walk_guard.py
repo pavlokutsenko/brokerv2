@@ -95,7 +95,13 @@ class WalkGuard:
         """Leave a shallow initial wall contact, with a clear sweep beyond it."""
         hit=self.last_hit or {};normal=hit.get('normal') or (0,0,0)
         distance=math.dist(current[:2],goal)
-        if not (hit.get('blocked') and hit.get('time')==0 and 0<hit.get('penetration',0)<=2
+        component=hit.get('component') or {}
+        npc=(hit.get('outer_class')=='CharacterNpc_C' and component.get('class')=='CapsuleComponent'
+             and component.get('name')=='CharacterCapsule')
+        # Actual shallow NPC overlap2.193 starts every sweep penetrating.
+        # Keep wall limits unchanged and still require a clear outward sweep.
+        overlap_limit=3 if npc else 2
+        if not (hit.get('blocked') and hit.get('time')==0 and 0<hit.get('penetration',0)<=overlap_limit
                 and abs(normal[2])<.2 and 30<=distance<=100): return False
         length=math.hypot(*normal[:2])
         if length<.8: return False

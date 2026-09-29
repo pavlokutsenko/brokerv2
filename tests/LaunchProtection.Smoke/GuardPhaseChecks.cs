@@ -12,7 +12,7 @@ internal static class GuardPhaseChecks
         {
             var fake = new Processes(failure);
             var profile = new CollectorProfile { Name = "Gamma", AutoLoginEnabled = true, LoginName = "synthetic",
-                LoginPassword = "synthetic", LoginServerName = "Gamma" };
+                LoginPassword = "synthetic", LoginServerName = "Gamma", LoginServerId = 1 };
             var template = new LaunchTemplate();
             var logins = 0; var reader = 0;
             var launcher = new LaunchModule(fake, (_,_,_) => { logins++; return Task.CompletedTask; }, fake.Identity, _ => Task.CompletedTask);
@@ -41,7 +41,7 @@ internal static class GuardPhaseChecks
         }
         var noTemplate = new ClientProcessService();
         try { await noTemplate.LaunchAndBindAsync(new(), null, CancellationToken.None); throw new Exception("Missing template accepted"); }
-        catch (LaunchProtectionException e) when (e.Message.Contains("шаблон")) { }
+        catch (LaunchProtectionException e) when (e.Message.Contains("template", StringComparison.OrdinalIgnoreCase)) { }
         Console.WriteLine("PHASE_GATES_OK before login/reader, after character, failed client terminated, no unprotected launch");
     }
     private static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
@@ -57,6 +57,7 @@ internal static class GuardPhaseChecks
         public Task<int> LaunchAndBindAsync(CollectorProfile profile, LaunchTemplate? template, CancellationToken token)
         { _session = new(100, DateTimeOffset.UtcNow); return Task.FromResult(100); }
         public Task WaitForGameWindowAsync(int pid, CancellationToken token) => Task.CompletedTask;
+        public bool TryPlaceGameWindow(ClientSession session, GameWindowCorner corner) => true;
         public Task ActivateLateAgentAsync(int pid, CancellationToken token) => Task.CompletedTask;
         public ClientProtectionStatus Protection(int pid) => new(true, true, true, 2, 32, 32, "SYNTHETIC", null);
         public Task ValidateProtectionAsync(int pid, bool world, CancellationToken token)

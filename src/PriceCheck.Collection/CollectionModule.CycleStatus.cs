@@ -8,15 +8,17 @@ public sealed partial class CollectionModule
     private readonly Dictionary<Guid,DateTimeOffset> _statusPublished = [];
     private readonly Dictionary<Guid,string> _statusPhases = [];
 
-    private async Task PublishCycleStatusAsync(ProfileRuntime runtime)
+    private Task PublishCycleStatusAsync(ProfileRuntime runtime)
     {
         var now=DateTimeOffset.UtcNow;var id=runtime.Profile.Id;
         if(_statusPublished.TryGetValue(id,out var last) && now-last<TimeSpan.FromSeconds(30) &&
-           _statusPhases.GetValueOrDefault(id)==runtime.Cycle.Phase) return;
+           _statusPhases.GetValueOrDefault(id)==runtime.Cycle.Phase) return Task.CompletedTask;
         _statusPublished[id]=now;_statusPhases[id]=runtime.Cycle.Phase;
         try
         {
-            if(_cycles.TryGetValue(id,out var cycle)) await _uploadOutbox.EnqueueCycleStatusAsync(cycle.UploadProfile,runtime.Cycle,cycle.WorkerId);
+            // The server has no /ingest/collector-status route. Market broker
+            // and price receipts remain independent; avoid producing a 404
+            // rejected file on every local UI refresh until that API exists.
             var dir=_uploadOutbox.OutputDirectory;
             var files=Directory.Exists(dir)?Directory.GetFiles(dir):[];
             var waiting=files.Count(p=>p.EndsWith(".ready") || Path.GetFileName(p).Contains(".sending."));
@@ -29,5 +31,6 @@ public sealed partial class CollectionModule
         }
         catch(Exception e) when(e is IOException or UnauthorizedAccessException)
         { runtime.UploadStatus=$"Server queue: {e.Message}"; }
+        return Task.CompletedTask;
     }
 }

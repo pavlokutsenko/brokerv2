@@ -1,4 +1,5 @@
 using PriceCheck.Collector.Models;
+using PriceCheck.Collector.Services;
 
 namespace PriceCheck.Collection;
 
@@ -11,5 +12,5 @@ public sealed partial class CollectionModule
         return Task.CompletedTask;
     }
     private Task<IReadOnlyList<CycleTarget>> ClaimCycleTargetsAsync(CycleRun cycle,RadarSnapshot radar)
-        =>Task.FromResult(cycle.Store.NextTargets(20));
+        =>Task.FromResult(CycleRouteSections.Select(cycle.Store.NextTargets(10000)));
 }

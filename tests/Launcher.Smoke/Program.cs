@@ -1,6 +1,8 @@
 using System.IO;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
@@ -28,11 +30,31 @@ internal static class Program
         var templateStore = new LaunchTemplateStore(settings);
         templateStore.SaveAsync([new() { Id = templateId, Name = "Fixture", HardwareEnabled = true,
             Identity = new() { WorldIdentitySeed = seed } }]).GetAwaiter().GetResult();
+        var firstMigration = templateStore.LoadAsync().GetAwaiter().GetResult().Single().Identity;
+        var secondMigration = templateStore.LoadAsync().GetAwaiter().GetResult().Single().Identity;
+        Check(firstMigration.ProcessorModel == secondMigration.ProcessorModel &&
+            firstMigration.ProcessorRevision == secondMigration.ProcessorRevision &&
+            firstMigration.SqmMachineId == secondMigration.SqmMachineId,
+            "New identity fields change between loads of a fixed template.");
+        var inventory = Task.Run(HardwareInventoryService.Scan).GetAwaiter().GetResult();
+        Check(inventory.Any(row => row.Coverage == "SetupAPI/CM · hooked"),
+            "USB/HID API inventory is unavailable.");
+        Check(inventory.Any(row => row.Label == "WMI · System UUID" &&
+            row.Coverage == "IWbemClassObject::Get · hooked"),
+            "WMI identity inventory is unavailable.");
+        var preview = inventory.Select(row => IdentityPreviewService.WithTarget(row,
+            new LaunchTemplate { Identity = firstMigration }, 0)).ToArray();
+        Check(preview.Any(row => row.Coverage == "SetupAPI/CM · hooked" &&
+            row.TargetValue != row.CurrentValue) &&
+            preview.Any(row => row.Label == "WMI · System UUID" &&
+                row.TargetValue == firstMigration.SystemUuid),
+            "USB/HID or WMI preview does not match the selected template.");
         var references = typeof(MainWindow).Assembly.GetReferencedAssemblies()
             .Concat(typeof(PriceCheck.Launching.LaunchModule).Assembly.GetReferencedAssemblies())
             .Concat(typeof(PriceCheck.Collector.LaunchPanelView).Assembly.GetReferencedAssemblies());
         Check(!references.Any(value => value.Name is "PriceCheck.Collection" or "PriceCheck.Collector"), "Launcher depends on collection or its desktop host.");
         var app = new App(false); app.InitializeComponent();
+        VerifyEmptyTemplateEditor(app, output);
         var window = new MainWindow(true, settings) { ShowInTaskbar = false, Left = -20000, Top = -20000 };
         window.Events.CollectionChanged += (_, e) => { foreach (var value in e.NewItems ?? Array.Empty<object>()) Console.WriteLine(value); };
         window.Show(); Pump(app);
@@ -40,8 +62,22 @@ internal static class Program
         Check(window.Runtimes.Count == 1 && window.SelectedRuntime!.Profile.Id == profileId, "Launcher did not load the configured profile.");
         Check(window.SelectedRuntime!.Profile.LaunchTemplateId == templateId, "Launcher changed the template binding.");
         Check(window.SelectedRuntime.Session is null, "Launcher adopted a saved game PID.");
+        var otherProfile = new CollectorProfile { Name = "Gamma", LoginServerName = "Gamma", LoginServerId = 1 };
+        window.Events.Add(new(DateTimeOffset.UtcNow, profileId, "Gamma", "Gamma event"));
+        window.Events.Add(new(DateTimeOffset.UtcNow, otherProfile.Id, "Gamma", "Second account event"));
+        Check(window.ProfileEvents.Cast<LauncherJournalEntry>().Single().Message == "Gamma event",
+            "Launcher log displayed another profile's event.");
+        var otherRuntime = new LaunchRuntime { Profile = otherProfile };
+        window.Runtimes.Add(otherRuntime); window.SelectedRuntime = otherRuntime; Pump(app);
+        Check(window.ProfileEvents.Cast<LauncherJournalEntry>().Single().Message == "Second account event",
+            "Launcher log did not follow the selected profile.");
+        window.SelectedRuntime = window.Runtimes.First(value => value.Profile.Id == profileId);
+        window.Runtimes.Remove(otherRuntime); Pump(app);
         var tabs = (TabControl)window.FindName("MainTabs")!;
-        Check(tabs.Items.Count == 3 && !tabs.Items.Cast<TabItem>().Any(value => value.Header.ToString()!.Contains("COLLECTION")), "Launcher displays collection UI.");
+        var profileTabs = (TabControl)window.FindName("ProfileTabs")!;
+        Check(tabs.Items.Count == 2 && profileTabs.Items.Count == 2 &&
+            !profileTabs.Items.Cast<TabItem>().Any(value => value.Header.ToString()!.Contains("Сбор")),
+            "Launcher should show profile launch/log and shared templates, without collection UI.");
         var panel = (PriceCheck.Collector.LaunchPanelView)window.FindName("LaunchPanel")!;
         var hwid = (TextBlock)panel.FindName("HardwareProtectionIndicator")!;
         var proxy = (TextBlock)panel.FindName("ProxyProtectionIndicator")!;
@@ -52,7 +88,7 @@ internal static class Program
         window.SelectedRuntime.Protection = window.SelectedRuntime.Protection with { Error = "HWID: Synthetic protection failure" }; Pump(app);
         Check(hwid.Text.Contains("ОШИБКА") && proxy.Text.Contains("ОШИБКА"), "Failed protection displayed success.");
         window.SelectedRuntime.Protection = PriceCheck.Contracts.ClientProtectionStatus.Pending; Pump(app);
-        var login = (CheckBox)FindVisual<CheckBox>(panel, value => Equals(value.Content, "Auto login"));
+        var login = (CheckBox)FindVisual<CheckBox>(panel, value => Equals(value.Content, "Автовход"));
         login.IsChecked = true; Pump(app);
         Check(new ProfileStore(settings).LoadAsync().GetAwaiter().GetResult().Single().AutoLoginEnabled, "Launcher profile changes were not saved.");
         var templates = (PriceCheck.Collector.LaunchTemplatesView)window.FindName("TemplatesView")!;
@@ -68,6 +104,8 @@ internal static class Program
         ((Button)templates.FindName("SaveTemplatesButton")!).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); Pump(app);
         var saved = templateStore.LoadAsync().GetAwaiter().GetResult().Single();
         Check(saved.ProxyEnabled && saved.ProxyPort == 50100 && saved.Identity.WorldIdentitySeed == seed, "Proxy editing did not save or changed HWID seed.");
+        Check(saved.Identity.ProcessorModel.Length > 0 && saved.Identity.ProcessorRevision.Length == 16 &&
+            Guid.TryParse(saved.Identity.SqmMachineId, out _), "New identity fields were lost by the template editor.");
         tabs.SelectedIndex = 0; Pump(app); Render(window, Path.Combine(output, "launcher-1380.png"));
         window.Width = 1120; Pump(app); Render(window, Path.Combine(output, "launcher-1120.png"));
         window.Close(); Pump(app); Check(!window.IsVisible, "Launcher did not close when idle."); app.Shutdown();
@@ -77,6 +115,61 @@ internal static class Program
         Console.WriteLine("LAUNCHER_SMOKE_OK independent_assemblies isolated_settings stable_ids stable_seed proxy_save ui_1380_1120 idle_close production_unchanged");
     }
     private static void Pump(Application app) => app.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+    private static void VerifyEmptyTemplateEditor(Application app, string output)
+    {
+        var settings = Path.Combine(output, "empty-settings-" + Guid.NewGuid().ToString("N"));
+        var store = new LaunchTemplateStore(settings);
+        var window = new MainWindow(true, settings) { ShowInTaskbar = false, Left = -20000, Top = -20000 };
+        window.Show(); Pump(app);
+        var tabs = (TabControl)window.FindName("MainTabs")!;
+        tabs.SelectedItem = window.FindName("TemplatesTab"); Pump(app);
+        var view = (PriceCheck.Collector.LaunchTemplatesView)window.FindName("TemplatesView")!;
+        var editor = (StackPanel)view.FindName("Editor")!;
+        var empty = (StackPanel)view.FindName("EmptyTemplatesPanel")!;
+        var name = (TextBox)view.FindName("TemplateNameInput")!;
+        var host = (TextBox)view.FindName("ProxyHostInput")!;
+        Check(view.Templates.Count == 1 && editor.IsEnabled && name.IsEnabled && name.IsHitTestVisible,
+            "First-run template editor does not accept input.");
+        Check(store.LoadAsync().GetAwaiter().GetResult().Count == 0, "Draft template was saved before user confirmation.");
+        ClientLaunchConfiguration.ValidateIdentity(view.Templates.Single().Identity);
+        Render(window, Path.Combine(output, "launcher-first-template.png"));
+        foreach (var control in new[] { "HardwareToggle", "RotateIdentityToggle", "ProxyToggle" })
+        {
+            var toggle = (CheckBox)view.FindName(control)!;
+            var previous = toggle.IsChecked;
+            var provider = (IToggleProvider)new CheckBoxAutomationPeer(toggle).GetPattern(PatternInterface.Toggle)!;
+            provider.Toggle(); Pump(app);
+            Check(toggle.IsChecked != previous, control + " did not respond to an enabled toggle action.");
+        }
+        Check(!view.Templates[0].HardwareEnabled && view.Templates[0].RotateEachLaunch && view.Templates[0].ProxyEnabled,
+            "First-run checkbox changes did not update the draft.");
+        Check(host.IsEnabled && host.IsHitTestVisible && host.Focus(), "Proxy input did not become editable/focusable.");
+        name.Text = "First template"; host.Text = "127.0.0.1";
+        var port = (TextBox)view.FindName("ProxyPortInput")!;
+        port.Text = "50100"; port.GetBindingExpression(TextBox.TextProperty)!.UpdateSource();
+        ((TextBox)view.FindName("ProxyUserInput")!).Text = "first-user";
+        ((PasswordBox)view.FindName("TemplatePassword")!).Password = "first-password";
+        ClientLaunchConfiguration.ValidateProxy(view.Templates.Single());
+        ((Button)view.FindName("SaveTemplatesButton")!).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); Pump(app);
+        var saved = store.LoadAsync().GetAwaiter().GetResult().Single();
+        Check(saved.Name == "First template" && saved.ProxyEnabled && saved.ProxyHost == "127.0.0.1" &&
+            saved.ProxyPort == 50100 && saved.ProxyPassword == "first-password", "First-run input did not persist on Save.");
+        view.SetTemplates([]); Pump(app);
+        var newButton = (Button)view.FindName("NewTemplateButton")!;
+        newButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); Pump(app);
+        Check(view.Templates.Select(value => value.Name).Distinct().Count() == 2, "New templates received duplicate names.");
+        var delete = (Button)view.FindName("DeleteTemplateButton")!;
+        delete.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        delete.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); Pump(app);
+        Check(view.Templates.Count == 0 && empty.IsVisible && !editor.IsVisible,
+            "Deleting the last template left a visible, disabled editor.");
+        Render(window, Path.Combine(output, "launcher-no-templates.png"));
+        ((Button)view.FindName("CreateTemplateButton")!).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); Pump(app);
+        Check(view.Templates.Count == 1 && editor.IsEnabled && editor.IsVisible && !empty.IsVisible,
+            "Creating a template did not restore the editor.");
+        window.Close(); Pump(app);
+        Console.WriteLine("EMPTY_TEMPLATE_EDITOR_OK draft toggles input_focus save delete_last recreate unique_names");
+    }
     private static FrameworkElement FindVisual<T>(DependencyObject parent, Func<T, bool> matches) where T : FrameworkElement
     {
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)

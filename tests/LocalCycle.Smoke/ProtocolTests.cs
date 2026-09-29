@@ -16,6 +16,7 @@ internal static class ProtocolTests
         var received=new ConcurrentQueue<string>();var priceAccepted=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstBroker=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);var releaseBroker=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var oldRead=DateTimeOffset.UtcNow.AddHours(-1);
+        var historyClosed=false;var reopenReceipts=0;
         var server=Task.Run(async()=>{
             while(!stop.IsCancellationRequested)
             {
@@ -23,8 +24,10 @@ internal static class ProtocolTests
                 try{context=await listener.GetContextAsync().WaitAsync(stop.Token);}catch(OperationCanceledException){break;}
                 using var reader=new StreamReader(context.Request.InputStream);var request=JsonDocument.Parse(await reader.ReadToEndAsync());
                 var kind=context.Request.Url!.AbsolutePath.Split('/').Last();received.Enqueue(kind);
+                if(kind=="state" && request.RootElement.GetProperty("type").GetString()=="reopened")Interlocked.Increment(ref reopenReceipts);
                 if(kind=="broker"&&!firstBroker.Task.IsCompleted){firstBroker.SetResult();await releaseBroker.Task;}
                 var response=kind=="history"?JsonSerializer.Serialize(new{traders=new[]{new{traderKey="SHOP",lastReadAtUtc=oldRead,
+                    isActive=!historyClosed,stateObservedAtUtc=oldRead.AddMinutes(-5),
                     verificationRequiredAtUtc=(DateTimeOffset?)null,verificationRevision="remote-opaque-token",checkedX=100,checkedY=100,lastReadKioskType=1}}}):"{\"accepted\":true,\"current\":true}";
                 var bytes=Encoding.UTF8.GetBytes(response);context.Response.ContentType="application/json";context.Response.ContentLength64=bytes.Length;
                 await context.Response.OutputStream.WriteAsync(bytes);context.Response.Close();
@@ -59,8 +62,20 @@ internal static class ProtocolTests
             releaseBroker.SetResult();
             await priceAccepted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             var order=received.ToArray();var firstIndex=Array.IndexOf(order,"broker");
-            Require(Array.IndexOf(order,"price")==firstIndex+1,"individual exact price bypasses unrelated broker backlog");
+            Require(Array.IndexOf(order,"price")>firstIndex && order.TakeWhile(kind=>kind!="price").Count(kind=>kind=="broker")<=8,"individual exact price bypasses unrelated broker backlog after bounded in-flight requests");
             Require(store.Target("SHOP") is null,"background acknowledgement never needed to skip successful shop");
+        }
+        historyClosed=true;
+        var previousReopens=reopenReceipts;
+        using(var store=new LocalCycleStore(new(){Name="HTTP-REOPEN",ServerUrl=profile.ServerUrl},root,()=>time))
+        {
+            store.BeginSession("reopen-check");store.Observe(Radar(),boundary,center,time.AddMinutes(-1));
+            await store.ReconcileAsync();await store.SendPendingAsync();
+            await store.ReconcileAsync();await store.SendPendingAsync();
+            Require(reopenReceipts==previousReopens+1,"same live observation does not repeatedly reopen an unchanged server state");
+            time=time.AddSeconds(1);store.Observe(Radar(),boundary,center,time.AddMinutes(-1));
+            await store.ReconcileAsync();await store.SendPendingAsync();
+            Require(reopenReceipts==previousReopens+2,"new live observation retries opening even when old server closure is unchanged");
         }
         stop.Cancel();listener.Stop();await server;
         Console.WriteLine("HTTP PROTOCOL PASS 6 checks");

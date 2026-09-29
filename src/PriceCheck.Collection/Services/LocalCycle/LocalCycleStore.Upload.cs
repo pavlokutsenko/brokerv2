@@ -8,14 +8,49 @@ public sealed partial class LocalCycleStore
 {
     private Task? _sender;
     private readonly CancellationTokenSource _senderStop=new();
+    private readonly SemaphoreSlim _deliveryGate=new(1,1);
+    private readonly HashSet<string> _sendingOperations=[];
     private void AddOutbox(string id,string kind,string endpoint,object payload)
     {
         var body=JsonSerializer.SerializeToElement(payload,Json);
         var key=body.TryGetProperty("traderKey",out var direct)?direct.GetString():body.TryGetProperty("trader",out var trader)?trader.GetProperty("traderKey").GetString():null;
+        if(kind=="broker" && key is not null && _db.Query("SELECT 1 FROM outbox WHERE operation_id=?",id).Count==0)
+            CompactBrokerTail(key,body);
         _db.Command("INSERT OR IGNORE INTO outbox(operation_id,kind,url,payload,next_attempt,trader_key) VALUES(?,?,?,?,?,?)",id,kind,
             $"{_serverUrl.TrimEnd('/')}/ingest/local-cycle/{endpoint}",body.GetRawText(),_clock().ToUnixTimeMilliseconds(),key);
     }
+    private void CompactBrokerTail(string key,JsonElement current)
+    {
+        // A later complete inventory supersedes queued broker-only observations
+        // from this profile. State and price operations are ordering barriers.
+        if(!current.TryGetProperty("compositionComplete",out var complete) || complete.ValueKind!=JsonValueKind.True ||
+            !current.TryGetProperty("sourceId",out var source) || source.ValueKind!=JsonValueKind.String ||
+            !current.TryGetProperty("observedAtUtc",out var observed) || observed.ValueKind!=JsonValueKind.String ||
+            !DateTimeOffset.TryParse(observed.GetString(),out var currentAt))return;
+        foreach(var row in _db.Query("SELECT operation_id,kind,payload FROM outbox WHERE trader_key=? ORDER BY rowid DESC",key))
+        {
+            if(row[1]!="broker" || _sendingOperations.Contains(row[0]!))break;
+            try
+            {
+                using var old=JsonDocument.Parse(row[2]!);
+                if(!old.RootElement.TryGetProperty("sourceId",out var oldSource) || oldSource.ValueKind!=JsonValueKind.String ||
+                    oldSource.GetString()!=source.GetString() ||
+                    !old.RootElement.TryGetProperty("observedAtUtc",out var oldObserved) || oldObserved.ValueKind!=JsonValueKind.String ||
+                    !DateTimeOffset.TryParse(oldObserved.GetString(),out var oldAt) || oldAt>currentAt)break;
+            }
+            catch(JsonException){break;}
+            _db.Command("DELETE FROM outbox WHERE operation_id=?",row[0]);
+        }
+    }
     public int PendingUploads { get {lock(_sync)return int.Parse(_db.Query("SELECT COUNT(*) FROM outbox")[0][0]!); } }
+    public BrokerDeliveryStatus? LatestBrokerDelivery
+    {
+        get { lock(_sync)
+        {
+            var row=_db.Query("SELECT traders,accepted,captured_at FROM latest_broker_delivery WHERE id=1").FirstOrDefault();
+            return row is null?null:new(int.Parse(row[0]!),int.Parse(row[1]!),DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(row[2]!)));
+        } }
+    }
     public IReadOnlyList<LocalCycleOperation> PendingOperations()
     {lock(_sync)return _db.Query("SELECT operation_id,kind,payload,attempts,last_error FROM outbox ORDER BY rowid LIMIT 500")
         .Select(row=>new LocalCycleOperation(row[0]!,row[1]!,row[2]!,int.Parse(row[3]!),row[4])).ToArray();}
@@ -23,15 +58,37 @@ public sealed partial class LocalCycleStore
     { lock(_sync) if(_sender is null || _sender.IsCompleted) _sender=Task.Run(SendPendingAsync); }
     public async Task SendPendingAsync()
     {
-        using var http=new HttpClient{Timeout=TimeSpan.FromSeconds(30)};
+        try{await _deliveryGate.WaitAsync(_senderStop.Token).ConfigureAwait(false);}
+        catch(OperationCanceledException){return;}
+        try
+        {
+            using var http=new HttpClient{Timeout=TimeSpan.FromSeconds(30)};
+            await Task.WhenAll(Enumerable.Range(0,8).Select(_=>SendLaneAsync(http))).ConfigureAwait(false);
+        }
+        finally{_deliveryGate.Release();}
+    }
+    private async Task SendLaneAsync(HttpClient http)
+    {
         while(!_senderStop.IsCancellationRequested)
         {
             string?[]? row;
-            lock(_sync) row=_db.Query("SELECT operation_id,kind,url,payload,attempts,trader_key FROM outbox a WHERE next_attempt<=? AND NOT EXISTS (SELECT 1 FROM outbox b WHERE b.trader_key=a.trader_key AND b.kind='state' AND b.rowid<a.rowid) ORDER BY CASE kind WHEN 'state' THEN 0 WHEN 'price' THEN 1 ELSE 2 END,next_attempt LIMIT 1",_clock().ToUnixTimeMilliseconds()).FirstOrDefault();
+            lock(_sync)
+            {
+                // Different shops can upload concurrently. Each shop remains FIFO,
+                // including retries, so no later generation can overtake its state.
+                row=null;
+                foreach(var kind in new[]{"state","price","broker"})
+                {
+                    row=_db.Query("SELECT operation_id,kind,url,payload,attempts,trader_key FROM outbox a WHERE a.kind=? AND next_attempt<=? AND NOT EXISTS (SELECT 1 FROM outbox b WHERE b.trader_key=a.trader_key AND b.rowid<a.rowid) ORDER BY next_attempt,a.rowid LIMIT 32",kind,_clock().ToUnixTimeMilliseconds())
+                        .FirstOrDefault(candidate=>!_sendingOperations.Contains(candidate[0]!));
+                    if(row is not null)break;
+                }
+                if(row is not null)_sendingOperations.Add(row[0]!);
+            }
             if(row is null)
             {
                 if(PendingUploads==0) return;
-                try{await Task.Delay(1000,_senderStop.Token).ConfigureAwait(false);}catch(OperationCanceledException){return;}continue;
+                try{await Task.Delay(100,_senderStop.Token).ConfigureAwait(false);}catch(OperationCanceledException){return;}continue;
             }
             try
             {
@@ -43,6 +100,7 @@ public sealed partial class LocalCycleStore
                 var rejectedCurrent=ApplyUploadAcknowledgement(row,acknowledgement);
                 if(row[1]=="price")Message?.Invoke($"{(rejectedCurrent?"WARNING":"INFO")} {_profile.Name}: trader={row[5]} · snapshot {row[0]} · {(rejectedCurrent?"server retained historical read; awaiting verification history":"server accepted individual trader")}");
             }
+            catch(OperationCanceledException) when(_senderStop.IsCancellationRequested){return;}
             catch(Exception e) when(e is HttpRequestException or TaskCanceledException or IOException)
             {
                 var attempts=int.Parse(row[4]!)+1;
@@ -50,6 +108,7 @@ public sealed partial class LocalCycleStore
                     _clock().AddSeconds(Math.Min(30,Math.Pow(2,Math.Min(attempts,5)))).ToUnixTimeMilliseconds(),row[0]);
                 if(attempts==1 || attempts%30==0)Message?.Invoke($"WARNING {_profile.Name}: trader={row[5]} · {row[1]} {row[0]} · delivery retry {attempts} · {e.Message}");
             }
+            finally{lock(_sync)_sendingOperations.Remove(row[0]!);}
         }
     }
     public async Task ReconcileAsync()
@@ -70,11 +129,14 @@ public sealed partial class LocalCycleStore
                     var required=row.TryGetProperty("verificationRequiredAtUtc",out var need)&&need.ValueKind==JsonValueKind.String?need.GetDateTimeOffset():(DateTimeOffset?)null;
                     var serverToken=row.TryGetProperty("verificationRevision",out var token)&&token.ValueKind==JsonValueKind.String?token.GetString():null;
                     var serverClosed=row.TryGetProperty("isActive",out var active)&&active.ValueKind==JsonValueKind.False;
+                    var serverNonTrading=row.TryGetProperty("kioskType",out var kind)&&kind.ValueKind==JsonValueKind.Number&&kind.GetInt32() is not (1 or 3 or 8);
                     var serverStateAt=row.TryGetProperty("stateObservedAtUtc",out var stateAt)&&stateAt.ValueKind==JsonValueKind.String?stateAt.GetDateTimeOffset():DateTimeOffset.MinValue;
-                    if(serverClosed && t.SeenOpenThisSession && !t.ClosedThisSession && t.StateAt>serverStateAt &&
-                        (t.ServerClosedHandledAt is null || serverStateAt>t.ServerClosedHandledAt))
+                    if((serverClosed || serverNonTrading) && t.SeenOpenThisSession && !t.ClosedThisSession && t.StateAt>serverStateAt &&
+                        (t.ServerClosedHandledAt is null || serverStateAt>t.ServerClosedHandledAt ||
+                         t.ServerReopenObservedAt is null || t.StateAt>t.ServerReopenObservedAt))
                     {
-                        Invalidate(t,"Shop reopened",t.StateAt);StateEvent(t,"reopened",t.StateAt,null,new(0,0,500));t.ServerClosedHandledAt=serverStateAt;
+                        Invalidate(t,"Shop reopened",t.StateAt);StateEvent(t,"reopened",t.StateAt,null,new(0,0,500));
+                        t.ServerClosedHandledAt=serverStateAt;t.ServerReopenObservedAt=t.StateAt;
                     }
                     var mayAdopt=t.Reason=="New shop" || t.Reason=="Server requires verification" || t.NeedsServerHistory || !t.Dirty;
                     if(read is {} at && (t.LastRead is null || at>t.LastRead) && (required is null || at>=required) && !t.ClosedThisSession &&
@@ -103,3 +165,4 @@ public sealed partial class LocalCycleStore
 }
 
 public sealed record LocalCycleOperation(string Id,string Kind,string Payload,int Attempts,string? Error);
+public sealed record BrokerDeliveryStatus(int Traders,int Accepted,DateTimeOffset CapturedAtUtc);

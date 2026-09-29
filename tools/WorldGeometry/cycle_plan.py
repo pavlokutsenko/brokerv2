@@ -4,6 +4,7 @@ import random
 from shapely.geometry import Point,LineString,box
 from shapely.ops import unary_union
 from walk_geometry import Navigation,rounded_route,polygon_rings
+from radar_pass_plan import radar_pass_route
 
 
 # The original mesh sections have three openings in the west temple wall.
@@ -101,25 +102,50 @@ def shorten_order(start,targets):
     return ordered
 
 
-def center_route(data,start,center,previous=None,rng=None):
+def center_route(data,start,center,previous=None,rng=None,standing_radius=200):
     rng=rng or random.SystemRandom()
     nav=Navigation(data)
+    if not math.isfinite(standing_radius) or not 30<=standing_radius<=500:
+        raise ValueError('Invalid center standing radius')
+
+    # Distinct automatically calculated stops keep the whole route, including
+    # the follower's 23-unit endpoint tolerance, inside the verified center disk.
+    if standing_radius>=120:
+        stop_radius=standing_radius-60
+        stops=[(center[0]+stop_radius*math.cos(i*math.tau/8),
+                center[1]+stop_radius*math.sin(i*math.tau/8)) for i in range(8)]
+        stops.append(tuple(center))
+        rng.shuffle(stops)
+        for stop in stops:
+            if previous and math.dist(stop,previous)<125: continue
+            if not nav.clear(stop,stop): continue
+            for _ in range(12):
+                angle=rng.uniform(0,math.tau);radius=25*math.sqrt(rng.random())
+                destination=(stop[0]+radius*math.cos(angle),stop[1]+radius*math.sin(angle))
+                if previous and math.dist(destination,previous)<100: continue
+                if not nav.clear(destination,destination): continue
+                try: points=rounded_route(nav.shortest(start,destination),nav)
+                except RuntimeError: continue
+                return {'points':points,'destination':destination,'centerStop':stop,'anchors':[],'deferred':[]}
+
+    # Some saved centers have no reachable ring stop. Retain the old bounded
+    # search so those profiles can still return without relaxing coverage.
     for _ in range(160):
         # The follower accepts a 23-unit endpoint error. Leave a stopping
         # margin so a destination near the outer circle cannot finish outside.
-        angle=rng.uniform(0,math.tau);radius=470*math.sqrt(rng.random())
+        angle=rng.uniform(0,math.tau);radius=(standing_radius-30)*math.sqrt(rng.random())
         destination=(center[0]+radius*math.cos(angle),center[1]+radius*math.sin(angle))
-        if previous and math.dist(destination,previous)<100: continue
+        if previous and math.dist(destination,previous)<min(100,standing_radius/2): continue
         if not nav.clear(destination,destination): continue
         try: points=rounded_route(nav.shortest(start,destination),nav)
         except RuntimeError: continue
-        return {'points':points,'destination':destination,'anchors':[],'deferred':[]}
-    raise RuntimeError('No reachable center destination inside radius 500')
+        return {'points':points,'destination':destination,'centerStop':tuple(center),'anchors':[],'deferred':[]}
+    raise RuntimeError(f'No reachable center destination inside radius {standing_radius}')
 
 
-def price_route(data,start,targets,max_anchors=64,anchor_spacing=150,pass_length=90):
-    nav=Navigation(data)
-    anchors=[];deferred=[];raw=[tuple(start)]
+def price_route(data,start,targets,max_anchors=64,anchor_spacing=150,pass_length=90,navigation=None):
+    nav=navigation.fork() if navigation is not None else Navigation(data)
+    anchors=[];deferred=[];approaches=[];raw=[tuple(start)]
     remaining=list(targets)
     selected=[];cursor=start
     while remaining and len(selected)<max_anchors:
@@ -144,8 +170,14 @@ def price_route(data,start,targets,max_anchors=64,anchor_spacing=150,pass_length
         if not nav.clear(raw[-1],raw[-1]):
             # Already close: continue outwards; do not route into the trader.
             deferred.append({'key':t['key'],'reason':'Too close for a passing approach'});continue
-        # Each anchor gets a straight pass at a safe offset. Pick its direction
-        # using the next anchor so the route continues through the market.
+        # Use the same short forward arc as a radar/revisit approach. Keep all
+        # anchor exclusions in the connector, and fall back only where blocked.
+        passing_arc=radar_pass_route(data,raw[-1],t,navigation=nav,onward=onward)
+        chosen=passing_arc[0] if passing_arc else None
+        if chosen is not None:
+            raw.extend(chosen[1:]);anchors.append(t)
+            approaches.append({'key':t['key'],'mode':'arc','points':chosen[-14:]})
+            continue
         options=sorted(passing_lines(nav,center,length=pass_length),key=lambda p:
             math.dist(raw[-1],p[0])+(math.dist(p[-1],onward) if onward else 0))
         chosen=None
@@ -177,5 +209,6 @@ def price_route(data,start,targets,max_anchors=64,anchor_spacing=150,pass_length
         if chosen is None:
             deferred.append({'key':t['key'],'reason':'No clear passing route'});continue
         raw.extend(chosen[1:]);anchors.append(t)
-    if len(raw)<2: return {'points':[],'anchors':anchors,'blockers':selected,'deferred':deferred}
-    return {'points':raw,'anchors':anchors,'blockers':selected,'deferred':deferred}
+        approaches.append({'key':t['key'],'mode':'blocked_arc_fallback'})
+    if len(raw)<2: return {'points':[],'anchors':anchors,'blockers':selected,'deferred':deferred,'approaches':approaches}
+    return {'points':raw,'anchors':anchors,'blockers':selected,'deferred':deferred,'approaches':approaches}

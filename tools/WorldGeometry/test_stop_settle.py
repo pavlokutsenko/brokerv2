@@ -35,12 +35,26 @@ class StopSettleTests(unittest.TestCase):
         self.assertGreaterEqual(now[0],102.1)
         self.assertEqual(c.stopped_position,(10,0,0))
 
-    def test_planning_pause_sends_one_stop_without_claiming_confirmed_rest(self):
+    def test_planning_pause_observes_short_rest_without_claiming_final_rest(self):
+        now=[100.]
         c=self.client(lambda:(0,0,0));c.stopped_position=(0,0,0)
-        with patch('walk_client.invoke') as invoke,patch('walk_client.time.sleep') as sleep:
+        with patch('walk_client.invoke') as invoke, \
+                patch('walk_client.time.monotonic',side_effect=lambda:now[0]), \
+                patch('walk_client.time.sleep',side_effect=lambda s:now.__setitem__(0,now[0]+s)):
             c.pause_for_plan()
         self.assertIsNone(c.stopped_position)
-        invoke.assert_called_once();sleep.assert_not_called()
+        self.assertGreaterEqual(invoke.call_count,2)
+        self.assertGreaterEqual(now[0]-100,.18)
+        self.assertLess(now[0]-100,.3)
+
+    def test_unsettled_planning_pause_falls_back_to_strict_stop(self):
+        now=[100.]
+        c=self.client(lambda:((now[0]-100)*100,0,0))
+        with patch('walk_client.invoke'),patch('walk_client.time.monotonic',side_effect=lambda:now[0]), \
+                patch('walk_client.time.sleep',side_effect=lambda s:now.__setitem__(0,now[0]+s)), \
+                patch.object(c,'stop') as stop:
+            c.pause_for_plan()
+        stop.assert_called_once_with(force=True)
 
 
 if __name__=='__main__': unittest.main()

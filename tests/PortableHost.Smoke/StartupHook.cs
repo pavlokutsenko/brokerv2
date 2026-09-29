@@ -44,7 +44,7 @@ public static class StartupHook
         var app = (Application)Activator.CreateInstance(appType, [false])!;
         appType.GetMethod("InitializeComponent")!.Invoke(app, null);
         var windowType = entry.GetType($"PriceCheck.{product}.MainWindow", true)!;
-        var arguments = product == "Launcher" ? new object?[] { false, Path.Combine(Path.GetDirectoryName(OutputPath())!, "settings") } : [false];
+        var arguments = new object?[] { false, Path.Combine(Path.GetDirectoryName(OutputPath())!, "settings") };
         var window = (Window)Activator.CreateInstance(windowType, arguments)!;
         window.ShowInTaskbar = false; window.Left = -20000; window.Top = -20000;
         window.Show(); app.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);

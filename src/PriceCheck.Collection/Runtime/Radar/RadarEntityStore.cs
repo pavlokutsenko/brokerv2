@@ -11,21 +11,25 @@ public sealed class RadarEntityStore
     private readonly RadarIdentityCache _identities = new();
     private readonly Dictionary<string, RadarPoint> _traders = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, string> _traderKeysByObjectId = [];
+    private readonly HashSet<string> _historicalTraderKeys=[];
     private MarketZone? _zone;
     private bool _collectionRequested;
     private DateTimeOffset _updatedAt = DateTimeOffset.UtcNow;
 
     public bool NeedsClosurePosition(string name)
     {
-        lock (_gate) return _traders.ContainsKey(Normalize(name));
+        lock (_gate) return _traders.ContainsKey(Normalize(name)) || _historicalTraderKeys.Contains(Normalize(name));
     }
+
+    public void RememberTraderKeys(IReadOnlyList<string> keys)
+    { lock(_gate) foreach(var key in keys)if(Normalize(key) is {Length:>0 and <=32} value)_historicalTraderKeys.Add(value); }
 
     internal void SetObservationZone(MarketZone? zone, PlayerPosition? playerPosition, bool collectionRequested)
     {
         lock (_gate)
         {
-            _zone = zone is MarketZone value && double.IsFinite(value.X) && double.IsFinite(value.Y)
-                ? value with { Radius = 500 } : null;
+            _zone = zone is MarketZone value && double.IsFinite(value.X) && double.IsFinite(value.Y) &&
+                double.IsFinite(value.Radius) && value.Radius>0 && value.Radius<=500 ? value : null;
             _collectionRequested = collectionRequested;
         }
     }
@@ -78,7 +82,7 @@ public sealed class RadarEntityStore
                 PlayerX = x, PlayerY = y,
                 CenterZoneConfigured = _zone is not null,
                 IsInsideCenterZone = livePlayer is not null && _zone is MarketZone zone &&
-                    Distance(x, y, zone.X, zone.Y) <= 500,
+                    Distance(x, y, zone.X, zone.Y) <= zone.Radius,
                 CollectionRequested = _collectionRequested,
                 CenterZoneX = _zone?.X ?? 0, CenterZoneY = _zone?.Y ?? 0,
                 CenterZoneRadius = _zone?.Radius ?? 0,
@@ -101,7 +105,7 @@ public sealed class RadarEntityStore
         _traders.TryGetValue(key, out var known);
         // Standing strangers do not become market traders. Their identities
         // still survive for broker joins throughout this client session.
-        if (known is null && !Trading(value.KioskType)) return;
+        if (known is null && !Trading(value.KioskType) && !_historicalTraderKeys.Contains(key)) return;
         if (_traderKeysByObjectId.TryGetValue(value.ObjectId, out var previousKey) && previousKey != key &&
             _traders.TryGetValue(previousKey, out var previous))
             _traders[previousKey] = previous with { IsVisible = false };
@@ -112,6 +116,7 @@ public sealed class RadarEntityStore
         var revision = known?.TradeRevision ?? 0;
         if (known is null || known.KioskType != value.KioskType) revision++;
         if (value.KioskType == 0 && known is not null && Trading(known.KioskType)) closed = now;
+        if (value.KioskType == 0 && known is null && _historicalTraderKeys.Contains(key)) closed=now;
         // An ObjectID change or initial sighting in a new client is not reopen.
         if (Trading(value.KioskType) && known is not null && closed is not null &&
             (reopened is null || closed > reopened)) reopened = now;

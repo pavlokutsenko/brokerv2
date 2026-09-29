@@ -48,7 +48,7 @@ class ShopTests(unittest.TestCase):
 
     def reader(self):
         r=WalkShops.__new__(WalkShops)
-        r.radius=85;r.retry={};r.pending={};r.allowed={}
+        r.radius=85;r.retry={};r.pending={};r.allowed={};r.pause_queue=[]
         r.requested_keys=set();r.unavailable_keys=set();r.dynamic_targets={}
         r.stats={'requests':0,'range_skips':0}
         r.active=threading.Event();r.active.set();r.halt=threading.Event()
@@ -135,6 +135,24 @@ class ShopTests(unittest.TestCase):
         self.assertEqual(r.stats['target_cancels'],1)
         self.assertIn(0,r.allowed)
 
+    def test_new_radar_goal_is_not_delayed_but_next_pair_waits_for_capture(self):
+        r=self.reader();r.candidate=trader();r.done=set();r.next_pair=0;r.lock=threading.Lock()
+        r.pause_queue=[]
+        r.stats['target_cancels']=0;r.walk.pid=123;r.log=Mock()
+        r.send_pair=lambda *_:r.stats.__setitem__('requests',r.stats['requests']+1)
+        r.hooks.cancel_target=Mock(return_value={})
+        r.wire=SimpleNamespace(cancel_replies=lambda _:0)
+        with patch('walk_shops.Lu4MemoryClient'),patch('walk_shops.Memory'):
+            r.before_move()
+            r.next_pair=0;r.candidate=trader(name='Radar',object_id=43)
+            r.pending[42]={}
+            r.before_move()
+            self.assertEqual(r.stats['requests'],1)
+            r.pending.clear()
+            r.candidate=trader(name='Radar',object_id=43)
+            r.before_move()
+        self.assertEqual(r.stats['requests'],2)
+
     def test_server_cancel_reply_requests_one_immediate_route_update(self):
         r=self.reader();r.await_cancel=2;r.walk.client=object()
         r.wire=SimpleNamespace(cancel_replies=Mock(side_effect=[1,2]))
@@ -203,6 +221,32 @@ class ShopTests(unittest.TestCase):
         event={'side':'buy','count':1,'copied_count':1,'rows':[{'item_id':57}]}
         self.assertEqual(shop_rows(event,None,trader(kiosk_type=3)),(event['rows'], 'client_int32_unverified'))
         with self.assertRaises(ValueError): shop_rows({**event,'count':2},None,trader(kiosk_type=3))
+
+    def test_only_durable_exact_capture_schedules_trader_pause(self):
+        import time
+        r=self.reader();r.wire=SimpleNamespace(read=lambda _:[],observed=[])
+        r.state={};r.sequence=0;r.done=set();r.captured_keys=set()
+        r.stats.update({'invalid_replies':0,'captured_shops':0,'rows':0,
+                        'exact_shops':0,'unverified_shops':0,'timeouts':0})
+        sell={'side':'sell','count':1,'copied_count':1,'sequence':1,
+              'function_name':'PlayerShopSellItemsList',
+              'rows':[{'item_id':88,'item_object_id':55,'enchant_level':7}]}
+        wire={'side':'sell','object_id':42,'row_count':1,
+              'rows':[{'item_id':88,'item_object_id':55,'enchant':7,'price':100,'quantity':2}]}
+        r.pending[42]={'capture':sell,'wire':wire,'trader':trader(),
+                       'sent':time.monotonic()-1,'actions':[]}
+        with patch('walk_shops.read_history',return_value=[]):
+            r.consume(object(),lambda _:None)
+        self.assertEqual(r.pause_queue,['alice'])
+        self.assertEqual(r.captured_keys,{'alice'})
+        buy={'side':'buy','count':1,'copied_count':1,'sequence':2,
+             'function_name':'PlayerShopBuyItemsList','rows':[{'item_id':89}]}
+        r.pending[43]={'capture':buy,'wire':None,'trader':trader(name='Bob',object_id=43,kiosk_type=3),
+                       'sent':time.monotonic()-1,'actions':[]}
+        with patch('walk_shops.read_history',return_value=[]):
+            r.consume(object(),lambda _:None)
+        self.assertEqual(r.pause_queue,['alice'])
+        self.assertNotIn('bob',r.captured_keys)
 
     def test_empty_reply_cannot_be_a_successful_price_verification(self):
         event={'side':'sell','count':0,'copied_count':0,'rows':[]}

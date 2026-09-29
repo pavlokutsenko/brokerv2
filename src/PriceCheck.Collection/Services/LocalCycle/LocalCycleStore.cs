@@ -36,10 +36,12 @@ public sealed partial class LocalCycleStore : IDisposable
             CREATE INDEX IF NOT EXISTS snapshot_trader_time ON snapshots(trader_key,captured_at);
             CREATE TABLE IF NOT EXISTS outbox (operation_id TEXT PRIMARY KEY, kind TEXT NOT NULL, url TEXT NOT NULL, payload TEXT NOT NULL, next_attempt INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, trader_key TEXT);
             CREATE INDEX IF NOT EXISTS outbox_due ON outbox(next_attempt);
+            CREATE TABLE IF NOT EXISTS latest_broker_delivery (id INTEGER PRIMARY KEY CHECK(id=1), epoch_id TEXT NOT NULL, captured_at INTEGER NOT NULL, traders INTEGER NOT NULL, accepted INTEGER NOT NULL DEFAULT 0);
             PRAGMA user_version=1;
             """);
         if(!_db.Query("PRAGMA table_info(outbox)").Any(row=>row[1]=="trader_key"))_db.Execute("ALTER TABLE outbox ADD COLUMN trader_key TEXT");
         _db.Execute("CREATE INDEX IF NOT EXISTS outbox_trader_kind ON outbox(trader_key,kind)");
+        _db.Execute("CREATE INDEX IF NOT EXISTS outbox_kind_due ON outbox(kind,next_attempt)");
         var health = _db.Query("PRAGMA quick_check");
         if (health.Count != 1 || health[0][0] != "ok") throw new InvalidDataException($"Local market database failed integrity check: {DatabasePath}");
         foreach (var row in _db.Query("SELECT data FROM traders"))
@@ -48,15 +50,18 @@ public sealed partial class LocalCycleStore : IDisposable
             trader.Composition=trader.Composition.GroupBy(pair=>pair.Key.ToLowerInvariant()).ToDictionary(g=>g.Key,g=>g.Max(p=>p.Value));
             _traders.Add(trader.Key, trader);
         }
+        _db.Execute("PRAGMA journal_size_limit=8388608");
+        MaintainStorage();
     }
-    public void BeginSession(string session)
+    public void BeginSession(string session, bool preservePass=false)
     {
         lock (_sync)
         {
             _session = session;
-            _pass="";_remaining.Clear();_admitted.Clear();_admittedGenerations.Clear();_readPass.Clear();_initialCount=0;_admissionCount=0;
+            if(!preservePass)
+            { _pass="";_remaining.Clear();_admitted.Clear();_admittedGenerations.Clear();_readPass.Clear();_initialCount=0;_admissionCount=0;_admissionLimit=0; }
             Transaction(() => {
-                _db.Command("DELETE FROM route");
+                if(!preservePass)_db.Command("DELETE FROM route");
                 foreach (var trader in _traders.Values)
                 {
                     trader.ObjectId = 0; trader.Session = session;
@@ -135,4 +140,5 @@ public sealed class LocalTrader
     public Dictionary<string,int> Composition { get; set; } = [];
     public DateTimeOffset? ServerRequiredAt { get; set; }
     public DateTimeOffset? ServerClosedHandledAt { get; set; }
+    public DateTimeOffset? ServerReopenObservedAt { get; set; }
 }

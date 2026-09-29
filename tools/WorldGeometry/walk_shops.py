@@ -1,5 +1,6 @@
 """Asynchronous nearby-shop reader; movement never waits for a shop reply."""
 from datetime import datetime, timezone
+from collections import deque
 import json
 import math
 import os
@@ -19,6 +20,7 @@ from collection_zone import in_collection_zone
 from walk_shop_lifecycle import close_visit,native_closed,native_closed_observations
 from walk_session_bindings import continuation_nominations,needs_unbound_scan,bind_native_session_targets,session_candidate_matches
 from walk_radar_targets import apply_radar_target
+from walk_trader_pause import wait_after_capture
 
 
 class WalkShops:
@@ -41,6 +43,9 @@ class WalkShops:
         self.server_position = None
         self.server_at = 0
         self.next_pair = 0
+        self.trader_pause_seconds=30
+        self.pause_queue=deque()
+        self.pause_seconds_spent=0.0
         self.lock=threading.Lock()
         self.candidate=None
         self.await_cancel=0
@@ -71,7 +76,8 @@ class WalkShops:
         self.detour_target=None
         self.read_hold_key=None
         # The local pawn is CharacterMain_C; remote traders are CharacterPlayer_C.
-        self.trader_class=read_object(walk.m,walk.base+GOBJECTS,218705)
+        self.trader_class=read_object(walk.m,walk.base+walk.rvas['gobjects'],
+                                      walk.function_indices['trader_class'])
         if walk.s.describe(self.trader_class)!={'address':hex(self.trader_class),
                 'name':'CharacterPlayer_C','class':'BlueprintGeneratedClass'}:
             raise RuntimeError('trader class guard failed')
@@ -105,7 +111,7 @@ class WalkShops:
     def position(self, memory):
         memory.pages.clear()
         w = self.walk.world
-        if memory.u64(self.walk.base+GWORLD)!=w['world'] or memory.u64(w['controller']+0x2D0)!=w['player_actor']:
+        if memory.u64(self.walk.base+self.walk.rvas['gworld'])!=w['world'] or memory.u64(w['controller']+0x2D0)!=w['player_actor']:
             raise RuntimeError('shop reader world/pawn changed')
         return struct.unpack('<3d',memory.read(w['player_capsule']+0x1F0,24))
 
@@ -187,9 +193,10 @@ class WalkShops:
         try:
             trader=self.candidate
             self.candidate=None
-            if trader is None or trader['object_id'] in self.pending or generation(trader) in self.done:
+            if trader is None or self.pending or self.pause_queue or generation(trader) in self.done:
                 return
-            if trader_key(trader['name']) in self.unavailable_keys: return
+            key=trader_key(trader['name'])
+            if key in self.unavailable_keys: return
             before=self.stats['requests']
             try:
                 with Lu4MemoryClient() as reader:
@@ -205,9 +212,13 @@ class WalkShops:
             # An 85-unit pass often leaves under a second in range. Space
             # requests enough to let movement resume, but do not skip the
             # next nearby shop solely because the previous pair was sent.
-            self.next_pair=time.monotonic()+.3
+            now=time.monotonic()
+            self.next_pair=now+.3
         finally:
             self.lock.release()
+
+    def wait_after_capture(self, client, log, progress=None):
+        return wait_after_capture(self, client, log, progress)
 
     def needs_resume(self):
         if self.await_cancel and self.wire.cancel_replies(self.walk.client)>=self.await_cancel:
@@ -265,7 +276,9 @@ class WalkShops:
                      'actions':pending['actions']})
                 self.done.add(generation(pending['trader']))
                 if precision=='wire_int64':
-                    self.captured_keys.add(trader_key(pending['trader']['name']))
+                    key=trader_key(pending['trader']['name'])
+                    if key not in self.captured_keys:self.pause_queue.append(key)
+                    self.captured_keys.add(key)
                 self.stats['captured_shops']+=1
                 self.stats['rows']+=len(rows)
                 self.stats['exact_shops' if precision=='wire_int64' else 'unverified_shops']+=1
@@ -313,6 +326,11 @@ class WalkShops:
             return None
         candidates=sorted((t for t in list(self.dynamic_seen_live.values())
             if t['key'] not in self.requested_keys and t['key'] not in self.dynamic_detour_attempted
+            # These shops already have a passing arc later in the planned
+            # route. A 500-unit corridor check cannot see that future arc;
+            # interrupting for it repeatedly stops and reverses the pawn.
+            # Missed/stale anchors remain covered by the bounded revisit pass.
+            and t['key'] not in getattr(self,'coverage_anchor_keys',set())
             and (not getattr(self,'local_section_mode',False) or t['key'] in self.local_section_keys)
             and time.monotonic()-t['seen_at']<=2
             and in_collection_zone(self.collection_zone,t['x'],t['y'])
@@ -427,7 +445,7 @@ class WalkShops:
                                       and math.dist(position[:2],(t['x'],t['y']))<=self.radius
                                       and server_nearby(t,self.server_position,now-self.server_at,self.radius,position,
                                           stationary_probe=trader_key(t['name'])==self.read_hold_key)]
-                        if candidates and len(self.pending)<4 and now>=self.next_pair:
+                        if candidates and not self.pending and not self.pause_queue and now>=self.next_pair:
                             trader=choose_candidate(candidates,position,velocity,self.radius,self.priority_keys)
                             with self.lock:
                                 self.candidate=trader

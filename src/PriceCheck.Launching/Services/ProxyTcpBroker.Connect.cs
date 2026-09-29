@@ -17,15 +17,15 @@ internal sealed partial class ProxyTcpBroker
         {
             var read = await network.ReadAsync(response.AsMemory(used), token)
                 .AsTask().WaitAsync(TimeSpan.FromSeconds(LaunchTimeouts.NetworkSeconds), token);
-            if (read == 0) throw new IOException("Прокси закрыл соединение до CONNECT 200.");
+            if (read == 0) throw new IOException("Proxy closed the connection before CONNECT 200.");
             used += read;
             end = response.AsSpan(0, used).IndexOf("\r\n\r\n"u8);
         }
         if (end < 0 || !IsConnectSuccess(response.AsSpan(0, used)))
         {
             var statusEnd = response.AsSpan(0, used).IndexOf("\r\n"u8);
-            var status = statusEnd >= 0 ? Encoding.ASCII.GetString(response, 0, statusEnd) : "неполный ответ";
-            throw new IOException($"Прокси отклонил CONNECT к {destination}: {status}.");
+            var status = statusEnd >= 0 ? Encoding.ASCII.GetString(response, 0, statusEnd) : "incomplete response";
+            throw new IOException($"Proxy rejected CONNECT to {destination}: {status}.");
         }
         Trace("connect_response_bytes", used);
         Trace("connect_extra_bytes", used - end - 4);

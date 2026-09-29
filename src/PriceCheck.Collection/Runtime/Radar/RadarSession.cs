@@ -79,6 +79,8 @@ public sealed class RadarSession : IAsyncDisposable
         return _store.Snapshot(_pid, playerName, livePlayer);
     }
 
+    public void RememberTraderKeys(IReadOnlyList<string> keys) => _store.RememberTraderKeys(keys);
+
     private void OnPacket(ReadOnlyMemory<byte> data)
     {
         var decoded = WorldPacketDecoder.Decode(data.Span);

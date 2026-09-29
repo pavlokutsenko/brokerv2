@@ -15,7 +15,7 @@ class CapsuleProfileTests(unittest.TestCase):
             self.assertFalse(supported_capsule(*size))
 
     def test_dwarf_spawn_readiness(self):
-        client=object.__new__(WalkClient);client.base=100
+        client=object.__new__(WalkClient);client.base=100;client.rvas={'gworld':GWORLD}
         client.world={'world':1,'controller':200,'player_actor':300,'player_capsule':400}
         client.cancelled=lambda:False
         class Memory:

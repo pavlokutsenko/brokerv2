@@ -4,12 +4,14 @@ public sealed record GiranCenterAssignment(int DistinctSavedCenters, int Missing
 
 public static class SavedGiranCenter
 {
+    public const double StandingRadius = 200;
     public static CenterZoneSettings? Stored(CollectorProfile profile) =>
         profile.CenterZonesByCity is not null &&
         profile.CenterZonesByCity.TryGetValue("Giran", out var center) && Valid(center) ? center : null;
 
     public static CenterZoneSettings? Resolve(CollectorProfile profile) =>
         Stored(profile) ?? (Valid(profile.SharedGiranCenter) ? profile.SharedGiranCenter : null);
+
 
     public static GiranCenterAssignment AssignSharedFallback(IEnumerable<CollectorProfile> profiles)
     {

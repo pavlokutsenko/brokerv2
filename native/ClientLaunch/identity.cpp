@@ -13,6 +13,8 @@
 #include "identity.h"
 #include "disk_identity.h"
 #include "router_identity.h"
+#include "device_identity.h"
+#include "wmi_identity.h"
 #include "trace.h"
 
 namespace {
@@ -37,15 +39,20 @@ std::string board_serial;
 std::string system_serial;
 std::string chassis_serial;
 std::string processor_serial;
+std::wstring processor_model;
+std::string processor_model_a;
+BYTE processor_revision[8]{};
 std::string memory_serial;
 std::wstring hw_profile_guid;
 std::wstring product_id;
 std::string hw_profile_guid_a;
 std::string product_id_a;
 std::wstring sus_client_id;
+std::wstring sqm_machine_id;
 std::wstring video_id;
 std::wstring computer_name;
 std::string sus_client_id_a;
+std::string sqm_machine_id_a;
 std::string video_id_a;
 std::string computer_name_a;
 DWORD install_date = 0;
@@ -96,6 +103,27 @@ bool parse_hex_bytes(const std::wstring& input, BYTE* target, size_t count) {
         target[i] = static_cast<BYTE>(value);
     }
     return true;
+}
+
+bool registry_key_ends_with(HKEY key, const wchar_t* suffix) {
+    using NtQueryKeyFn = LONG(NTAPI*)(HANDLE, int, void*, ULONG, ULONG*);
+    static const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    static const auto query = reinterpret_cast<NtQueryKeyFn>(
+        ntdll ? GetProcAddress(ntdll, "NtQueryKey") : nullptr);
+    if (!query) return false;
+    alignas(wchar_t) BYTE buffer[1024]{};
+    ULONG returned = 0;
+    if (query(key, 3, buffer, sizeof(buffer), &returned) < 0) return false;
+    const ULONG name_bytes = *reinterpret_cast<const ULONG*>(buffer);
+    if (name_bytes % sizeof(wchar_t) || name_bytes > sizeof(buffer) - sizeof(ULONG)) return false;
+    const auto* name = reinterpret_cast<const wchar_t*>(buffer + sizeof(ULONG));
+    const size_t count = name_bytes / sizeof(wchar_t);
+    const wchar_t* root = L"\\REGISTRY\\MACHINE\\";
+    const size_t root_length = wcslen(root);
+    const size_t suffix_length = wcslen(suffix);
+    return count >= root_length && count >= suffix_length &&
+        _wcsnicmp(name, root, root_length) == 0 &&
+        _wcsnicmp(name + count - suffix_length, suffix, suffix_length) == 0;
 }
 
 void patch_firmware(BYTE* buffer, DWORD size) {
@@ -184,6 +212,17 @@ LSTATUS copy_registry_dword(LPDWORD type, LPBYTE data, LPDWORD size) {
     return ERROR_SUCCESS;
 }
 
+LSTATUS copy_processor_revision(LPDWORD type, LPBYTE data, LPDWORD size) {
+    if (!size) return ERROR_INVALID_PARAMETER;
+    const DWORD capacity = *size;
+    *size = sizeof(processor_revision);
+    if (type) *type = REG_BINARY;
+    if (!data) return ERROR_SUCCESS;
+    if (capacity < sizeof(processor_revision)) return ERROR_MORE_DATA;
+    memcpy(data, processor_revision, sizeof(processor_revision));
+    return ERROR_SUCCESS;
+}
+
 unsigned registry_kind_w(LPCWSTR name) {
     if (!name) return 0;
     const wchar_t* known[] = {L"MachineGuid", L"HwProfileGuid", L"ProductId", L"SusClientId",
@@ -208,6 +247,17 @@ unsigned registry_kind_a(LPCSTR name) {
 
 LSTATUS WINAPI hooked_registry_w(HKEY key, LPCWSTR name, LPDWORD reserved, LPDWORD type, LPBYTE data, LPDWORD size) {
     if (unsigned kind = registry_kind_w(name)) TraceEvent("registry_value_w", kind);
+    if (name && _wcsicmp(name, L"MachineId") == 0 &&
+        registry_key_ends_with(key, L"\\SOFTWARE\\Microsoft\\SQMClient"))
+        return copy_registry_w(sqm_machine_id, type, data, size);
+    if (name && (_wcsicmp(name, L"ProcessorNameString") == 0 ||
+                 _wcsicmp(name, L"Update Revision") == 0) &&
+        registry_key_ends_with(key, L"\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0")) {
+        if (_wcsicmp(name, L"ProcessorNameString") == 0)
+            return copy_registry_w(processor_model, type, data, size);
+        if (_wcsicmp(name, L"Update Revision") == 0)
+            return copy_processor_revision(type, data, size);
+    }
     if (name && _wcsicmp(name, L"MachineGuid") == 0) return copy_registry_w(machine_guid, type, data, size);
     if (name && _wcsicmp(name, L"HwProfileGuid") == 0) return copy_registry_w(hw_profile_guid, type, data, size);
     if (name && _wcsicmp(name, L"ProductId") == 0) return copy_registry_w(product_id, type, data, size);
@@ -221,6 +271,16 @@ LSTATUS WINAPI hooked_registry_w(HKEY key, LPCWSTR name, LPDWORD reserved, LPDWO
 LSTATUS WINAPI hooked_registry_a(HKEY key, LPCSTR name, LPDWORD reserved, LPDWORD type, LPBYTE data, LPDWORD size) {
     if (unsigned kind = registry_kind_a(name)) TraceEvent("registry_value_a", kind);
     const std::string* replacement = nullptr;
+    if (name && _stricmp(name, "MachineId") == 0 &&
+        registry_key_ends_with(key, L"\\SOFTWARE\\Microsoft\\SQMClient"))
+        replacement = &sqm_machine_id_a;
+    if (name && (_stricmp(name, "ProcessorNameString") == 0 ||
+                 _stricmp(name, "Update Revision") == 0) &&
+        registry_key_ends_with(key, L"\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0")) {
+        if (_stricmp(name, "ProcessorNameString") == 0) replacement = &processor_model_a;
+        if (_stricmp(name, "Update Revision") == 0)
+            return copy_processor_revision(type, data, size);
+    }
     if (name && _stricmp(name, "MachineGuid") == 0) replacement = &machine_guid_a;
     if (name && _stricmp(name, "HwProfileGuid") == 0) replacement = &hw_profile_guid_a;
     if (name && _stricmp(name, "ProductId") == 0) replacement = &product_id_a;
@@ -308,10 +368,15 @@ bool InstallIdentityHooks() {
     system_serial = ascii(env(L"PRICECHECK_HW_SYSTEM_SERIAL"));
     chassis_serial = ascii(env(L"PRICECHECK_HW_CHASSIS_SERIAL"));
     processor_serial = ascii(env(L"PRICECHECK_HW_PROCESSOR_SERIAL"));
+    processor_model = env(L"PRICECHECK_HW_PROCESSOR_MODEL");
+    processor_model_a = ascii(processor_model);
+    const auto processor_revision_text = env(L"PRICECHECK_HW_PROCESSOR_REVISION");
     memory_serial = ascii(env(L"PRICECHECK_HW_MEMORY_SERIAL"));
     hw_profile_guid = env(L"PRICECHECK_HW_PROFILE_GUID");
     product_id = env(L"PRICECHECK_HW_PRODUCT_ID");
     sus_client_id = env(L"PRICECHECK_HW_SUS_CLIENT_ID");
+    sqm_machine_id = env(L"PRICECHECK_HW_SQM_MACHINE_ID");
+    sqm_machine_id_a = ascii(sqm_machine_id);
     video_id = env(L"PRICECHECK_HW_VIDEO_ID");
     computer_name = env(L"PRICECHECK_HW_COMPUTER_NAME");
     hw_profile_guid_a = ascii(hw_profile_guid);
@@ -322,12 +387,16 @@ bool InstallIdentityHooks() {
     auto install_date_text = env(L"PRICECHECK_HW_INSTALL_DATE");
     auto serial_text = env(L"PRICECHECK_HW_VOLUME_SERIAL");
     if (uuid_text.empty() || machine_guid_a.empty() || board_serial.empty() || serial_text.empty() ||
-        system_serial.empty() || chassis_serial.empty() || processor_serial.empty() || memory_serial.empty() ||
+        system_serial.empty() || chassis_serial.empty() || processor_serial.empty() ||
+        processor_model_a.empty() || sqm_machine_id_a.empty() || memory_serial.empty() ||
         hw_profile_guid_a.empty() || product_id_a.empty() || sus_client_id_a.empty() ||
         video_id_a.empty() || computer_name_a.empty() || install_date_text.empty()) return false;
     if (CLSIDFromString((L"{" + uuid_text + L"}").c_str(), &system_uuid) != NOERROR) { failure = L"UUID parse failed"; return false; }
     if (!parse_mac(env(L"PRICECHECK_HW_MAC"))) { failure = L"MAC parse failed"; return false; }
     if (!parse_hex_bytes(env(L"PRICECHECK_HW_PROCESSOR_ID"), processor_id, sizeof(processor_id))) { failure = L"processor ID parse failed"; return false; }
+    if (!parse_hex_bytes(processor_revision_text, processor_revision, sizeof(processor_revision))) {
+        failure = L"processor revision parse failed"; return false;
+    }
     wchar_t* end = nullptr;
     volume_serial = wcstoul(serial_text.c_str(), &end, 16);
     if (!end || *end) { failure = L"volume serial parse failed"; return false; }
@@ -348,6 +417,8 @@ bool InstallIdentityHooks() {
     if (MH_CreateHookApi(L"kernel32.dll", "GetVolumeInformationA", hooked_volume_a, reinterpret_cast<void**>(&real_volume_a)) != MH_OK) { failure = L"GetVolumeInformationA"; return false; }
     if (!InstallDiskIdentityHooks()) { failure = L"DeviceIoControl disk identity"; return false; }
     if (!InstallRouterIdentityHooks()) { failure = L"SendARP router identity"; return false; }
+    if (!InstallDeviceIdentityHooks(uuid_text)) { failure = L"USB/HID identity hooks"; return false; }
+    if (!InstallWmiIdentityHooks()) { failure = L"WMI identity hook"; return false; }
     return true;
 }
 

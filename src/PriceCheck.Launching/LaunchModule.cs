@@ -14,6 +14,7 @@ public sealed class LaunchModule
     private readonly Func<int, ClientSession?> _identity;
     private readonly Func<CancellationToken,Task> _restartPause;
     private readonly Dictionary<Guid, ClientSession> _owned = [];
+    private readonly Dictionary<Guid, GameWindowCorner> _windowCorners = [];
     private readonly HashSet<Guid> _launching = [];
     private readonly Dictionary<Guid, ClientProtectionStatus> _lastProtection = [];
 
@@ -24,7 +25,7 @@ public sealed class LaunchModule
     public Task ValidateProtectionAsync(Guid profileId, bool requireWorld, CancellationToken token)
     {
         if (!_owned.TryGetValue(profileId, out var session) || _identity(session.ProcessId) != session)
-            throw new LaunchProtectionException("Проверка невозможна: запустите клиент через это приложение с HWID.");
+            throw new LaunchProtectionException("Verification unavailable: launch the client through this application with HWID.");
         return _processes.ValidateProtectionAsync(session.ProcessId, requireWorld, token);
     }
 
@@ -67,18 +68,23 @@ public sealed class LaunchModule
                 throw new InvalidOperationException("Client exited during launch.");
             }
             _owned.Add(profile.Id, session);
+            var windowCorner = CornerFor(profile.Id);
             progress("Waiting for game window…");
             await _processes.WaitForGameWindowAsync(pid, cancellationToken);
             await _processes.ActivateLateAgentAsync(pid, cancellationToken);
-            progress(template?.ProxyEnabled == true ? "Проверка HWID и защиты прокси…" : "Проверка HWID…");
+            progress(template?.ProxyEnabled == true ? "Checking HWID and proxy protection…" : "Checking HWID…");
             await _processes.ValidateProtectionAsync(pid, false, cancellationToken);
+            if (windowCorner is { } initialCorner && _identity(pid) == session)
+                _processes.TryPlaceGameWindow(session, initialCorner);
             if(beforeLogin is not null) await beforeLogin(session,cancellationToken);
             if (profile.AutoLoginEnabled)
             {
                 progress("Logging in…");
                 await _login(pid, profile, cancellationToken);
-                progress(template?.ProxyEnabled == true ? "Подтверждение HWID и прокси после входа персонажа…" : "Подтверждение HWID после входа персонажа…");
+                progress(template?.ProxyEnabled == true ? "Verifying HWID and proxy after character login…" : "Verifying HWID after character login…");
                 await _processes.ValidateProtectionAsync(pid, true, cancellationToken);
+                if (windowCorner is { } corner && _identity(pid) == session)
+                    _processes.TryPlaceGameWindow(session, corner);
             }
             progress(profile.AutoLoginEnabled ? "Character selected" : "Client ready · log in manually");
             return session;
@@ -95,6 +101,22 @@ public sealed class LaunchModule
 
     public bool Owns(Guid profileId, ClientSession session) =>
         _owned.TryGetValue(profileId, out var owned) && owned == session;
+
+    private GameWindowCorner? CornerFor(Guid profileId)
+    {
+        var occupied = _owned.Where(pair => pair.Key != profileId &&
+                _windowCorners.ContainsKey(pair.Key) && _identity(pair.Value.ProcessId) == pair.Value)
+            .Select(pair => _windowCorners[pair.Key]).ToHashSet();
+        if (_windowCorners.TryGetValue(profileId, out var previous) && !occupied.Contains(previous))
+            return previous;
+        foreach (var corner in Enum.GetValues<GameWindowCorner>())
+        {
+            if (!occupied.Add(corner)) continue;
+            _windowCorners[profileId] = corner;
+            return corner;
+        }
+        return null;
+    }
 
     private async Task<int> LaunchProcessWithRetryAsync(CollectorProfile profile,LaunchTemplate? template,
         Action<string> progress,CancellationToken token)

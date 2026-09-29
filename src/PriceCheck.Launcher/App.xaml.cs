@@ -22,7 +22,7 @@ public partial class App : Application
             _instance = new("Launcher");
             if (!_instance.Acquired)
             {
-                MessageBox.Show("PriceCheck Launcher уже запущен.", "PriceCheck Launcher");
+                MessageBox.Show("PriceCheck Launcher is already running.", "PriceCheck Launcher");
                 Shutdown(); return;
             }
             new DriverBootstrapper().EnsureReady();

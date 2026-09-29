@@ -31,6 +31,14 @@ public sealed partial class CollectionModule
         public double[]? PreviousDestination { get; set; }
         public string? ProgressFile { get; set; }
         public string? RadarFile { get; set; }
+        public Task? BackgroundPlan { get; set; }
+        public string PlanGeneration { get; set; } = Guid.NewGuid().ToString("N");
+        public string NextSectionPlanFile => Path.Combine(Folder,$"next-section-{PlanGeneration}.plan.json");
+        public Task? RouteSession { get; set; }
+        public string? RouteCommandFile { get; set; }
+        public string? PriceStreamPrefix { get; set; }
+        public AppendOnlyJsonLineReader? PriceEventReader { get; set; }
+        public System.Collections.Concurrent.ConcurrentDictionary<string,byte> PriceSpooled { get; } = new();
         public DateTimeOffset NextRadarWrite { get; set; }
         public HashSet<string> BrokerKeys { get; } = [];
         public DateTimeOffset? WorkerStartedAt { get; set; }
@@ -67,9 +75,18 @@ public sealed partial class CollectionModule
     private void TickCycle(ProfileRuntime runtime, RadarSnapshot radar)
     {
         if (!_cycles.TryGetValue(runtime.Profile.Id, out var cycle)) return;
+        // An armed native command belongs to client recovery. Never send another
+        // route into its stop marker or turn preserved collection intent into Stop.
+        if (runtime.ClientFault is not null) return;
         if(!radar.WorldCharacterDataAvailable)
         {
             runtime.Status="Waiting for world character data after login";
+            runtime.Cycle=runtime.Cycle with {Detail=runtime.Status};
+            return;
+        }
+        if(cycle.Phase=="Resume route" && !radar.LivePlayerPositionAvailable)
+        {
+            runtime.Status="Waiting for the new character's live position";
             runtime.Cycle=runtime.Cycle with {Detail=runtime.Status};
             return;
         }
@@ -119,6 +136,21 @@ public sealed partial class CollectionModule
         {
             switch (cycle.Phase)
             {
+                case "Resume route":
+                    if(!radar.LivePlayerPositionAvailable) break;
+                    if(cycle.Store.ContinuePass(radar.PlayerX,radar.PlayerY,cycle.RadarPool))
+                    {
+                        runtime.Status="Continuing unfinished price pool from new character position";
+                        cycle.Phase="Reading prices";
+                    }
+                    else
+                    {
+                        runtime.Status="Price pool complete; returning to center for next broker";
+                        cycle.Phase="Return to center";
+                    }
+                    cycle.ContinueAfterClientChange=false;
+                    cycle.Next=DateTimeOffset.MinValue;
+                    break;
                 case "Waiting for server":
                     cycle.Phase="Return to center";
                     break;
@@ -134,9 +166,29 @@ public sealed partial class CollectionModule
                     cycle.Phase = "Broker inventory";
                     break;
                 case "Broker inventory":
+                    if (!radar.IsInsideCenterZone)
+                    {
+                        runtime.Status="Outside center before broker retry; returning to center";
+                        Log($"WARNING {runtime.Profile.Name}: {runtime.Status}");
+                        cycle.Phase="Return to center";
+                        cycle.Next=DateTimeOffset.MinValue;
+                        break;
+                    }
                     runtime.Status = "Broker: collecting all listings and quantities";
-                    await RunCycleBrokerAsync(runtime, cycle, radar);
+                    var centerReconciled=await RunCycleBrokerAsync(runtime, cycle, radar);
                     if(!runtime.IsCollectionEnabled) break;
+                    if(!centerReconciled)
+                    {
+                        runtime.Status="Center radar incomplete; retaining history and retrying at center";
+                        Log($"WARNING {runtime.Profile.Name}: {runtime.Status}");
+                        cycle.Phase="Return to center";
+                        cycle.Next=DateTimeOffset.UtcNow.AddSeconds(15);
+                        if(++cycle.BrokerFailures>=3)
+                        {
+                            RequestCycleRecovery(runtime,cycle,"Three incomplete center radar captures");
+                        }
+                        break;
+                    }
                     cycle.BrokerFailures = 0;
                     try { await cycle.Store.ReconcileAsync(); }
                     catch(Exception e) when(e is HttpRequestException or TaskCanceledException or IOException)
@@ -145,21 +197,7 @@ public sealed partial class CollectionModule
                     cycle.Phase = "Reading prices";
                     break;
                 case "Reading prices":
-                    await RefreshServerQueueAsync(runtime,cycle);
-                    var targets = await ClaimCycleTargetsAsync(cycle,radar);
-                    if (targets.Count == 0)
-                    {
-                        Log($"INFO {runtime.Profile.Name}: finite price pass complete · returning to center for next broker");
-                        cycle.Phase = "Return to center";
-                        break;
-                    }
-                    runtime.Status = $"Reading prices on the move · {targets.Count} targets · continuing the broker pass";
-                    await RunCycleRouteAsync(runtime, cycle, targets, false);
-                    if(!runtime.IsCollectionEnabled) break;
-                    await RefreshServerQueueAsync(runtime,cycle);
-                    // Continue from the current position; a claimed batch is
-                    // not a reason to return or repeat the whole broker scan.
-                    cycle.Phase = "Reading prices";
+                    await RunContinuousPricesAsync(runtime,cycle,radar);
                     break;
             }
             runtime.Cycle = runtime.Cycle with { Phase = cycle.Phase, Detail = runtime.Status };

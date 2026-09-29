@@ -23,3 +23,18 @@ class WallDepartureTests(unittest.TestCase):
             guard.probe.trace.assert_not_called()
         guard=self.guard();guard.probe.trace.return_value={'blocked':True}
         self.assertFalse(guard.clear_outward_escape((83591,147199,-3409),(83660,147199)))
+
+    def test_observed_npc_overlap_requires_outward_clear_sweep_and_exact_component(self):
+        for penetration,component,goal,expected in [
+            (2.193,'CharacterCapsule',(65,0),True),
+            (3.1,'CharacterCapsule',(65,0),False),
+            (2.193,'Unknown',(65,0),False),
+            (2.193,'CharacterCapsule',(-65,0),False)]:
+            guard=self.guard(penetration)
+            guard.last_hit.update(outer_class='CharacterNpc_C',
+                                  component={'name':component,'class':'CapsuleComponent'})
+            self.assertEqual(guard.clear_outward_escape((0,0,0),goal),expected)
+        guard=self.guard(2.193);guard.last_hit.update(outer_class='CharacterNpc_C',
+            component={'name':'CharacterCapsule','class':'CapsuleComponent'})
+        guard.probe.trace.return_value={'blocked':True}
+        self.assertFalse(guard.clear_outward_escape((0,0,0),(65,0)))

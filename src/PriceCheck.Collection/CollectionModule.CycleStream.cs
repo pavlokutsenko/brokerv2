@@ -61,7 +61,7 @@ public sealed partial class CollectionModule
     private async Task StreamCyclePricesAsync(CycleRun cycle,string prefix,IReadOnlyDictionary<string,CycleTarget> targets,
         ConcurrentDictionary<string,byte> spooled,CancellationToken stop)
     {
-        var tail=new AppendOnlyJsonLineReader(prefix+".shops.jsonl");
+        var tail=cycle.PriceEventReader??=new AppendOnlyJsonLineReader(prefix+".shops.jsonl");
         while(!stop.IsCancellationRequested)
         {
             try

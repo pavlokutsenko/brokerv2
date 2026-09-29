@@ -19,7 +19,7 @@ public partial class MainWindow
         }
         catch (Exception exception)
         {
-            MessageBox.Show(this, $"Could not load settings: {exception.Message}",
+            MessageBox.Show(this, $"Не удалось загрузить настройки: {exception.Message}",
                 "PriceCheck Collector", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -32,10 +32,10 @@ public partial class MainWindow
                 template.Name = ImportedTemplateName(template.Name[..^" · случайный HWID".Length],
                     template.HardwareEnabled, template.ProxyEnabled);
             else if (template.Name == "Новый шаблон")
-                template.Name = "New template";
+                template.Name = "Новый шаблон";
             else if (template.Name.StartsWith("Шаблон ", StringComparison.Ordinal) &&
                      int.TryParse(template.Name["Шаблон ".Length..], out var number))
-                template.Name = $"Template {number}";
+                template.Name = $"Шаблон {number}";
             LaunchTemplates.Add(template);
         }
         if (profiles.Count == 0)
@@ -68,8 +68,27 @@ public partial class MainWindow
                 profile.LaunchTemplateId = Guid.Empty;
             profile.Role = CollectorRole.BrokerRadar;
             var runtime = new ProfileRuntime { Profile = profile };
-            if (!LoginServerOptions.Contains(profile.LoginServerName)) profile.LoginServerName = "Gamma";
+            // The old UI forced Gamma for every profile. Keep unknown server
+            // IDs unconfigured so a new market cannot silently log into Gamma.
+            if (profile.Name.Equals("Black", StringComparison.OrdinalIgnoreCase) &&
+                profile.LoginServerName.Equals("Gamma", StringComparison.OrdinalIgnoreCase) &&
+                profile.LoginServerId == 0)
+            {
+                profile.LoginServerName = "Black";
+            }
+            else if (!profile.LoginServerName.Equals(profile.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                profile.LoginServerName = profile.Name;
+                profile.LoginServerId = 0;
+            }
+            if (GameServerCatalog.TryGetVerifiedId(profile.Name, out var verifiedId) &&
+                (profile.LoginServerId == 0 ||
+                 profile.Name.Equals("Black", StringComparison.OrdinalIgnoreCase) && profile.LoginServerId == 2))
+                profile.LoginServerId = verifiedId;
             if (profile.CharacterSlot is < 0 or > 6) profile.CharacterSlot = 0;
+            profile.RotationAccounts ??= [];
+            if(profile.RotationAccountIndex<0 || profile.RotationAccountIndex>=profile.RotationAccountCount)
+                profile.RotationAccountIndex=0;
             profile.City = "Giran";
             profile.CenterZonesByCity ??= [];
             if (profile.CenterZoneX is double legacyX && profile.CenterZoneY is double legacyY &&
@@ -83,7 +102,7 @@ public partial class MainWindow
             profile.LastProcessId = null;
             profile.LastProcessStartUtc = null;
             profile.CollectionEnabled = false;
-            runtime.Status = "Reader disconnected";
+            runtime.Status = "Ридер отключён";
             Runtimes.Add(runtime);
         }
         ApplySavedGiranCenter();
@@ -93,9 +112,8 @@ public partial class MainWindow
         _loaded = true;
         await SaveTemplatesAsync();
         await SaveProfilesAsync();
-        RefreshClientList();
         _refreshTimer.Start();
-        Log("Interface ready");
+        Log("Интерфейс готов");
         if (!string.IsNullOrWhiteSpace(StartupLaunchProfileName))
         {
             var names = StartupLaunchProfileName.Split(',',
@@ -106,7 +124,7 @@ public partial class MainWindow
                     runtime.Profile.Name.Equals(names[index], StringComparison.OrdinalIgnoreCase));
                 if (requested is null)
                 {
-                    Log($"Startup profile '{names[index]}' was not found");
+                    Log($"Профиль запуска «{names[index]}» не найден");
                     break;
                 }
                 SelectedRuntime = requested;

@@ -8,7 +8,8 @@ public sealed class CharacterRotationSchedule
 {
     private readonly Func<double> _random;
     private readonly Dictionary<Guid, Entry> _entries=[];
-    private sealed record Entry(ClientSession Session, int Count, int Minutes, int Jitter, DateTimeOffset? Due);
+    private sealed record Entry(ClientSession Session, int Count, int Accounts, int AccountIndex, int Minutes, int Jitter, DateTimeOffset? Due);
+    public readonly record struct Target(int AccountIndex,int CharacterSlot);
     public CharacterRotationSchedule(Func<double>? random=null) => _random=random ?? Random.Shared.NextDouble;
 
     public static void Validate(CollectorProfile profile)
@@ -26,23 +27,28 @@ public sealed class CharacterRotationSchedule
         Validate(profile);
         if(profile.RotationCharacterCount is <1 or >7) return null; // Native login has not published the roster yet.
         if(_entries.TryGetValue(profile.Id,out var entry) && entry.Session==session &&
-            entry.Count==profile.RotationCharacterCount && entry.Minutes==profile.RotationIntervalMinutes &&
+            entry.Count==profile.RotationCharacterCount && entry.Accounts==profile.RotationAccountCount &&
+            entry.AccountIndex==profile.RotationAccountIndex && entry.Minutes==profile.RotationIntervalMinutes &&
             entry.Jitter==profile.RotationJitterMinutes) return entry.Due;
         var minutes=profile.RotationIntervalMinutes+(2*Math.Clamp(_random(),0,1)-1)*profile.RotationJitterMinutes;
-        DateTimeOffset? due=profile.RotationCharacterCount>1 ? now.AddMinutes(minutes) : null;
-        _entries[profile.Id]=new(session,profile.RotationCharacterCount,profile.RotationIntervalMinutes,profile.RotationJitterMinutes,due);
+        DateTimeOffset? due=profile.RotationCharacterCount>1 || profile.RotationAccountCount>1 ? now.AddMinutes(minutes) : null;
+        _entries[profile.Id]=new(session,profile.RotationCharacterCount,profile.RotationAccountCount,
+            profile.RotationAccountIndex,profile.RotationIntervalMinutes,profile.RotationJitterMinutes,due);
         return due;
     }
 
     public bool IsDue(CollectorProfile profile,ClientSession session,DateTimeOffset now)=>
         Observe(profile,session,now) is { } due && now>=due;
-    public int NextSlot(CollectorProfile profile)
+    public Target NextTarget(CollectorProfile profile)
     {
         var slots = profile.RotationCharacterSlots.Length > 0 ? profile.RotationCharacterSlots :
             Enumerable.Range(0, profile.RotationCharacterCount).ToArray();
         if (slots.Length == 0) throw new InvalidOperationException("The occupied character list has not been read.");
         var index = Array.IndexOf(slots, profile.CharacterSlot);
-        return slots[(index + 1) % slots.Length];
+        if(index<0)return new(profile.RotationAccountIndex,slots[0]);
+        if(index>=0 && index+1<slots.Length)return new(profile.RotationAccountIndex,slots[index+1]);
+        return new((profile.RotationAccountIndex+1)%profile.RotationAccountCount,0);
     }
+    public int NextSlot(CollectorProfile profile)=>NextTarget(profile).CharacterSlot;
     public void Forget(Guid profileId)=>_entries.Remove(profileId);
 }

@@ -11,8 +11,9 @@ using PriceCheck.Windows;
 
 // Proxy credentials arrive through redirected stdin; never persist or print them.
 if (args.Contains("--banner-child")) { await ProxyBannerProbe.ChildAsync(); return; }
-var profileId = args.Length == 1 && !args[0].StartsWith("--") ? Guid.Parse(args[0]) :
-    Guid.Parse("6a0358a7-984d-4ef1-8570-283b79c3cf88");
+var profileIdArgument = args.FirstOrDefault(value => Guid.TryParse(value, out _));
+var profileId = profileIdArgument is null ? Guid.Parse("6a0358a7-984d-4ef1-8570-283b79c3cf88") :
+    Guid.Parse(profileIdArgument);
 var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PriceCheckCollector");
 var settings = new[] { "profiles.json", "launch-templates.json" }.Select(name => Path.Combine(directory, name)).ToArray();
 var hashes = settings.Select(path => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))).ToArray();
@@ -46,8 +47,12 @@ profile.CollectionEnabled = false;
 profile.LastProcessId = null; profile.LastProcessStartUtc = null;
 profile.CharacterRotationEnabled = !args.Contains("--no-rotation");
 profile.CharacterSlot = 0;
-Environment.SetEnvironmentVariable("PRICECHECK_TRACE_HARDWARE", "1");
-Environment.SetEnvironmentVariable("PRICECHECK_NETWORK_OBSERVE", "1");
+if (args.Contains("--ports-only")) Environment.SetEnvironmentVariable("PRICECHECK_TRACE_PORTS", "1");
+else
+{
+    Environment.SetEnvironmentVariable("PRICECHECK_TRACE_HARDWARE", "1");
+    Environment.SetEnvironmentVariable("PRICECHECK_NETWORK_OBSERVE", "1");
+}
 new DriverBootstrapper().EnsureReady();
 if (args.Contains("--baseline") || args.Contains("--early-route") || args.Contains("--native-gates") || args.Contains("--proxy-probe") || args.Contains("--managed-guard"))
 {
@@ -126,6 +131,7 @@ try
         async (client, token) => { await radar.StartAsync(client.ProcessId, null, false, token); Log("READER_ATTACHED_AFTER_PROTECTION"); });
     rotation.Started(profile, session, DateTimeOffset.UtcNow);
     await World(session);
+    if (args.Contains("--world-only")) { Log("WORLD_ONLY_OK"); return; }
     for (var i = 0; i < 6; i++)
     {
         await Task.Delay(2000, stop.Token);

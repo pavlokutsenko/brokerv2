@@ -16,10 +16,13 @@ public static class IdentityPreviewService
             "Chassis · serial" => Adapt(identity.ChassisSerial, row.CurrentValue.Length),
             "Processor · ID" => identity.ProcessorId,
             "Processor · serial" => Adapt(identity.ProcessorSerial, row.CurrentValue.Length),
+            "Processor · model" => identity.ProcessorModel,
+            "Processor · revision" => identity.ProcessorRevision,
             "Windows · MachineGuid" => identity.MachineGuid,
             "Windows · HwProfileGuid" => identity.HardwareProfileGuid,
             "Windows · ProductId" => identity.WindowsProductId,
             "Windows · SusClientId" => identity.SusClientId,
+            "Windows · SQM MachineId" => identity.SqmMachineId,
             "Windows · VideoIdentifier" => identity.VideoIdentifier,
             "Windows · PC name (registry)" => identity.RegistryComputerName,
             "Windows · InstallDate" => identity.InstallDate.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -31,6 +34,18 @@ public static class IdentityPreviewService
             _ when row.Label.StartsWith("Volume ", StringComparison.Ordinal) => identity.VolumeSerial,
             _ when row.Label.StartsWith("MAC · ", StringComparison.Ordinal) => MacForAdapter(identity.MacAddress, macIndex),
             _ when row.Label.StartsWith("Gateway ", StringComparison.Ordinal) && row.Coverage == "SendARP · gateway hook" => identity.RouterMac,
+            _ when row.Coverage == "SetupAPI/CM · hooked" => DeviceIdentityPreview.Map(identity.SystemUuid, row.CurrentValue),
+            "WMI · System UUID" => identity.SystemUuid,
+            "WMI · System serial" => Adapt(identity.SystemSerial, row.CurrentValue.Length),
+            "WMI · Baseboard serial" => Adapt(identity.BoardSerial, row.CurrentValue.Length),
+            "WMI · Processor ID" => identity.ProcessorId,
+            "WMI · Processor name" => identity.ProcessorModel,
+            "WMI · Computer name" => identity.RegistryComputerName,
+            _ when row.Label.StartsWith("WMI · Memory serial", StringComparison.Ordinal) =>
+                Adapt(identity.MemorySerial, row.CurrentValue.Length),
+            _ when row.Label.StartsWith("WMI · Disk serial", StringComparison.Ordinal) =>
+                Adapt(identity.DiskSerial, row.CurrentValue.Length),
+            _ when row.Label.StartsWith("WMI · Volume serial", StringComparison.Ordinal) => identity.VolumeSerial,
             _ => null
         };
         return row with { TargetValue = target ?? "Not overridden" };

@@ -6,22 +6,14 @@ namespace PriceCheck.Collector;
 public partial class CollectionPanelView : UserControl
 {
     public CollectionPanelView() => InitializeComponent();
-    public event RoutedEventHandler? AttachReaderClickRequested;
-    private void AttachReader_Click(object sender, RoutedEventArgs e) => AttachReaderClickRequested?.Invoke(sender, e);
     public event RoutedEventHandler? ClearCenterZoneClickRequested;
     private void ClearCenterZone_Click(object sender, RoutedEventArgs e) => ClearCenterZoneClickRequested?.Invoke(sender, e);
-    public event RoutedEventHandler? DeleteProfileClickRequested;
-    private void DeleteProfile_Click(object sender, RoutedEventArgs e) => DeleteProfileClickRequested?.Invoke(sender, e);
-    public event RoutedEventHandler? DetachReaderClickRequested;
-    private void DetachReader_Click(object sender, RoutedEventArgs e) => DetachReaderClickRequested?.Invoke(sender, e);
     public event RoutedEventHandler? MarkCenterZoneClickRequested;
     private void MarkCenterZone_Click(object sender, RoutedEventArgs e) => MarkCenterZoneClickRequested?.Invoke(sender, e);
     public event TextChangedEventHandler? ProfileFieldChangedRequested;
     private void ProfileField_Changed(object sender, TextChangedEventArgs e) => ProfileFieldChangedRequested?.Invoke(sender, e);
     public event SelectionChangedEventHandler? ProfileSelectionChangedRequested;
     private void ProfileSelection_Changed(object sender, SelectionChangedEventArgs e) => ProfileSelectionChangedRequested?.Invoke(sender, e);
-    public event RoutedEventHandler? RefreshClientsClickRequested;
-    private void RefreshClients_Click(object sender, RoutedEventArgs e) => RefreshClientsClickRequested?.Invoke(sender, e);
     public event EventHandler? RoleDropDownClosedRequested;
     private void Role_DropDownClosed(object sender, EventArgs e) => RoleDropDownClosedRequested?.Invoke(sender, e);
     public event RoutedEventHandler? ToggleCollectionClickRequested;

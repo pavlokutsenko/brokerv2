@@ -24,8 +24,8 @@ class ShopWire:
         if self.path.exists():
             raise RuntimeError(f'Unrestored shop wire observer: {self.path}')
         pid = self.walk.pid
-        address = self.walk.base+0x4C1D77C
         with Lu4MemoryClient() as reader:
+            address = packets.discover(reader, pid, self.walk.base)
             if reader.read(pid, address-17, len(packets.RX_SIGNATURE)) != packets.RX_SIGNATURE:
                 raise RuntimeError('shop receive site changed')
             original = reader.read(pid, address, len(packets.RX_ORIGINAL))

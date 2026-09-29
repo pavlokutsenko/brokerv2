@@ -20,7 +20,7 @@ internal static class OptionalProxyChecks
         using var map = MemoryMappedFile.OpenExisting(mapping.Name); using var view = map.CreateViewAccessor();
         if (view.ReadInt32(80) != 1 || template.Summary.Contains("запрещён")) throw new Exception("Disabled proxy requires a proxy lease");
         var status = ClientProtectionStatus.Pending with { ProxyRequired = false, Error = "HTTP proxy failed" };
-        if (!status.ProxyLabel.Contains("выключен") || status.HardwareLabel.Contains("ОШИБКА"))
+        if (!status.ProxyLabel.Contains("отключён") || status.HardwareLabel.Contains("ОШИБКА"))
             throw new Exception("Proxy setting or error falsely reported HWID failure");
         template.ProxyEnabled = true;
         try { await ProxyTcpBroker.VerifyUpstreamAsync(template, CancellationToken.None); throw new Exception("Invalid enabled proxy accepted"); }

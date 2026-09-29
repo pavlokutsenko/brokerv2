@@ -16,6 +16,7 @@ if (-not $PublishDirectory) {
 $publish = [IO.Path]::GetFullPath($PublishDirectory).TrimEnd('\') + '\'
 $package = Join-Path $work "PriceCheck$Product"
 [void][IO.Directory]::CreateDirectory($package)
+try {
 $inputs = @(Get-ChildItem -LiteralPath $publish -Recurse -File)
 foreach ($sourceFile in $inputs) {
     $relative = $sourceFile.FullName.Substring($publish.Length)
@@ -25,7 +26,8 @@ foreach ($sourceFile in $inputs) {
         $sourceFile.Name -in @('profiles.json', 'launch-templates.json') -or
         $sourceFile.Extension -in @('.log','.csv','.dmp','.bin','.db','.sqlite') -or
         ($sourceFile.Extension -eq '.json' -and $sourceFile.Name -notin @("PriceCheck.$Product.deps.json","PriceCheck.$Product.runtimeconfig.json",'build-info.json') -and
-         $relative -notmatch '^runtime\\BrokerRuntime\\_internal\\navigation\\maps\\')) {
+         $relative -notmatch '^runtime\\BrokerRuntime\\_internal\\navigation\\maps\\' -and
+         -not ($Product -eq 'Collector' -and $relative -match '^runtime\\Maps\\[^\\]+\\city\.json$'))) {
         throw "Publish directory contains non-distributable state: $relative. Use a fresh build output."
     }
     $target = Join-Path $package $relative
@@ -42,7 +44,7 @@ $requiredFiles = @(
     'DriverRuntime\lu4_memory_wfp.sys','DriverRuntime\load-driver.ps1',
     'DriverRuntime\kdu.exe','DriverRuntime\drv64.dll','DriverRuntime\Taigei64.dll')
 if ($Product -eq 'Collector') {
-    $requiredFiles += @('PriceCheck.Collection.dll','BrokerRuntime\BrokerWorker.exe','BrokerRuntime\_internal\python314.dll','BrokerRuntime\_internal\base_library.zip')
+    $requiredFiles += @('PriceCheck.Collection.dll','BrokerRuntime\BrokerWorker.exe','BrokerRuntime\_internal\python314.dll','BrokerRuntime\_internal\base_library.zip','Maps\Giran\city.json')
 } elseif ((Test-Path -LiteralPath (Join-Path $payload 'PriceCheck.Collection.dll')) -or (Test-Path -LiteralPath (Join-Path $payload 'BrokerRuntime'))) {
     throw 'Launcher publication contains collection components.'
 }
@@ -56,7 +58,7 @@ if ($rootFiles.Count -ne 1 -or $rootFiles[0].Name -ne "PriceCheck.$Product.exe" 
 Copy-Item -LiteralPath (Join-Path $repo 'tools\Portable\Verify-Package.ps1') -Destination $payload
 Copy-Item -LiteralPath (Join-Path $repo "tools\Portable\$Product-README.txt") -Destination (Join-Path $payload 'README-FIRST.txt')
 if ($Product -eq 'Collector') {
-    foreach ($name in @('Collect-Diagnostics.ps1','Start-WithDiagnostics.ps1')) {
+    foreach ($name in @('Collect-Diagnostics.ps1','Start-WithDiagnostics.ps1','Market-History.ps1')) {
         Copy-Item -LiteralPath (Join-Path $repo "tools\Portable\$name") -Destination $payload
     }
 }
@@ -85,3 +87,6 @@ try { $hashStream.Flush($true) } finally { $hashStream.Dispose() }
 & (Join-Path $repo 'scripts\prune-portable-packages.ps1') -KeepArchive $archive -Product $Product
 @{ product = $Product; archive = $archive; entry_point = "PriceCheck.$Product.exe"; bytes = (Get-Item -LiteralPath $archive).Length; sha256 = $hash;
    file_count = $files.Count; staging = $package } | ConvertTo-Json
+} finally {
+    & (Join-Path $repo 'scripts\remove-generated-tree.ps1') -Path $work -Root (Join-Path $repo 'workspace')
+}

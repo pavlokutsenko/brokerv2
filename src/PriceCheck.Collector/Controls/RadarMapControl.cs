@@ -6,6 +6,10 @@ namespace PriceCheck.Collector.Controls;
 
 public sealed class RadarMapControl : FrameworkElement
 {
+    public static readonly DependencyProperty CityProperty = DependencyProperty.Register(
+        nameof(City), typeof(string), typeof(RadarMapControl),
+        new FrameworkPropertyMetadata("Giran", FrameworkPropertyMetadataOptions.AffectsRender));
+    public string City { get => (string?)GetValue(CityProperty) ?? "Giran"; set => SetValue(CityProperty, value); }
     public static readonly DependencyProperty SnapshotProperty = DependencyProperty.Register(
         nameof(Snapshot), typeof(RadarSnapshot), typeof(RadarMapControl),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -28,7 +32,10 @@ public sealed class RadarMapControl : FrameworkElement
             return;
         }
 
+        var outline = CollectionZoneOutline.Load(City);
         var maxDistance = Math.Max(500, Snapshot.Traders.Select(point => point.Distance).Order().ElementAt((int)(Snapshot.Traders.Count * 0.97)));
+        if (outline.Count > 0) maxDistance = Math.Max(maxDistance, outline.Max(point =>
+            Math.Sqrt(Math.Pow(point.X - Snapshot.PlayerX, 2) + Math.Pow(point.Y - Snapshot.PlayerY, 2))) * 1.06);
         var scale = Math.Min(ActualWidth, ActualHeight) * 0.45 / maxDistance;
         var center = new Point(ActualWidth / 2, ActualHeight / 2);
         var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(90, 50, 62, 78)), 1);
@@ -36,6 +43,26 @@ public sealed class RadarMapControl : FrameworkElement
             context.DrawEllipse(null, gridPen, center, ring * Math.Min(ActualWidth, ActualHeight) * 0.105, ring * Math.Min(ActualWidth, ActualHeight) * 0.105);
         context.DrawLine(gridPen, new Point(center.X, 18), new Point(center.X, ActualHeight - 18));
         context.DrawLine(gridPen, new Point(18, center.Y), new Point(ActualWidth - 18, center.Y));
+
+        if (outline.Count > 0)
+        {
+            var geometry = new StreamGeometry();
+            Point Screen(Point point) => new(center.X + (point.X - Snapshot.PlayerX) * scale,
+                center.Y + (point.Y - Snapshot.PlayerY) * scale);
+            using (var drawing = geometry.Open())
+            {
+                drawing.BeginFigure(Screen(outline[0]), true, true);
+                drawing.PolyLineTo(outline.Skip(1).Select(Screen).ToArray(), true, false);
+            }
+            geometry.Freeze();
+            var boundary = new SolidColorBrush(Color.FromRgb(242, 189, 102));
+            context.DrawGeometry(new SolidColorBrush(Color.FromArgb(10, 242, 189, 102)), new Pen(boundary, 1.8), geometry);
+            DrawLabel(context, $"Зона сбора · {City}", boundary, 18);
+        }
+        else DrawLabel(context, "Граница зоны недоступна", Brushes.Gray, 18);
+        if (Snapshot.CenterZoneConfigured)
+            DrawLabel(context, $"Центральная зона · {Snapshot.CenterZoneRadius:N0}",
+                new SolidColorBrush(Color.FromRgb(87, 215, 160)), 38);
 
         if (Snapshot.CenterZoneConfigured)
         {
@@ -78,5 +105,12 @@ public sealed class RadarMapControl : FrameworkElement
         var text = new FormattedText(value, System.Globalization.CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight, new Typeface("Segoe UI"), 13, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
         context.DrawText(text, new Point((ActualWidth - text.Width) / 2, (ActualHeight - text.Height) / 2));
+    }
+
+    private void DrawLabel(DrawingContext context, string value, Brush brush, double y)
+    {
+        var text = new FormattedText(value, System.Globalization.CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight, new Typeface("Segoe UI"), 12, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        context.DrawText(text, new Point(18, y));
     }
 }

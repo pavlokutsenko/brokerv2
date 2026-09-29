@@ -3,13 +3,17 @@ import time
 import math
 from types import SimpleNamespace
 
-from cycle_revisit import select_revisit_targets,unavailable_after_approach,add_late_broker_misses,initial_revisit_targets,add_live_radar_targets
+from cycle_revisit import select_revisit_targets,unavailable_after_approach,add_late_broker_misses,initial_revisit_targets,add_live_radar_targets,next_available_target
 from cycle_recheck_plan import recheck_route
 from walk_follow import Path
 from walk_shops import WalkShops
 
 
 class RevisitTests(unittest.TestCase):
+    def test_new_goal_enters_nearest_first_without_cooldown(self):
+        pending={'new':{'key':'new','x':1,'y':0},'broker':{'key':'broker','x':100,'y':0}}
+        self.assertEqual(next_available_target(pending,(0,0))['key'],'new')
+
     def test_local_section_cannot_be_extended_by_future_market_targets(self):
         now=time.monotonic()
         assigned={'key':'assigned','x':200,'y':0,'seen_at':now}

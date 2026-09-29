@@ -10,6 +10,7 @@ from walk_escape import escape
 from collection_zone import in_collection_zone
 from walk_shop_policy import RADAR_DISCOVERY_RADIUS
 from radar_pass_plan import radar_pass_route
+from walk_navigation import execution_navigation
 
 STOP_REASONS={'cancelled','keyboard_interrupt','target_changed_externally','position_jump','shop_error'}
 
@@ -83,6 +84,10 @@ def add_late_broker_misses(pending,shops,handled):
     return added
 
 
+def next_available_target(pending,position):
+    return min(pending.values(),key=lambda t:math.dist(position,(t['x'],t['y'])),default=None)
+
+
 def hold_read(client,shops,target,log,deadline):
     """Use the existing reader; zero-distance moves refresh ordinary server origins."""
     key=target['key'];shops.priority_keys={key}
@@ -127,24 +132,30 @@ def hold_read(client,shops,target,log,deadline):
 
 
 def revisit_missed(client, shops, route, route_data, execution, guard, log,
-                   progress, started, duration):
+                   progress, started, duration, pause_baseline=None):
     # Broker-time packet observations can be temporarily outside the native
     # actor window. Approach their observed location once; the ordinary reader
     # still requires the matching live actor and <=95 before every request.
     targets=initial_revisit_targets(shops,route,client.position()[:2])
     pending={t['key']:t for t in targets}
     if not pending and not shops.dynamic_seen_live: return None
-    begun=time.monotonic();results=[];attempted=[];unresolved=[]
+    begun=time.monotonic();results=[];attempted=[];unresolved=[];wait_failure=None
+    if pause_baseline is None: pause_baseline=getattr(shops,'pause_seconds_spent',0)
+    def active_elapsed():
+        return time.monotonic()-started-(getattr(shops,'pause_seconds_spent',0)-pause_baseline)
     old_dynamic=shops.dynamic_detours_enabled
     shops.dynamic_detours_enabled=False
     try:
         # Do not reconstruct the full city polygons, ground cliffs and grid
         # twice for every shop. Each execution gets an isolated cheap fork.
         prepared=time.monotonic()
-        departure=Navigation(route_data,clearance=client.execution_clearance)
+        departure=execution_navigation(client,route_data)
         log({'type':'recheck_navigation_ready','seconds':round(time.monotonic()-prepared,3)})
         handled=set();handoff=False
         while True:
+            pause_result,_=shops.wait_after_capture(client,log,progress)
+            if pause_result!='ready':
+                wait_failure=pause_result;break
             current=client.position()[:2]
             added=add_live_radar_targets(pending,shops,handled,current,time.monotonic())
             if added: log({'type':'recheck_radar_added','keys':added})
@@ -155,13 +166,19 @@ def revisit_missed(client, shops, route, route_data, execution, guard, log,
             if client.cancelled(): break
             pending={key:t for key,t in pending.items() if key not in shops.unavailable_keys}
             if not pending: break
-            if time.monotonic()-started>=duration-8:
+            if active_elapsed()>=duration-8:
                 unresolved.extend(pending)
                 break
-            target=min(pending.values(),key=lambda t:math.dist(current,(t['x'],t['y'])))
+            target=next_available_target(pending,current)
+            if target is None: break
             pending.pop(target['key']);handled.add(target['key'])
             approach_started=time.monotonic()
-            if not handoff: client.stop()
+            approach_pause_baseline=getattr(shops,'pause_seconds_spent',0)
+            def approach_elapsed():
+                return time.monotonic()-approach_started-(shops.pause_seconds_spent-approach_pause_baseline)
+            if not handoff:
+                pause=getattr(client,'pause_for_plan',client.stop)
+                pause()
             handoff=False
             target=shops.live_targets.get(target['key'],target)
             if not in_collection_zone(route_data.get('collectionZone'),target['x'],target['y']):
@@ -172,7 +189,8 @@ def revisit_missed(client, shops, route, route_data, execution, guard, log,
             progress({'detail':f"Approach {len(attempted)} · {len(pending)} remaining: {target['name']}",
                       'shops':shops.stats['captured_shops'],'exact':shops.stats['exact_shops']})
             if not departure.clear(client.position()[:2],client.position()[:2]):
-                escape(client,departure,guard,log,min(started+duration-8,time.monotonic()+10))
+                escape(client,departure,guard,log,min(
+                    time.monotonic()+max(0,duration-active_elapsed()-8),time.monotonic()+10))
             planned=time.monotonic()
             onward_target=min(pending.values(),key=lambda t:math.dist(current,(t['x'],t['y']))) if pending else None
             passing=radar_pass_route(route_data,client.position()[:2],target,
@@ -189,7 +207,7 @@ def revisit_missed(client, shops, route, route_data, execution, guard, log,
                 unresolved.append(target['key']);continue
             shops.anchor_positions=[(target['x'],target['y'])];shops.priority_keys={target['key']}
             approach_cap=55 if target['key'] in shops.dynamic_targets else 25
-            budget=min(approach_cap,duration-(time.monotonic()-started)-6)
+            budget=min(approach_cap,duration-active_elapsed()-6)
             client.read_goal_key=None if passing else target['key']
             client.pass_goal_key=target['key'] if passing else None
             try:
@@ -209,7 +227,7 @@ def revisit_missed(client, shops, route, route_data, execution, guard, log,
                 log({'type':'radar_pass_read_missed','key':target['key']})
                 points,nav,direct=recheck_route(route_data,client.position()[:2],target,
                     client.execution_clearance,navigation=departure)
-                remaining=min(approach_cap-(time.monotonic()-approach_started),duration-(time.monotonic()-started)-6)
+                remaining=min(approach_cap-approach_elapsed(),duration-active_elapsed()-6)
                 if points and remaining>0:
                     client.read_goal_key=target['key']
                     try:
@@ -219,7 +237,8 @@ def revisit_missed(client, shops, route, route_data, execution, guard, log,
                     results.append(result)
                     if result['reason'] in STOP_REASONS: break
             if result['reason']=='completed' and target['key'] not in shops.captured_keys:
-                read=hold_read(client,shops,target,log,min(started+duration-3,time.monotonic()+4))
+                read=hold_read(client,shops,target,log,min(
+                    time.monotonic()+max(0,duration-active_elapsed()-3),time.monotonic()+4))
                 if read in STOP_REASONS:
                     result['reason']=read;break
                 if read=='temporarily_unavailable': result['reason']=read
@@ -233,8 +252,9 @@ def revisit_missed(client, shops, route, route_data, execution, guard, log,
                  'plan_seconds':round(plan_seconds,4)})
     finally:
         shops.dynamic_detours_enabled=old_dynamic
-    reason='cancelled' if client.cancelled() else (
+    reason=wait_failure or ('cancelled' if client.cancelled() else (
         results[-1]['reason'] if results and results[-1]['reason'] in STOP_REASONS else 'completed')
+    )
     return {'reason':reason,'seconds':round(time.monotonic()-begun,3),
             'recoveries':[r for result in results for r in result.get('recoveries',[])],
             'position':client.position(),'targets':attempted,'unresolved':unresolved}

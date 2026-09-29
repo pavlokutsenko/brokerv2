@@ -57,7 +57,7 @@ class CapsuleProbe:
     def decode(self, result, blocked):
         self.c.m.pages.clear()
         component_index = struct.unpack_from('<i', result, 216)[0]
-        component = read_object(self.c.m, self.c.base+GOBJECTS, component_index) if blocked else 0
+        component = read_object(self.c.m, self.c.base+self.c.rvas['gobjects'], component_index) if blocked else 0
         owner=self.c.m.u64(component+0x20) if component else 0
         owner_name=self.c.s.name(owner) if owner else None
         if owner_name and (len(owner_name)>160 or any(ord(c)<32 for c in owner_name)):

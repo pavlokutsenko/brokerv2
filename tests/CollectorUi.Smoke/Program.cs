@@ -30,10 +30,12 @@ view.SetTemplates([new LaunchTemplate
         MachineGuid = Guid.NewGuid().ToString("D"),
         BoardSerial = "A1B2C3D4", VolumeSerial = "1234ABCD", MacAddress = "02AABBCCDDEE",
         SystemSerial = "SYSTEM01", ChassisSerial = "CHASSIS01", ProcessorId = "AABBCCDDEEFF0011",
-        ProcessorSerial = "CPU12345", MemorySerial = "MEM12345", DiskSerial = "DISK12345",
+        ProcessorSerial = "CPU12345", ProcessorModel = "Processor UI Smoke",
+        ProcessorRevision = "0102030405060708", MemorySerial = "MEM12345", DiskSerial = "DISK12345",
         HardwareProfileGuid = Guid.NewGuid().ToString("B"), WindowsProductId = "00330-12345-67890-AAOEM",
         DiskGuid = Guid.NewGuid().ToString("D"), DiskSignature = "1234ABCD",
-        SusClientId = Guid.NewGuid().ToString("D"), VideoIdentifier = Guid.NewGuid().ToString("B"),
+        SusClientId = Guid.NewGuid().ToString("D"), SqmMachineId = Guid.NewGuid().ToString("B"),
+        VideoIdentifier = Guid.NewGuid().ToString("B"),
         RegistryComputerName = "PC-TEST", InstallDate = 1700000000, RouterMac = "02AABBCCDDEF"
     }
 }]);
@@ -80,6 +82,7 @@ Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[0]))!);
 using (var stream = File.Create(args[0])) encoder.Save(stream);
 Console.WriteLine("COLLECTOR_UI_OK proxy_toggle=enabled proxy_saved=true");
 ModuleViews.VerifyAndRender(Path.GetDirectoryName(Path.GetFullPath(args[0]))!);
+ProfileSelectionChecks.Verify(app, Path.GetDirectoryName(Path.GetFullPath(args[0]))!);
 app.Shutdown();
 foreach (var (name, before) in settingsBefore)
 {

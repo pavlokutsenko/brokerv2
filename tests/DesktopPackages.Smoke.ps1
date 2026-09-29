@@ -5,6 +5,7 @@ $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $work = Join-Path $repo ('workspace\desktop-packages-smoke-' + [guid]::NewGuid().ToString('N'))
 $shell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $extracted = @()
+try {
 foreach ($archive in $Archives) {
     $archive = [IO.Path]::GetFullPath($archive)
     $expectedHash = (Get-Content -LiteralPath ($archive + '.sha256') -Raw).Split(' ')[0]
@@ -30,6 +31,14 @@ foreach ($archive in $Archives) {
     if ($LASTEXITCODE -ne 0) { throw 'Extracted package does not verify on Windows PowerShell 5.1' }
     $deps = Get-Content -LiteralPath (Join-Path $payload "PriceCheck.$product.deps.json") -Raw
     if ($product -eq 'Launcher' -and $deps -match 'PriceCheck\.(Collection|Collector)/') { throw 'Launcher references collection in runtime dependencies' }
+    if ($product -eq 'Collector') {
+        $mapDescriptor = Join-Path $payload 'Maps\Giran\city.json'
+        $workerDescriptor = Join-Path $payload 'BrokerRuntime\_internal\navigation\maps\Giran\city.json'
+        if (-not (Test-Path -LiteralPath $mapDescriptor) -or
+            (Get-FileHash -LiteralPath $mapDescriptor).Hash -ne (Get-FileHash -LiteralPath $workerDescriptor).Hash) {
+            throw 'Desktop map and collection worker have different Giran boundaries.'
+        }
+    }
     $exeBytes = [IO.File]::ReadAllBytes((Join-Path $destination "PriceCheck.$product.exe"))
     $peOffset = [BitConverter]::ToInt32($exeBytes, 0x3c)
     if ([BitConverter]::ToUInt16($exeBytes, $peOffset + 24 + 68) -ne 2 -or
@@ -47,3 +56,6 @@ foreach ($archive in $Archives) {
     $extracted += $destination
 }
 & (Join-Path $PSScriptRoot 'PortableHost.Smoke.ps1') -Directories $extracted
+} finally {
+    & (Join-Path $repo 'scripts\remove-generated-tree.ps1') -Path $work -Root (Join-Path $repo 'workspace')
+}

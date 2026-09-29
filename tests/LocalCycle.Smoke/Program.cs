@@ -13,6 +13,12 @@ var boundary=new CycleRadarPool([[-10000,-10000],[10000,-10000],[10000,10000],[-
 var center=new MarketZone(0,0,500);
 var checks=0;
 void Check(bool ok,string name){if(!ok)throw new Exception(name);Console.WriteLine("PASS "+name);checks++;}
+Check(profile.TraderPauseSeconds==30,"trader pause defaults to thirty seconds");
+var migratedPause=JsonSerializer.Deserialize<CollectorProfile>("{\"NewTargetIntervalSeconds\":45}")!;
+Check(migratedPause.TraderPauseSeconds==45,"old new-target interval migrates to trader pause");
+Check(!JsonSerializer.Serialize(migratedPause).Contains("NewTargetIntervalSeconds"),
+    "old interval name is not persisted again");
+Check(new CollectorProfile{TraderPauseSeconds=0}.TraderPauseSeconds==0,"trader pause can be disabled");
 RadarPoint Point(string name="Shop",int oid=7,int type=1,double x=100,double y=100)=>new(oid,name,type,x,y,0,true,time){StateObservedAtUtc=time};
 RadarSnapshot Frame(params RadarPoint[] points)=>new(){ProcessId=123,LivePlayerPositionAvailable=true,PlayerX=0,PlayerY=0,Traders=points,CapturedAtUtc=time};
 ShopCaptureFile Capture(string id,CycleTarget target)=>new(){SnapshotId=id,Precision="wire_int64",Side=target.KioskType==3?"buy":"sell",
@@ -24,6 +30,7 @@ using(var store=new LocalCycleStore(profile,root,()=>time))
     store.BeginPass(0,0,boundary);var original=store.NextTargets().Single();
     time=time.AddMilliseconds(1);Check(store.Commit(original,Capture("shop-first",original)),"full shop durable commit");
     Check(store.NextTargets().Count==0,"successful pending upload excludes shop from route");
+    Check(store.Status(new()).CurrentPriceTraders==1,"current price count includes valid exact read");
     var price=store.PendingOperations().Single(o=>o.Kind=="price");using(var body=JsonDocument.Parse(price.Payload))
     {Check(body.RootElement.GetProperty("rows")[0].GetProperty("price").GetString()=="9007199254740993","int64 exact price roundtrips as decimal string");
      Check(!body.RootElement.TryGetProperty("traders",out _),"one trader per price payload");}
@@ -36,6 +43,7 @@ using(var store=new LocalCycleStore(profile,root,()=>time))
     time=time.AddSeconds(1);var close=Point(type:0) with {StateObservedPlayerX=800,StateObservedPlayerY=0};
     store.ObserveClosed(close,center,time.AddSeconds(-1),true);
     Check(store.Target("SHOP") is null,"outside-center explicit closure cancels approach");
+    Check(store.Status(new()).CurrentPriceTraders==0,"closed pending shop is not counted as a current price");
     Check(!store.PendingOperations().Any(o=>o.Payload.Contains("closed_confirmed")),"outside-center closure never removes server offers");
     time=time.AddMilliseconds(1);store.Observe(Frame(Point() with{LastReopenedAtUtc=time}),boundary,center,time.AddSeconds(-1));
     var reopened=store.Target("SHOP")!;Check(reopened.Revision>original.Revision,"same quantity reopen requires exact reread");
@@ -45,6 +53,7 @@ using(var store=new LocalCycleStore(profile,root,()=>time))
     store.BeginSession("client2");store.Observe(Frame(Point(oid:22)),boundary,center,time.AddSeconds(-1));
     store.BeginPass(0,0,boundary);Check(store.NextTargets().Count==0,"new client ObjectID does not make recently read shop new");
     time=time.AddHours(25);Check(store.Target("SHOP") is not null,"24h default interval becomes due");
+    Check(store.Status(new()).CurrentPriceTraders==0,"expired exact price is not current");
     store.SetRecheckHours(48);Check(store.Target("SHOP") is null,"interval increase recomputes from actual last read");
     store.SetRecheckHours(1);Check(store.Target("SHOP") is not null,"interval reduction recomputes due without rewriting read time");
     time=time.AddSeconds(1);close=Point(type:0) with{StateObservedPlayerX=900,StateObservedPlayerY=0};
@@ -85,7 +94,15 @@ using(var finite=new LocalCycleStore(new(){Name="FINITE",ServerUrl=profile.Serve
 }
 Console.WriteLine($"LOCAL CYCLE PASS {checks} checks · {root}");
 await ProtocolTests.Run(root);
+await ParallelDeliveryTests.Run(root);
+BrokerCompactionTests.Run(root);
+BrokerDeliveryStatusTests.Run(root);
 await AcknowledgementTests.Run(root);
 await AbruptRecoveryTests.Run(root);
 TailReaderTests.Run(root);
 BrokerTargetTests.Run(root);
+CenterRadarTests.Run(root);
+CenterRadarEvidenceTests.Run();
+StorageMaintenanceTests.Run(root);
+ServerRosterTests.Run(root);
+RouteSectionTests.Run(root);

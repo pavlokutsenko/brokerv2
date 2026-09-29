@@ -30,8 +30,9 @@ public sealed class CharacterRotationService
         if(!_launcher.Owns(profile.Id,session)) return "Launch this profile here to enable character rotation";
         if(!_ready.TryGetValue(profile.Id,out var ready) || ready!=session) return "Preparing character 0 and reading the available slots…";
         var due=Schedule.Observe(profile,session,now);
+        var remaining=due is null ? TimeSpan.Zero : TimeSpan.FromSeconds(Math.Ceiling(Math.Max(0,(due.Value-now).TotalSeconds)));
         return due is null ? "Only character 0 · no rotation needed" :
-            $"Character {profile.CharacterSlot} of {profile.RotationCharacterCount} · next change {due.Value.ToLocalTime():HH:mm:ss} · {(Math.Max(0,(due.Value-now).TotalMinutes)):F1} min";
+            $"Account {profile.RotationAccountIndex+1}/{profile.RotationAccountCount} · Character {profile.CharacterSlot+1} of {profile.RotationCharacterCount} · switch in {(int)remaining.TotalHours:00}:{remaining:mm\\:ss} · at {due.Value.ToLocalTime():HH:mm:ss}";
     }
     public bool IsDue(CollectorProfile profile,ClientSession session,DateTimeOffset now)
     {
@@ -57,10 +58,18 @@ public sealed class CharacterRotationService
             if(!profile.CharacterRotationEnabled) throw new OperationCanceledException("Character rotation was disabled.");
             CharacterRotationSchedule.Validate(profile);
             PriceCheck.Collector.Services.ClientLoginService.Validate(profile);
-            var next=_ready.TryGetValue(profile.Id,out var ready) && ready==session ? Schedule.NextSlot(profile) : 0;
-            progress($"Closing client · selecting character {next}…");
+            var next=_ready.TryGetValue(profile.Id,out var ready) && ready==session ?
+                Schedule.NextTarget(profile) : new CharacterRotationSchedule.Target(0,0);
+            var previousAccount=profile.RotationAccountIndex;var previousSlot=profile.CharacterSlot;
+            try
+            {
+                profile.RotationAccountIndex=next.AccountIndex;profile.CharacterSlot=next.CharacterSlot;
+                PriceCheck.Collector.Services.ClientLoginService.Validate(profile);
+            }
+            finally { profile.RotationAccountIndex=previousAccount;profile.CharacterSlot=previousSlot; }
+            progress($"Closing client · selecting account {next.AccountIndex+1}, character {next.CharacterSlot}…");
             await _launcher.StopAndWaitAsync(profile.Id,session,cancellationToken);
-            profile.CharacterSlot=next;
+            profile.RotationAccountIndex=next.AccountIndex;profile.CharacterSlot=next.CharacterSlot;
             var replacement=await _launcher.LaunchAsync(profile,template,progress,cancellationToken,beforeLogin);
             await restore(replacement);
             Started(profile,replacement,DateTimeOffset.UtcNow);

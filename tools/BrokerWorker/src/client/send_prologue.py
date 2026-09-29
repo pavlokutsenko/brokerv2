@@ -29,7 +29,7 @@ def _retained_prologue(raw: bytes, send: int) -> bytes | None:
     return raw[45:50]
 
 
-def resolve_send_prologue(read, send: int, modules: dict[str, int]) -> tuple[bytes, str, list[int]]:
+def resolve_send_prologue(read, send: int, modules: dict[str, int], agent_layout=None) -> tuple[bytes, str, list[int]]:
     """Return (displaced bytes, mode, relay addresses); perform no memory writes."""
     entry = read(send, 5)
     if entry == SEND_PROLOGUE:
@@ -43,14 +43,18 @@ def resolve_send_prologue(read, send: int, modules: dict[str, int]) -> tuple[byt
         return prologue, "recovered-prologue-from-e9-relay", [relay]
 
     agent = modules.get("pricecheck.clientagent.dll")
+    callback = agent_layout[0] if agent_layout else (agent + AGENT_CALLBACK_RVA if agent else 0)
     if (not agent or raw[:6] != ABSOLUTE_JUMP
-            or struct.unpack_from("<Q", raw, 6)[0] != agent + AGENT_CALLBACK_RVA):
+            or struct.unpack_from("<Q", raw, 6)[0] != callback):
         raise RuntimeError("send E9 target is not a validated prior or ClientAgent relay")
-    getter_address = agent + AGENT_GETTER_RVA
-    getter = read(getter_address, len(AGENT_GETTER))
-    if getter != AGENT_GETTER:
-        raise RuntimeError("ClientAgent send layout changed; refusing unknown trampoline")
-    slot = getter_address + len(getter) + struct.unpack_from("<i", getter, 3)[0]
+    if agent_layout:
+        slot = agent_layout[1]
+    else:
+        getter_address = agent + AGENT_GETTER_RVA
+        getter = read(getter_address, len(AGENT_GETTER))
+        if getter != AGENT_GETTER:
+            raise RuntimeError("ClientAgent send layout changed; refusing unknown trampoline")
+        slot = getter_address + len(getter) + struct.unpack_from("<i", getter, 3)[0]
     trampoline = struct.unpack("<Q", read(slot, 8))[0]
     if not trampoline or trampoline in (send, relay):
         raise RuntimeError("invalid ClientAgent original-send trampoline")

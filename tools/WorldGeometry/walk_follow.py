@@ -4,6 +4,7 @@ from collections import deque
 import math
 import time
 from walk_arrival_read import arrival_read
+from walk_handoff import reconnect_handoff
 
 
 def temple_gate_direct_allowed(current, goal, hit, rules=None):
@@ -79,10 +80,12 @@ def shop_lookahead(current,shops,ordinary,rules=None):
     band=rules.get('gateApproachX')
     if band and band[0] <= current[0] <= band[1] and any(
             gate[2]-160 <= current[1] <= gate[3]+160 for gate in rules.get('gates',[])):
-        return min(ordinary,95)
+        ordinary=min(ordinary,95)
     if shops and any(math.dist(current[:2],point)<220
                      for point in getattr(shops,'anchor_positions',())):
-        return min(ordinary,95)
+        # Keep goals far enough ahead to avoid reaching them between native
+        # commands. Radius72 still bounds shortcutting a short forward arc.
+        return min(ordinary,72)
     return ordinary
 
 
@@ -108,13 +111,24 @@ def lookahead_goal(path,nav,current,arc,lookahead,rules=None):
         # for the immobility watchdog. Keep final arrival for the outer loop,
         # which may have entered before the latest position reached the goal.
         final=arc+lookahead>=path.distance[-1]
-        if (final or math.dist(current[:2],candidate)>=8) and nav.clear(tuple(current[:2]),candidate):
+        # A folded route can put a future point behind the pawn while its
+        # next segment still leads forward. Do not shortcut across that turn:
+        # reducing lookahead must reach the bend first, or request a replan.
+        # Otherwise successive goals reverse direction and never advance arc.
+        origin=path.at(arc)
+        next_index=min(len(path.points)-1,bisect_right(path.distance,arc))
+        ahead=path.points[next_index]
+        forward=sum((ahead[k]-origin[k])*(candidate[k]-current[k]) for k in (0,1))>=0
+        arrival=final and path.distance[-1]-arc<=23
+        if (forward or arrival) and (final or math.dist(current[:2],candidate)>=8) and nav.clear(tuple(current[:2]),candidate):
             return candidate
         lookahead*=.75
     return None
 
 
 def follow(client,nav,points,log,max_seconds=600,progress_callback=None,guard=None):
+    current=client.position()
+    points=reconnect_handoff(client,nav,points,current,log)
     path=Path(points)
     start=time.monotonic();arc=0.0;last_sent=0;last_log=0;last_goal=None
     history=deque();commands=0;peak_error=0;last_report=0
@@ -141,6 +155,15 @@ def follow(client,nav,points,log,max_seconds=600,progress_callback=None,guard=No
         if shops and shops.error:
             log({'type':'shop_error','error':shops.error})
             reason='shop_error';break
+        if shops and hasattr(shops,'wait_after_capture'):
+            pause_result,paused=shops.wait_after_capture(client,log,progress_callback)
+            if paused:
+                start+=paused
+                now=time.monotonic()
+                current=client.position();last=current;last_position_at=now
+                history.clear();last_sent=0;last_goal=None
+            if pause_result!='ready':
+                reason=pause_result;break
         goal_key=getattr(client,'read_goal_key',None) or pass_key
         if shops and goal_key in getattr(shops,'unavailable_keys',set()):
             log({'type':'approach_shop_closed','key':goal_key})
@@ -175,6 +198,11 @@ def follow(client,nav,points,log,max_seconds=600,progress_callback=None,guard=No
         selected=client.m.u64(client.world["controller"]+0x898)
         if selected!=client.initial_selected and not (shops and shops.allowed_target(selected)):
             reason="target_changed_externally";break
+        # A safe transit can be longer than background calculation. Switch
+        # from its observed position without waiting to reach the distant shop.
+        ready=getattr(client,'preparation_ready',None)
+        if commands and callable(ready) and ready():
+            reason='background_plan_ready';break
         if now-last_log>=.1:
             log({"type":"sample","t":round(now-start,3),"position":current,"arc":round(arc,2),"error":round(error,2)})
             last_log=now
@@ -199,6 +227,8 @@ def follow(client,nav,points,log,max_seconds=600,progress_callback=None,guard=No
                      'lookahead':lookahead,'reason':'no clear movement goal at least 8 units away'})
                 reason="unsafe_shortcut";break
             if last_goal is None or math.dist(last_goal,goal)>18 or now-last_sent>.7 or resume:
+                if shops and getattr(shops,'pause_queue',None):
+                    continue
                 if guard and not guard.clear(current,goal):
                     hit=guard.last_hit
                     gate=temple_gate_direct_allowed(current,goal,hit,getattr(client,'navigation_rules',{}))
@@ -224,16 +254,28 @@ def follow(client,nav,points,log,max_seconds=600,progress_callback=None,guard=No
                           max(0,min(.75,max_seconds-(time.monotonic()-start))))
         if read in ('cancelled','shop_error','target_changed_externally'):
             reason=read
-    handoff=bool(shops and reason=='completed' and
-        (getattr(client,'read_goal_key',None) or pass_key) in shops.captured_keys)
-    planning_pause=reason in ('radar_detour','temporarily_unavailable') and callable(getattr(client,'pause_for_plan',None))
+    if shops and hasattr(shops,'wait_after_capture') and reason not in (
+            'cancelled','shop_error','target_changed_externally','position_jump'):
+        pause_result,paused=shops.wait_after_capture(client,log,progress_callback)
+        start+=paused
+        if pause_result!='ready': reason=pause_result
+    handoff=bool(shops and (reason=='background_plan_ready' or (reason=='completed' and
+        ((getattr(client,'read_goal_key',None) or pass_key) in shops.captured_keys
+         or (getattr(client,'section_handoff',False) and not individual)))))
+    planning_pause=reason in ('radar_detour','temporarily_unavailable','blocked','stalled',
+                              'unsafe_shortcut','route_deviation')
+    planning_pause=planning_pause and callable(getattr(client,'pause_for_plan',None))
     if handoff:
-        # The next connector supplies ordinary movement immediately after
-        # the exact reply. Final cleanup still performs a verified stop.
+        # The next connector supplies ordinary movement after any configured
+        # trader pause. Final cleanup still performs a verified stop.
         stop2=client.position();drift=None
+        client.last_handoff_position=stop2
+        client.last_handoff_at=time.monotonic()
     elif planning_pause:
+        client.last_handoff_at=None
         client.pause_for_plan();stop2=client.position();drift=None
     else:
+        client.last_handoff_at=None
         if shops: shops.active.clear()
         client.stop()
     if not handoff and individual and reason=='completed':

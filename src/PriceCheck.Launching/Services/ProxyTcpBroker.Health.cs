@@ -5,6 +5,7 @@ namespace PriceCheck.Collector.Services;
 
 internal sealed partial class ProxyTcpBroker
 {
+    private static bool IsWorldPort(int port) => port is 7782 or 9971 or 9972 or 9973;
     private readonly bool _guarded;
     private readonly ConcurrentDictionary<int,byte> _boundPids = new();
     private long _connections, _sentBytes, _receivedBytes, _worldSent, _worldReceived, _worldOpenedAt, _worldConnections;
@@ -12,7 +13,7 @@ internal sealed partial class ProxyTcpBroker
     private string? _error;
     public bool AllowLogin { get; set; }
     public bool ProxyEnabled { get; }
-    public string? Error => Volatile.Read(ref _error) ?? (_acceptLoop.IsFaulted ? "Локальный прокси перестал принимать соединения." : null);
+    public string? Error => Volatile.Read(ref _error) ?? (_acceptLoop.IsFaulted ? "Local proxy stopped accepting connections." : null);
     public long Connections => Interlocked.Read(ref _connections);
     public long SentBytes => Interlocked.Read(ref _sentBytes);
     public long ReceivedBytes => Interlocked.Read(ref _receivedBytes);
@@ -34,7 +35,7 @@ internal sealed partial class ProxyTcpBroker
         using var device = new Lu4Device();
         var route = device.QueryProxyGuard(pid);
         if (!route.Active || route.HostProcessId != Environment.ProcessId || route.ListenerPort != ListenerPort)
-            throw new LaunchProtectionException("Дочерний процесс не унаследовал защиту прокси.");
+            throw new LaunchProtectionException("Child process did not inherit proxy protection.");
         _boundPids.TryAdd(pid, 0);
         Volatile.Write(ref _pid, pid);
     }
@@ -42,10 +43,10 @@ internal sealed partial class ProxyTcpBroker
     {
         if (category == "client_to_proxy") {
             Interlocked.Add(ref _sentBytes, count);
-            if (port == 7782) Interlocked.Add(ref _worldSent, count);
+            if (IsWorldPort(port)) Interlocked.Add(ref _worldSent, count);
         } else {
             Interlocked.Add(ref _receivedBytes, count);
-            if (port == 7782) Interlocked.Add(ref _worldReceived, count);
+            if (IsWorldPort(port)) Interlocked.Add(ref _worldReceived, count);
         }
     }
 }

@@ -18,6 +18,7 @@ public static class HardwareInventoryService
         try { ScanDisks(rows); } catch (Exception e) { rows.Add(new("Physical disks", e.Message, "Scan unavailable")); }
         try { ScanMonitors(rows); } catch (Exception e) { rows.Add(new("Monitors", e.Message, "Scan unavailable")); }
         HardwareInventoryPeripheral.Scan(rows);
+        HardwareInventoryWmi.Scan(rows);
         return rows;
     }
 
@@ -101,10 +102,10 @@ public static class HardwareInventoryService
             ("Windows · PC name (registry)", @"SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName", "ComputerName", true),
             ("Windows · InstallDate", @"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallDate", true),
             ("Windows · SusClientId", @"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate", "SusClientId", true),
-            ("Windows · SQM MachineId", @"SOFTWARE\Microsoft\SQMClient", "MachineId", false),
+            ("Windows · SQM MachineId", @"SOFTWARE\Microsoft\SQMClient", "MachineId", true),
             ("Windows · Secure Boot", @"SYSTEM\CurrentControlSet\Control\SecureBoot\State", "UEFISecureBootEnabled", false),
-            ("Processor · model", @"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString", false),
-            ("Processor · revision", @"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "Update Revision", false)
+            ("Processor · model", @"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString", true),
+            ("Processor · revision", @"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "Update Revision", true)
         };
         foreach (var value in values)
         {

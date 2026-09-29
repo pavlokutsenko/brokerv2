@@ -54,8 +54,8 @@ def main() -> int:
     )
     parser.add_argument("pid", type=int)
     parser.add_argument("--globals", type=Path, required=True)
-    parser.add_argument("--start", type=int, default=17500)
-    parser.add_argument("--stop", type=int, default=20000)
+    parser.add_argument("--start", type=int, default=0)
+    parser.add_argument("--stop", type=int, default=100000)
     parser.add_argument(
         "--terms",
         nargs="+",

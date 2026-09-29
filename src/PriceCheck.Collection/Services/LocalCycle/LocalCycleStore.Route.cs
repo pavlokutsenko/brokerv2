@@ -12,6 +12,7 @@ public sealed partial class LocalCycleStore
     private int _admissionLimit;
     private int _initialCount;
     private int _admissionCount;
+    public bool HasPendingPass { get { lock(_sync) return _pass.Length>0 && _remaining.Any(k=>_traders.TryGetValue(k,out var t) && Ready(t)); } }
     public void ResetPass()
     {
         lock(_sync){_pass="";_remaining.Clear();_admitted.Clear();_admittedGenerations.Clear();_readPass.Clear();_initialCount=0;_admissionCount=0;_admissionLimit=0;_db.Command("DELETE FROM route");}
@@ -23,7 +24,8 @@ public sealed partial class LocalCycleStore
             _db.Command("DELETE FROM route");
             var candidates=_traders.Values.Where(t=>Ready(t)&&boundary.Inside(t.X,t.Y)).ToList();
             // Coarse clusters cover the whole market; detailed worker path gets only 20 targets.
-            var clusters=candidates.GroupBy(t=>((int)Math.Floor(t.X/256),(int)Math.Floor(t.Y/256))).Select(g=>g.ToList()).ToList();
+            var clusters=candidates.GroupBy(t=>CycleRouteSections.Room(t.X,t.Y) is {Length:>0} room
+                ? room : $"grid:{(int)Math.Floor(t.X/256)}:{(int)Math.Floor(t.Y/256)}").Select(g=>g.ToList()).ToList();
             while(clusters.Count>0)
             {
                 var cluster=clusters.MinBy(g=>Distance(x,y,g.Average(t=>t.X),g.Average(t=>t.Y)))!;
@@ -42,6 +44,33 @@ public sealed partial class LocalCycleStore
             _admissionLimit=_initialCount+Math.Max(64,_initialCount/2);
             Message?.Invoke($"INFO {_profile.Name}: route {_pass} · {_initialCount} targets · admission cap {_admissionLimit}");
         });
+    }
+    public bool ContinuePass(double x,double y,CycleRadarPool boundary)
+    {
+        lock(_sync)
+        {
+            if(_pass.Length==0 || !double.IsFinite(x) || !double.IsFinite(y))return false;
+            Transaction(()=>{
+                var pending=_remaining.Where(k=>_traders.TryGetValue(k,out var t) && Ready(t) && boundary.Inside(t.X,t.Y))
+                    .Select(k=>_traders[k]).ToList();
+                _remaining.Clear();
+                var clusters=pending.GroupBy(t=>CycleRouteSections.Room(t.X,t.Y) is {Length:>0} room
+                    ? room : $"grid:{(int)Math.Floor(t.X/256)}:{(int)Math.Floor(t.Y/256)}").Select(g=>g.ToList()).ToList();
+                while(clusters.Count>0)
+                {
+                    var cluster=clusters.MinBy(g=>Distance(x,y,g.Average(t=>t.X),g.Average(t=>t.Y)))!;
+                    clusters.Remove(cluster);
+                    while(cluster.Count>0)
+                    {
+                        var t=cluster.MinBy(t=>Distance(x,y,t.X,t.Y))!;cluster.Remove(t);
+                        _remaining.Add(t.Key);x=t.X;y=t.Y;
+                        _db.Command("UPDATE route SET ordinal=? WHERE pass_id=? AND trader_key=?",_remaining.Count,_pass,t.Key);
+                    }
+                }
+            });
+            Message?.Invoke($"INFO {_profile.Name}: continuing route {_pass} · {_remaining.Count} remaining targets from new character position");
+            return _remaining.Count>0;
+        }
     }
     private bool Ready(LocalTrader t) => t.HasPosition && !t.ClosedThisSession && !t.ConfirmedClosed && !t.NeedsServerHistory && t.KioskType is 1 or 3 or 8 && NeedsRead(t);
     private void InsertPassTarget(LocalTrader t,double x,double y)
@@ -106,6 +135,8 @@ public sealed partial class LocalCycleStore
         {
             var targets=_remaining.Where(k=>Ready(_traders[k])).Select(k=>_traders[k]).ToArray();
             return state with {Active=_traders.Values.Count(t=>!t.ConfirmedClosed),Pending=targets.Length,Checked=_readPass.Count,
+                CurrentPriceTraders=_traders.Values.Count(t=>t.SeenOpenThisSession && t.HasPosition && _collectionBoundary.Inside(t.X,t.Y) &&
+                    !t.ClosedThisSession && !t.ConfirmedClosed && !t.NeedsServerHistory && t.KioskType is 1 or 3 or 8 && !NeedsRead(t)),
                 Deferred=0,Overdue=0,PassRead=_readPass.Count,PassNewFound=Math.Max(0,_admitted.Count-_initialCount),PassRadarPending=targets.Length,
                 Queue=targets.Take(150).Select(t=>new CycleQueueRow(t.Name,"Ready",t.Reason,
                     t.LastRead is null?"Never read":$"{(_clock()-t.LastRead.Value).TotalHours:F1} h",0)).ToArray()};

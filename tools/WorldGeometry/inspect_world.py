@@ -27,9 +27,9 @@ FNAMES = 0x7FBFB80
 
 
 class Survey:
-    def __init__(self, memory: Memory, base: int):
+    def __init__(self, memory: Memory, base: int, pool_rva: int = FNAMES):
         self.m = memory
-        self.pool = base + FNAMES
+        self.pool = base + pool_rva
         self.names: dict[int, str] = {}
 
     def name(self, obj: int) -> str:

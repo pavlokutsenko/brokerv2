@@ -11,8 +11,18 @@ internal static class Program
 {
     [STAThread] private static void Main(string[] args)
     {
+        if(args is ["--accounts-only",var accountsOutput])
+        {
+            var accountsApp=new App(enableRuntime:false);accountsApp.InitializeComponent();
+            var accountsWindow=new MainWindow(false){ShowInTaskbar=false,Left=-20000,Top=-20000};
+            accountsWindow.Show();
+            CheckAccountEditor(accountsWindow,accountsOutput);
+            accountsWindow.Close();accountsApp.Shutdown();
+            Console.WriteLine("ROTATION_ACCOUNTS_UI_OK add masked_list layout");
+            return;
+        }
         var app=new App(enableRuntime:false);app.InitializeComponent();
-        var runtime=new ProfileRuntime{Profile=new(){AutoLoginEnabled=true,RotationCharacterCount=7},
+        var runtime=new ProfileRuntime{Profile=new(){AutoLoginEnabled=true,LoginName="primary",LoginPassword="test-secret",RotationCharacterCount=7},
             CharacterRotationStatus="Character 0 of 7 · next change 17:30:00 · 60.0 min",LaunchStatus="Client ready"};
         var window=new MainWindow(false){ShowInTaskbar=false,Left=-20000,Top=-20000};
         window.Runtimes.Add(runtime);window.SelectedRuntime=runtime;
@@ -44,7 +54,11 @@ internal static class Program
         if(!runtime.Profile.CharacterRotationEnabled || runtime.Profile.RotationIntervalMinutes!=90 || runtime.Profile.RotationJitterMinutes!=10)
             throw new Exception("Rotation controls do not update the selected profile.");
         interval.Text="60";jitter.Text="15";
+        CheckAccountEditor(window,Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[0]))!,"rotation-accounts.png"));
         runtime.CharacterRotationStatus="Character 0 of 7 · next change 17:30:00 · 60.0 min";
+        var collection=(CollectionPanelView)window.FindName("CollectionPanel")!;
+        if(((TextBlock)collection.FindName("CharacterRotationCountdown")!).Text!=runtime.CharacterRotationStatus)
+            throw new Exception("Collection panel does not show the actual rotation clock.");
         window.UpdateLayout();
         var bitmap=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(window);
         var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
@@ -55,5 +69,34 @@ internal static class Program
         window.Close();app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
         if(window.IsVisible) throw new Exception("Idle collector close was canceled or remained stuck.");
         app.Shutdown();Console.WriteLine("CHARACTER_ROTATION_UI_OK defaults editable_fields toggle recovery idle_close");
+    }
+
+    private static void CheckAccountEditor(MainWindow window,string output)
+    {
+        var previous=window.SelectedRuntime;
+        var profile=new CollectorProfile{LoginName="primary",LoginPassword="primary-secret"};
+        var runtime=new ProfileRuntime{Profile=profile};
+        window.Runtimes.Add(runtime);window.SelectedRuntime=runtime;
+        window.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
+        var view=(LaunchPanelView)window.FindName("LaunchPanel")!;
+        if(!((Button)view.FindName("RotationAccountsButton")!).IsEnabled)
+            throw new Exception("Account editor unavailable for a stopped profile.");
+        var accounts=new RotationAccountsDialog(window,profile){ShowInTaskbar=false};
+        accounts.Show();window.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
+        var name=(TextBox)accounts.FindName("LoginInput")!;
+        var password=(PasswordBox)accounts.FindName("PasswordInput")!;
+        name.Text="secondary";password.Password="secondary-secret";
+        ((Button)accounts.FindName("SaveAccountButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        if(accounts.Accounts.Count!=1 || accounts.Accounts[0].LoginName!="secondary" ||
+           accounts.Accounts[0].LoginPassword!="secondary-secret")
+            throw new Exception("Rotation account editor did not add an account draft.");
+        accounts.UpdateLayout();
+        var bitmap=new RenderTargetBitmap((int)accounts.ActualWidth,(int)accounts.ActualHeight,96,96,PixelFormats.Pbgra32);
+        bitmap.Render(accounts);
+        var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
+        using(var stream=File.Create(output))encoder.Save(stream);
+        accounts.Close();
+        window.SelectedRuntime=previous;
     }
 }

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include "minhook/include/MinHook.h"
 #include "character_roster.h"
+#include "../LU4Memory/include/lu4_protocol.h"
 
 namespace {
 constexpr std::uint32_t roster_magic=0x50435253;
@@ -19,6 +20,30 @@ HANDLE mapping=nullptr;
 Shared* shared=nullptr;
 bool created=false;
 std::int32_t roster_name=-1;
+void* protected_page=nullptr;
+DWORD previous_protection=0;
+
+bool protect_roster_page(void* address, DWORD protection, DWORD* previous) {
+    HANDLE device=CreateFileW(L"\\\\.\\LU4Memory", GENERIC_READ|GENERIC_WRITE,
+        FILE_SHARE_READ|FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if(device==INVALID_HANDLE_VALUE) return false;
+    LU4_VIRTUAL_MEMORY_REQUEST request{};
+    request.Version=LU4_PROTOCOL_VERSION;
+    request.ProcessId=GetCurrentProcessId();
+    request.Address=reinterpret_cast<ULONGLONG>(address);
+    request.Size=5;
+    request.Protection=protection;
+    DWORD returned=0;
+    const bool okay=DeviceIoControl(device, IOCTL_LU4_PROTECT_PROCESS_MEMORY,
+        &request, sizeof(request), &request, sizeof(request), &returned, nullptr) &&
+        returned==sizeof(request) && request.Version==LU4_PROTOCOL_VERSION &&
+        request.ProcessId==GetCurrentProcessId() && request.Reserved==0 &&
+        request.Address<=reinterpret_cast<ULONGLONG>(address) &&
+        reinterpret_cast<ULONGLONG>(address)-request.Address<request.Size;
+    if(okay && previous) *previous=request.OldProtection;
+    CloseHandle(device);
+    return okay;
+}
 
 void roster_error(const char* stage, int code) {
     wchar_t local[MAX_PATH]{}, directory[MAX_PATH]{}, logs[MAX_PATH]{}, path[MAX_PATH]{};
@@ -81,7 +106,14 @@ bool StartCharacterRoster(void* process_event,void* hud,void* mode) {
     const auto created_status = MH_CreateHook(process_event,&ObserveRoster,reinterpret_cast<void**>(&original));
     if(created_status!=MH_OK) { roster_error("create", created_status); StopCharacterRoster();return false; }
     created=true;
-    const auto enabled_status = MH_EnableHook(process_event);
+    // The updated client denies user-mode VirtualProtect on its image code.
+    // Limit the driver-backed writable window to this roster hook's lifetime;
+    // MinHook still owns the trampoline and performs its usual thread-safe patch.
+    if(!protect_roster_page(process_event,PAGE_EXECUTE_READWRITE,&previous_protection)) {
+        roster_error("protect", GetLastError()); StopCharacterRoster();return false;
+    }
+    protected_page=process_event;
+    const auto enabled_status = MH_EnableHookOnWritablePage(process_event);
     if(enabled_status!=MH_OK) { roster_error("enable", enabled_status); StopCharacterRoster();return false; }
     return true;
 }
@@ -89,8 +121,21 @@ bool StartCharacterRoster(void* process_event,void* hud,void* mode) {
 int CharacterRosterCount() { return shared ? shared->count : -3; }
 void CharacterRosterSelected(int slot) { if(shared) InterlockedExchange(&shared->selected,slot); }
 void StopCharacterRoster() {
-    if(created && hooked_address) { MH_DisableHook(hooked_address);MH_RemoveHook(hooked_address); }
+    if(created && hooked_address) {
+        const auto disabled=MH_DisableHookOnWritablePage(hooked_address);
+        if(disabled!=MH_OK && disabled!=MH_ERROR_DISABLED)
+            roster_error("disable",disabled);
+        else {
+            const auto removed=MH_RemoveHook(hooked_address);
+            if(removed!=MH_OK) roster_error("remove",removed);
+        }
+    }
     created=false;hooked_address=nullptr;
+    if(protected_page) {
+        if(!protect_roster_page(protected_page,previous_protection,nullptr))
+            roster_error("restore",GetLastError());
+        protected_page=nullptr;previous_protection=0;
+    }
     if(shared) { UnmapViewOfFile(shared);shared=nullptr; }
     if(mapping) { CloseHandle(mapping);mapping=nullptr; }
 }

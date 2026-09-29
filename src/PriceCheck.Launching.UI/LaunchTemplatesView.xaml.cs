@@ -28,7 +28,8 @@ public partial class LaunchTemplatesView : UserControl
         _savedTemplates = templates.Select(Clone).ToList();
         Templates.Clear();
         foreach (var template in _savedTemplates.Select(Clone)) Templates.Add(template);
-        TemplateList.SelectedIndex = Templates.Count > 0 ? 0 : -1;
+        if (Templates.Count == 0) AddTemplate();
+        else TemplateList.SelectedIndex = 0;
     }
 
     public void RefreshAfterLaunch(IEnumerable<LaunchTemplate> templates)
@@ -58,11 +59,13 @@ public partial class LaunchTemplatesView : UserControl
             MacAddress = value.Identity.MacAddress,
             SystemSerial = value.Identity.SystemSerial, ChassisSerial = value.Identity.ChassisSerial,
             ProcessorId = value.Identity.ProcessorId, ProcessorSerial = value.Identity.ProcessorSerial,
+            ProcessorModel = value.Identity.ProcessorModel, ProcessorRevision = value.Identity.ProcessorRevision,
             MemorySerial = value.Identity.MemorySerial, DiskSerial = value.Identity.DiskSerial,
             HardwareProfileGuid = value.Identity.HardwareProfileGuid,
             WindowsProductId = value.Identity.WindowsProductId,
             DiskGuid = value.Identity.DiskGuid, DiskSignature = value.Identity.DiskSignature,
-            SusClientId = value.Identity.SusClientId, VideoIdentifier = value.Identity.VideoIdentifier,
+            SusClientId = value.Identity.SusClientId, SqmMachineId = value.Identity.SqmMachineId,
+            VideoIdentifier = value.Identity.VideoIdentifier,
             RegistryComputerName = value.Identity.RegistryComputerName,
             InstallDate = value.Identity.InstallDate, RouterMac = value.Identity.RouterMac
         },
@@ -87,9 +90,14 @@ public partial class LaunchTemplatesView : UserControl
             template.ProxyPassword = TemplatePassword.Password;
     }
 
-    private void New_Click(object sender, RoutedEventArgs e)
+    private void New_Click(object sender, RoutedEventArgs e) => AddTemplate();
+
+    private void AddTemplate()
     {
-        var template = new LaunchTemplate { Identity = ClientLaunchConfiguration.GenerateIdentity() };
+        var name = "Новый шаблон";
+        for (var number = 2; Templates.Any(value => string.Equals(value.Name.Trim(), name, StringComparison.OrdinalIgnoreCase)); number++)
+            name = $"Новый шаблон {number}";
+        var template = new LaunchTemplate { Name = name, Identity = ClientLaunchConfiguration.GenerateIdentity() };
         Templates.Add(template);
         TemplateList.SelectedItem = template;
     }
@@ -116,8 +124,8 @@ public partial class LaunchTemplatesView : UserControl
         if (Templates.Any(value => string.IsNullOrWhiteSpace(value.Name)) ||
             Templates.GroupBy(value => value.Name.Trim(), StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
         {
-            MessageBox.Show(Window.GetWindow(this), "Give each template a unique name.",
-                "Template name", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(Window.GetWindow(this), "У каждого шаблона должно быть уникальное название.",
+                "Название шаблона", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         try
@@ -129,7 +137,8 @@ public partial class LaunchTemplatesView : UserControl
         }
         catch (ArgumentException exception)
         {
-            MessageBox.Show(Window.GetWindow(this), exception.Message, "Template settings", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(Window.GetWindow(this), RussianUiTextConverter.Translate(exception.Message),
+                "Настройки шаблона", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (SaveRequested is null) return;
@@ -140,7 +149,7 @@ public partial class LaunchTemplatesView : UserControl
         }
         catch (Exception exception)
         {
-            MessageBox.Show(Window.GetWindow(this), exception.Message, "Could not save templates",
+            MessageBox.Show(Window.GetWindow(this), RussianUiTextConverter.Translate(exception.Message), "Не удалось сохранить шаблоны",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -150,18 +159,18 @@ public partial class LaunchTemplatesView : UserControl
     private async void Scan_Click(object sender, RoutedEventArgs e)
     {
         ScanRows.Clear();
-        ScanStatusText.Text = "Scanning…";
+        ScanStatusText.Text = "Сканирование…";
         try
         {
             foreach (var row in await Task.Run(HardwareInventoryService.Scan)) ScanRows.Add(row);
             RefreshPreview();
             ScanDetails.IsExpanded = true;
-            ScanStatusText.Text = $"Found: {ScanRows.Count}";
+            ScanStatusText.Text = $"Найдено: {ScanRows.Count}";
         }
         catch (Exception exception)
         {
-            ScanStatusText.Text = "Scan failed";
-            MessageBox.Show(Window.GetWindow(this), exception.Message, "PC scan",
+            ScanStatusText.Text = "Ошибка сканирования";
+            MessageBox.Show(Window.GetWindow(this), RussianUiTextConverter.Translate(exception.Message), "Сканирование ПК",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }

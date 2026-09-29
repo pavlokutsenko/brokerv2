@@ -26,6 +26,12 @@ public sealed partial class LocalCycleStore
                 }
             }
             // A historical result was delivered successfully. It is not a transport retry.
+            if(operation[1]=="broker")
+            {
+                using var payload=JsonDocument.Parse(operation[3]!);
+                if(payload.RootElement.TryGetProperty("epochId",out var epoch) && epoch.ValueKind==JsonValueKind.String)
+                    _db.Command("UPDATE latest_broker_delivery SET accepted=accepted+1 WHERE id=1 AND epoch_id=? AND EXISTS(SELECT 1 FROM outbox WHERE operation_id=?)",epoch.GetString(),operation[0]);
+            }
             _db.Command("DELETE FROM outbox WHERE operation_id=?",operation[0]);
         });
         return rejectedLatest;

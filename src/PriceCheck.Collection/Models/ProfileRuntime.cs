@@ -3,19 +3,20 @@ using System.Runtime.CompilerServices;
 
 namespace PriceCheck.Collector.Models;
 
-public sealed class ProfileRuntime : INotifyPropertyChanged
+public sealed partial class ProfileRuntime : INotifyPropertyChanged
 {
-    private string _status = "Not running";
+    private string _status = "Не запущен";
     private bool _isBusy;
     private bool _isCollectionEnabled;
     private bool _readerAttached;
-    private string _launchStatus = "Not running";
+    private string _launchStatus = "Не запущен";
     private PriceCheck.Contracts.ClientSession? _session;
     private RadarSnapshot? _radar;
     private BrokerSnapshot? _broker;
+    private PriceCheck.Collector.Services.BrokerDeliveryStatus? _brokerDelivery;
     private MarketCycleStatus _cycle = new();
     private string _uploadStatus = "Локальный outbox · ожидание данных";
-    private string _characterRotationStatus = "Character rotation is off";
+    private string _characterRotationStatus = "Ротация персонажей выключена";
     private PriceCheck.Contracts.ClientProtectionStatus _protection = PriceCheck.Contracts.ClientProtectionStatus.Pending;
     public PriceCheck.Contracts.ClientProtectionStatus Protection { get => _protection; set => Set(ref _protection, value); }
 
@@ -27,6 +28,7 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
         set
         {
             if (!Set(ref _session, value)) return;
+            ResetRadarCounts();
             OnPropertyChanged(nameof(ProcessId));
             OnPropertyChanged(nameof(ProcessLabel));
             OnPropertyChanged(nameof(CanEditMarket));
@@ -55,36 +57,42 @@ public sealed class ProfileRuntime : INotifyPropertyChanged
         RefreshProfile();
         return true;
     }
-    public RadarSnapshot? Radar { get => _radar; set { if (Set(ref _radar, value)) NotifyMetrics(); } }
+    public RadarSnapshot? Radar { get => _radar; set { if (Set(ref _radar, value)) { NotifyRadarCounts(); NotifyMetrics(); } } }
     public BrokerSnapshot? Broker { get => _broker; set { if (Set(ref _broker, value)) NotifyMetrics(); } }
+    public PriceCheck.Collector.Services.BrokerDeliveryStatus? BrokerDelivery
+    {
+        get => _brokerDelivery;
+        set { if (Set(ref _brokerDelivery,value)) OnPropertyChanged(nameof(BrokerSentTraderCount)); }
+    }
+    public string BrokerSentTraderCount => BrokerDelivery is null ? "—" : $"{BrokerDelivery.Accepted:N0} / {BrokerDelivery.Traders:N0}";
     public MarketCycleStatus Cycle { get => _cycle; set { if (Set(ref _cycle, value)) OnPropertyChanged(nameof(NextBrokerLabel)); } }
-    public string NextBrokerLabel => IsCollectionEnabled ? "Next broker: after the price pass" : "Collection stopped";
+    public string NextBrokerLabel => IsCollectionEnabled ? "Следующий брокер: после прохода цен" : "Сбор остановлен";
 
-    public string RoleLabel => "COLLECTOR";
-    public string ProcessLabel => ProcessId is int pid ? $"PID {pid}" : "No process";
+    public string RoleLabel => "СБОРЩИК";
+    public string ProcessLabel => ProcessId is int pid ? $"PID {pid}" : "Нет процесса";
     public string RadarTraderCount => Radar is null ? "—" : $"{Radar.Traders.Count:N0} / {Radar.VisibleTraders:N0}";
     public string CenterZoneLabel => SavedGiranCenter.Resolve(Profile) is { } center
         ? $"X {center.X:N0}  ·  Y {center.Y:N0}"
-        : "Center not set";
+        : "Центр не задан";
     public string CenterZoneState => SavedGiranCenter.Resolve(Profile) is null
-        ? "Center not set"
-        : Radar is null ? "Connect reader to locate the character"
-        : !Radar.CenterZoneConfigured ? "Position unavailable"
+        ? "Центр не задан"
+        : Radar is null ? "Позиция появится после запуска клиента"
+        : !Radar.CenterZoneConfigured ? "Позиция недоступна"
         : !IsCollectionEnabled
-            ? "Collection stopped"
-            : Radar.IsInsideCenterZone ? "Inside observation zone" : "Price route · outside center";
-    public string CollectionToggleLabel => IsCollectionEnabled ? "Stop collection" : "Start collection";
+            ? "Сбор остановлен"
+            : Radar.IsInsideCenterZone ? "В зоне наблюдения" : "Маршрут цен · вне центра";
+    public string CollectionToggleLabel => IsCollectionEnabled ? "Остановить сбор" : "Начать сбор";
     public string CurrentPositionLabel => Radar is null
-        ? "Current position unavailable"
-        : $"Now X {Radar.PlayerX:N0}  ·  Y {Radar.PlayerY:N0}";
+        ? "Текущая позиция недоступна"
+        : $"Сейчас X {Radar.PlayerX:N0}  ·  Y {Radar.PlayerY:N0}";
     public string ActorCount => Radar?.PositionedActors.ToString("N0") ?? "—";
     public string BrokerTraderCount => Broker?.UniqueTraders.ToString("N0") ?? "—";
     public string ListingCount => Broker?.ListingRows.ToString("N0") ?? "—";
     public string SellCount => Radar?.Traders.Count(x => x.KioskType == 1).ToString("N0") ?? "—";
     public string BuyCount => Radar?.Traders.Count(x => x.KioskType == 3).ToString("N0") ?? "—";
     public string PackageCount => Radar?.Traders.Count(x => x.KioskType == 8).ToString("N0") ?? "—";
-    public string LastRadarLabel => Radar is null ? "No snapshot" : $"Updated {Radar.CapturedAtUtc.ToLocalTime():HH:mm:ss}";
-    public string LastBrokerLabel => Broker is null ? "No pass yet" : $"{Broker.CapturedAtUtc.ToLocalTime():HH:mm:ss} · {Broker.ElapsedSeconds:F1} sec";
+    public string LastRadarLabel => Radar is null ? "Нет снимка" : $"Обновлено {Radar.CapturedAtUtc.ToLocalTime():HH:mm:ss}";
+    public string LastBrokerLabel => Broker is null ? "Проходов пока нет" : $"{Broker.CapturedAtUtc.ToLocalTime():HH:mm:ss} · {Broker.ElapsedSeconds:F1} с";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

@@ -24,7 +24,7 @@ $Python = 'C:\Users\Pavel\AppData\Local\Programs\Python\Python314\python.exe'
     --add-data "$(Join-Path $Repository 'tools\WorldGeometry');navigation" `
     --add-data "$(Join-Path $Repository 'tools\RemotePrices');remote" `
     --add-data "$(Join-Path $Repository 'maps');navigation/maps" `
-    --hidden-import shapely --hidden-import shapely.ops --hidden-import shapely.geometry --hidden-import shapely.prepared --hidden-import numpy `
+    --hidden-import shapely --hidden-import shapely.ops --hidden-import shapely.geometry --hidden-import shapely.prepared --hidden-import shapely.wkb --hidden-import numpy `
     (Join-Path $Source 'broker_worker.py')
 if ($LASTEXITCODE -ne 0) { throw 'BrokerWorker build failed' }
 

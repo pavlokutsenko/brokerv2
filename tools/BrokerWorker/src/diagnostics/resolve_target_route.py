@@ -11,12 +11,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "client"))
 
 from lu4_memory_client import Lu4MemoryClient  # noqa: E402
+from scan_lu4_actors import Memory, pe_info
+from discover_unreal_globals import scan_globals, validate_fname_pool
+from inspect_shop_ufunctions import decode_name
 
 
 MAX_CLASS_DEPTH = 32
 MAX_CHILDREN = 4096
 PROCESS_EVENT_VTABLE_INDEX = 77
-TARGET_SELECTED_ORDER_NAME_INDEX = 70323
 
 
 def unpack(client: Lu4MemoryClient, pid: int, address: int, fmt: str) -> tuple:
@@ -52,6 +54,7 @@ def main() -> int:
         default=ROOT / "diagnostics" / "latest_actor_snapshot.json",
     )
     parser.add_argument("--json", type=pathlib.Path)
+    parser.add_argument("--globals", type=pathlib.Path)
     args = parser.parse_args()
 
     snapshot = json.loads(args.snapshot.read_text(encoding="utf-8"))
@@ -71,6 +74,20 @@ def main() -> int:
     }
 
     with Lu4MemoryClient() as client:
+        memory = Memory(client, args.pid)
+        if args.globals:
+            tables = json.loads(args.globals.read_text(encoding="utf-8"))
+            if tables.get("pid") != args.pid or len(tables.get("fname_pool_candidates", [])) != 1:
+                raise RuntimeError("FNamePool report does not match the owned PID")
+            pool = int(tables["fname_pool_candidates"][0]["address"])
+            if validate_fname_pool(memory, pool, memory.read(pool, 0x30), 0) is None:
+                raise RuntimeError("FNamePool report failed live validation")
+        else:
+            base = client.process_base(args.pid)
+            _, names, _ = scan_globals(memory, base, pe_info(memory, base))
+            if len(names) != 1:
+                raise RuntimeError("FNamePool discovery is not unique")
+            pool = names[0]["address"]
         vtable = u64(client, args.pid, controller)
         process_event = u64(
             client,
@@ -119,7 +136,7 @@ def main() -> int:
                     candidates.append(entry)
                 if (
                     function_owner == owner
-                    and name_index == TARGET_SELECTED_ORDER_NAME_INDEX
+                    and decode_name(memory, pool, name_index) == "TargetSelected_Order"
                     and params_size == 0x24
                 ):
                     order = entry

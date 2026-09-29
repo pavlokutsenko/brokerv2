@@ -64,6 +64,7 @@ public sealed partial class CollectionModule
         try
         {
             await _radarSessions.StartAsync(session.ProcessId, GetCenterZone(runtime.Profile), false, cancellationToken);
+            _radarSessions.RememberTraderKeys(session.ProcessId,GetLocalStore(runtime).Keys);
             if (!_isCurrent(session)) throw new InvalidOperationException("Client changed while attaching.");
             _attached.Add(id, session);
             runtime.ReaderAttached = true;
@@ -171,5 +172,5 @@ public sealed partial class CollectionModule
     private void TrackJob(ProfileRuntime runtime, Task task) => _activeJobs[runtime.Profile.Id] = task;
     private void Log(string value) => Message?.Invoke(value);
     public static MarketZone? GetCenterZone(CollectorProfile profile) =>
-        SavedGiranCenter.Resolve(profile) is { } center ? new(center.X, center.Y, 500) : null;
+        SavedGiranCenter.Resolve(profile) is { } center ? new(center.X, center.Y, SavedGiranCenter.StandingRadius) : null;
 }

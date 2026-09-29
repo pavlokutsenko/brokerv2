@@ -10,19 +10,26 @@ namespace PriceCheck.Collector;
 public partial class JournalPanelView : UserControl
 {
     private ICollectionView? _view;
+    private MainWindow? _main;
     public JournalPanelView() { InitializeComponent(); Loaded += InitializeJournal; }
     private void InitializeJournal(object sender, RoutedEventArgs e)
     {
         if (_view is not null || DataContext is not MainWindow main) return;
-        ProfileFilter.ItemsSource = new[] { "Все профили", "System" }.Concat(main.MarketOptions);
-        ProfileFilter.SelectedIndex = 0;
+        _main = main;
         _view = CollectionViewSource.GetDefaultView(main.JournalEntries);
         _view.Filter = Matches; Entries.ItemsSource = _view;
         main.JournalEntries.CollectionChanged += OnEntriesChanged;
+        main.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MainWindow.SelectedRuntime)) _view?.Refresh();
+        };
     }
     private bool Matches(object item) => item is JournalEntry entry &&
-        (ProfileFilter.SelectedIndex == 0 || entry.Profile == ProfileFilter.SelectedItem?.ToString()) &&
-        (LevelFilter.SelectedIndex == 0 || entry.Level == (LevelFilter.SelectedItem as ComboBoxItem)?.Content?.ToString()) &&
+        entry.Profile == _main?.SelectedRuntime?.Profile.Name &&
+        (LevelFilter.SelectedIndex == 0 || entry.Level == (LevelFilter.SelectedIndex switch
+        {
+            1 => "INFO", 2 => "WARNING", 3 => "ERROR", _ => ""
+        })) &&
         (string.IsNullOrWhiteSpace(Search.Text) || entry.Display.Contains(Search.Text, StringComparison.OrdinalIgnoreCase) ||
          entry.Trader.Contains(Search.Text, StringComparison.OrdinalIgnoreCase));
     private void FilterChanged(object sender, RoutedEventArgs e) => _view?.Refresh();

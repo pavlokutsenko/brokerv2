@@ -33,6 +33,9 @@ internal static class LocalNativeFailureTests
         {
             Check(runtime.ClientFault is not null&&store.Keys.All(k=>store.ErrorFor(k) is null),"Unsafe command before any request must not blame twenty shops.");
             Check(store.NextTargets().Count==20,"Unsafe failure retains all unresolved targets for a new client.");
+            await module.RefreshAsync(runtime);await module.RefreshAsync(runtime);
+            Check(worker.Runs==1 && runtime.IsCollectionEnabled && runtime.Cycle.Phase=="Client recovery",
+                "Refresh must retain collection intent and never retry an armed command or convert its marker into a user Stop.");
         }
         else
         {
@@ -44,11 +47,16 @@ internal static class LocalNativeFailureTests
     }
     private sealed class PreRequestFailureWorker(string reason):ICollectionWorker
     {
+        public int Runs {get;private set;}
         public int TargetCount {get;private set;}
         public Task RunAsync(ClientSession session,string mode,string output,Action<ProcessStartInfo> configure)
         {
+            Runs++;
             var start=new ProcessStartInfo();configure(start);
-            using var input=JsonDocument.Parse(File.ReadAllText(start.ArgumentList[1]));
+            using var command=JsonDocument.Parse(File.ReadAllText(start.ArgumentList[1]));
+            var section=command.RootElement.TryGetProperty("input",out var sectionPath)
+                ? sectionPath.GetString()! : start.ArgumentList[1];
+            using var input=JsonDocument.Parse(File.ReadAllText(section));
             TargetCount=input.RootElement.GetProperty("targets").GetArrayLength();
             // No native request event, shop event or result file has been created.
             return Task.FromException(new InvalidOperationException(reason));

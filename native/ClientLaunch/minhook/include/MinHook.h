@@ -153,12 +153,17 @@ extern "C" {
     //                enabled in one go.
     MH_STATUS WINAPI MH_EnableHook(LPVOID pTarget);
 
+    // For the roster observer only: the caller has already made this exact
+    // target page executable+writable through the owned-client driver.
+    MH_STATUS WINAPI MH_EnableHookOnWritablePage(LPVOID pTarget);
+
     // Disables an already created hook.
     // Parameters:
     //   pTarget [in] A pointer to the target function.
     //                If this parameter is MH_ALL_HOOKS, all created hooks are
     //                disabled in one go.
     MH_STATUS WINAPI MH_DisableHook(LPVOID pTarget);
+    MH_STATUS WINAPI MH_DisableHookOnWritablePage(LPVOID pTarget);
 
     // Queues to enable an already created hook.
     // Parameters:

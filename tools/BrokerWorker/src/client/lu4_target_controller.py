@@ -44,6 +44,8 @@ from lu4_memory_client import (  # noqa: E402
 )
 from runtime_stub_builder import run_main_generator, run_post_generator  # noqa: E402
 from send_prologue import resolve_send_prologue  # noqa: E402
+from agent_send_layout import read_agent_send_layout  # noqa: E402
+from resolve_lu4_direct_hook import executable_sections, scan_section  # noqa: E402
 
 
 class PROCESS_BASIC_INFORMATION(ctypes.Structure):
@@ -303,8 +305,17 @@ def install(pid: int) -> None:
 
     with Lu4MemoryClient() as client:
         image_base = client.process_base(pid)
-        direct = image_base + DIRECT_RVA
-        post = image_base + POST_RVA
+        headers = read_exact(client, pid, image_base, 0x1000)
+        matches = {"direct": [], "post_send": []}
+        for section in executable_sections(headers):
+            for kind, address in scan_section(client, pid, image_base,
+                                              int(section["rva"]), int(section["size"])):
+                matches[kind].append(address)
+        if any(len(addresses) != 1 for addresses in matches.values()):
+            raise RuntimeError(f"target hook sites are not unique: "
+                               f"{ {key: len(value) for key, value in matches.items()} }")
+        direct = matches["direct"][0]
+        post = matches["post_send"][0]
         direct_original = read_exact(client, pid, direct, DIRECT_ORIGINAL_SIZE)
         post_original = read_exact(client, pid, post, POST_ORIGINAL_SIZE)
         if direct_original != DIRECT_SIGNATURE:
@@ -339,6 +350,8 @@ def install(pid: int) -> None:
             generator_prologue, send_mode, send_relays = resolve_send_prologue(
                 lambda address, size: read_exact(client, pid, address, size),
                 send_address, modules,
+                read_agent_send_layout(lambda address, size: read_exact(client, pid, address, size),
+                    modules['pricecheck.clientagent.dll']) if 'pricecheck.clientagent.dll' in modules else None,
             )
             main_stub, trampoline_offset = run_main_generator(
                 HERZ_IMAGE, cave, direct, send_address, generator_prologue

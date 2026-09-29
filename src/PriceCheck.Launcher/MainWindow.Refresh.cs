@@ -22,7 +22,7 @@ public partial class MainWindow
                     ClearExited(runtime);
                     runtime.ClientFault = runtime.Protection.Error;
                     runtime.LaunchStatus = runtime.ClientFault!;
-                    Log(runtime.ClientFault!);
+                    Log(runtime.ClientFault!, runtime);
                     await SaveProfilesAsync();
                     continue;
                 }
@@ -30,7 +30,7 @@ public partial class MainWindow
                 runtime.CharacterRotationStatus = _rotation.Status(runtime.Profile, session, now);
                 var request = _recovery.Observe(runtime.Profile, session, false, false, ClientHealthProbe.Read(session), null, runtime.ClientFault, now);
                 if (request is null && _recovery.Pending(runtime.Profile.Id, session)) continue;
-                if (request is null && !ClientProcessIdentity.IsCurrent(session)) { ClearExited(runtime); runtime.LaunchStatus = "Client exited"; await SaveProfilesAsync(); continue; }
+                if (request is null && !ClientProcessIdentity.IsCurrent(session)) { ClearExited(runtime); runtime.LaunchStatus = "Клиент закрыт"; await SaveProfilesAsync(); continue; }
                 if (request is null && !_rotation.IsDue(runtime.Profile, session, now)) continue;
                 var template = LaunchTemplates.FirstOrDefault(value => value.Id == runtime.Profile.LaunchTemplateId && value.Id != Guid.Empty);
                 runtime.IsBusy = true;
@@ -47,14 +47,14 @@ public partial class MainWindow
                     else
                         await _rotation.RotateAsync(runtime.Profile, session, template, () => Task.CompletedTask, Restore,
                             status => { runtime.LaunchStatus = status; runtime.Protection = _launcher.Protection(runtime.Profile.Id); }, CancellationToken.None);
-                    Log($"{runtime.Profile.Name}: {runtime.ProcessLabel} · {(request is null ? "character changed" : "restarted")}");
+                    Log($"{runtime.ProcessLabel} · {(request is null ? "персонаж сменён" : "перезапущен")}", runtime);
                 }
                 catch (Exception exception)
                 {
                     runtime.ClientFault = exception.GetBaseException().Message;
                     if (exception is PriceCheck.Collector.Services.LaunchProtectionException) _recovery.Forget(runtime.Profile.Id);
                     else _recovery.Arm(runtime.Profile, session, false, false);
-                    Log(runtime.ClientFault); runtime.LaunchStatus = runtime.ClientFault;
+                    Log(runtime.ClientFault, runtime); runtime.LaunchStatus = runtime.ClientFault;
                 }
                 finally { runtime.Protection = _launcher.Protection(runtime.Profile.Id); runtime.IsBusy = false; await SaveProfilesAsync(); await SaveRotatedTemplateAsync(template); }
             }

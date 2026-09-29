@@ -13,6 +13,8 @@ import process_event_shop_capture as capture
 from lu4_memory_client import Lu4MemoryClient, PAGE_READWRITE
 from session_cache import reuse
 from worker_progress import publish
+from inspect_world import Memory
+from walk_hook_sites import approach_slot, APPROACH_PREFIX
 
 
 class ShopHooks:
@@ -67,11 +69,10 @@ class ShopHooks:
 
     def install_approach_guard(self):
         pid = self.walk.pid
-        slot = self.walk.base + 0x7EC75F0 + 0x72*8
         with Lu4MemoryClient() as reader:
+            slot, handler = approach_slot(Memory(reader, pid), self.walk.base)
             original = reader.read(pid, slot, 8)
-            handler = struct.unpack('<Q', original)[0]
-            if handler != self.walk.base+0x4C0DA60 or reader.read(pid, handler, 20).hex() != '4883ec588b4210f20f10421c488b0d4570630389':
+            if struct.unpack('<Q', original)[0] != handler or reader.read(pid, handler, len(APPROACH_PREFIX)) != APPROACH_PREFIX:
                 raise RuntimeError('MoveToObject handler changed; refusing shop reads')
             cave, _ = reader.allocate_process_memory(pid, 0x1000)
             # MoveToObject carries the moving actor ID at message+0x10. Forward

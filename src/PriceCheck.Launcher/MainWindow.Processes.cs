@@ -12,34 +12,34 @@ public partial class MainWindow
     private async Task LaunchAsync(LaunchRuntime? runtime)
     {
         if (runtime is null || !_loaded || runtime.IsBusy || _closing) return;
-        if (runtime.Session is { } current && ClientProcessIdentity.IsCurrent(current)) { Log("Client is already running"); return; }
+        if (runtime.Session is { } current && ClientProcessIdentity.IsCurrent(current)) { Log("Клиент уже запущен", runtime); return; }
         runtime.IsBusy = true;
         var template = LaunchTemplates.FirstOrDefault(value => value.Id == runtime.Profile.LaunchTemplateId && value.Id != Guid.Empty);
         try
         {
             if (Runtimes.Count(value => value.Session is { } session && ClientProcessIdentity.IsCurrent(session)) >= 4)
-                throw new InvalidOperationException("Одновременно поддерживаются до четырёх игровых клиентов.");
+                throw new InvalidOperationException("Одновременно могут работать не более четырёх игровых клиентов.");
             CharacterRotationSchedule.Validate(runtime.Profile);
             _recovery.Forget(runtime.Profile.Id); runtime.ClientFault = null;
             if (runtime.Profile.CharacterRotationEnabled) runtime.Profile.CharacterSlot = 0;
             SetSession(runtime, await _launcher.LaunchAsync(runtime.Profile, template,
                 status => { runtime.LaunchStatus = status; runtime.Protection = _launcher.Protection(runtime.Profile.Id); }, CancellationToken.None));
             _rotation.Started(runtime.Profile, runtime.Session!, DateTimeOffset.UtcNow);
-            Log($"{runtime.Profile.Name}: {runtime.ProcessLabel} · ready");
+            Log($"{runtime.ProcessLabel} · ready", runtime);
         }
         catch (Exception exception)
         {
-            runtime.LaunchStatus = "Launch failed"; ClearExited(runtime);
+            runtime.LaunchStatus = "Ошибка запуска"; ClearExited(runtime);
             // Show the retained failure before the modal error starts its message loop.
             runtime.Protection = _launcher.Protection(runtime.Profile.Id);
-            Error(exception);
+            Error(exception, runtime);
         }
         finally
         {
             runtime.Protection = _launcher.Protection(runtime.Profile.Id);
             runtime.IsBusy = false;
             try { await SaveProfilesAsync(); await SaveRotatedTemplateAsync(template); }
-            catch (Exception exception) { Error(exception); }
+            catch (Exception exception) { Error(exception, runtime); }
         }
     }
     private static void SetSession(LaunchRuntime runtime, ClientSession session)
@@ -56,7 +56,7 @@ public partial class MainWindow
     private async void Stop_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedRuntime is not { IsBusy: false } runtime) return;
-        try { await StopAsync(runtime); } catch (Exception exception) { Error(exception); }
+        try { await StopAsync(runtime); } catch (Exception exception) { Error(exception, runtime); }
     }
     private async Task StopAsync(LaunchRuntime runtime)
     {
@@ -67,7 +67,7 @@ public partial class MainWindow
             _launcher.Stop(runtime.Profile.Id); runtime.Session = null;
             runtime.Protection = _launcher.Protection(runtime.Profile.Id);
             runtime.Profile.LastProcessId = null; runtime.Profile.LastProcessStartUtc = null;
-            runtime.LaunchStatus = "Stopped"; await SaveProfilesAsync();
+            runtime.LaunchStatus = "Остановлено"; await SaveProfilesAsync();
         }
         finally { runtime.IsBusy = false; }
     }

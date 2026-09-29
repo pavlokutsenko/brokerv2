@@ -16,6 +16,8 @@ public partial class LaunchPanelView : UserControl
     private void LaunchTemplateSelection_Changed(object sender, SelectionChangedEventArgs e) => LaunchTemplateSelectionChangedRequested?.Invoke(sender, e);
     public event RoutedEventHandler? LoginPasswordChangedRequested;
     private void LoginPassword_Changed(object sender, RoutedEventArgs e) => LoginPasswordChangedRequested?.Invoke(sender, e);
+    public event RoutedEventHandler? RotationAccountsClickRequested;
+    private void RotationAccounts_Click(object sender,RoutedEventArgs e)=>RotationAccountsClickRequested?.Invoke(sender,e);
     public event RoutedEventHandler? ManageTemplatesClickRequested;
     private void ManageTemplates_Click(object sender, RoutedEventArgs e) => ManageTemplatesClickRequested?.Invoke(sender, e);
     public event TextChangedEventHandler? ProfileFieldChangedRequested;

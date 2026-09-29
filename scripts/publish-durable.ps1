@@ -48,7 +48,7 @@ if (-not $Restore) {
     $entries = @()
     foreach ($file in Get-ChildItem -LiteralPath $Source -Recurse -File) {
         $relative = $file.FullName.Substring($Source.Length + 1)
-        if ($relative -like '.package-*' -or $relative -like '*.pending') { continue }
+        if ($relative -match '(^|\\)\.package-' -or $relative -like '*.pending') { continue }
         if ($file.Length -eq 0 -and $file.Extension -in '.exe','.dll','.sys','.json') {
             throw "Empty required package file: $relative"
         }
@@ -74,7 +74,7 @@ if (-not $Restore) {
     Write-DurableFile $manifestSource $statePath ($statePath + '.bak')
 } else {
     $state = $null
-    foreach ($candidate in @($statePath, $statePath+'.bak')) {
+    foreach ($candidate in @($statePath, ($statePath+'.bak'))) {
         if (-not (Test-Path -LiteralPath $candidate)) { continue }
         try { $state = Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json; break }
         catch { }
@@ -100,3 +100,4 @@ foreach ($entry in $state.Files) {
     $changed++
 }
 Write-Host "Durable package: $($state.Files.Count) verified files, $changed installed/restored."
+& (Join-Path $PSScriptRoot 'prune-package-recovery.ps1') -Destination $Destination

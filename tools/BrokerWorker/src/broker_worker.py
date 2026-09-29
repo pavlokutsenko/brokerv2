@@ -97,8 +97,8 @@ def collect(pid: int, output: Path) -> None:
         run_script(CLIENT / "lu4_target_session.py", "--pid", pid, "prepare")
         check_stop()
         publish('Checking broker functions')
-        run_script(DIAGNOSTICS / "resolve_target_route.py", pid, "--json", DIAGNOSTICS / "latest_target_route.json")
         run_script(DIAGNOSTICS / "discover_unreal_globals.py", pid, "--json", DIAGNOSTICS / "latest_unreal_globals.json")
+        run_script(DIAGNOSTICS / "resolve_target_route.py", pid, "--globals", DIAGNOSTICS / "latest_unreal_globals.json", "--json", DIAGNOSTICS / "latest_target_route.json")
         run_script(
             DIAGNOSTICS / "inspect_shop_ufunctions.py",
             pid,
@@ -173,10 +173,10 @@ def prepare_price(pid: int) -> None:
     route_path = DIAGNOSTICS / "latest_target_route.json"
     globals_path = DIAGNOSTICS / "latest_unreal_globals.json"
     functions_path = DIAGNOSTICS / "latest_shop_ufunctions.json"
-    if not json_matches_pid(route_path, pid):
-        run_script(DIAGNOSTICS / "resolve_target_route.py", pid, "--json", DIAGNOSTICS / "latest_target_route.json")
     if not json_matches_pid(globals_path, pid):
         run_script(DIAGNOSTICS / "discover_unreal_globals.py", pid, "--json", DIAGNOSTICS / "latest_unreal_globals.json")
+    if not json_matches_pid(route_path, pid):
+        run_script(DIAGNOSTICS / "resolve_target_route.py", pid, "--globals", globals_path, "--json", route_path)
     if not json_matches_pid(functions_path, pid):
         run_script(DIAGNOSTICS / "inspect_shop_ufunctions.py", pid, "--globals", DIAGNOSTICS / "latest_unreal_globals.json", "--json", DIAGNOSTICS / "latest_shop_ufunctions.json")
     run_script(DIAGNOSTICS / "process_event_shop_capture.py", "install", pid)
@@ -351,7 +351,7 @@ def main() -> int:
         return 0
 
     parser = argparse.ArgumentParser(description="PriceCheck embedded market worker")
-    parser.add_argument("--mode", choices=("broker", "market-route", "price-prepare", "price", "price-batch", "price-sweep", "manual-passby", "move", "cleanup"), default="broker")
+    parser.add_argument("--mode", choices=("broker", "market-route", "market-route-session", "market-plan", "price-prepare", "price", "price-batch", "price-sweep", "manual-passby", "move", "cleanup"), default="broker")
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--object-id", type=int)
@@ -365,12 +365,22 @@ def main() -> int:
     parser.add_argument("--input", type=Path)
     parser.add_argument("--duration", type=float, default=0.0)
     args = parser.parse_args()
-    if args.mode == "market-route":
+    if args.mode == "market-plan":
         if args.input is None: parser.error('--input is required')
         navigation = ROOT / 'navigation'
         if not navigation.exists(): navigation = ROOT.parents[2] / 'tools/WorldGeometry'
         sys.path.insert(0,str(navigation))
-        from cycle_route import run
+        from route_preparation import run
+        run(args.input,args.output.resolve())
+    elif args.mode in ("market-route", "market-route-session"):
+        if args.input is None: parser.error('--input is required')
+        navigation = ROOT / 'navigation'
+        if not navigation.exists(): navigation = ROOT.parents[2] / 'tools/WorldGeometry'
+        sys.path.insert(0,str(navigation))
+        if args.mode == "market-route-session":
+            from route_session import run
+        else:
+            from cycle_route import run
         run(args.pid,args.input,args.output.resolve())
     elif args.mode == "price-prepare":
         prepare_price(args.pid)

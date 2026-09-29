@@ -29,7 +29,7 @@ internal static class BrokerIdentityTests
 
         var processes=new FakeProcesses();var events=new List<string>();
         var launcher=new LaunchModule(processes,(_,_,_)=>{events.Add("login");return Task.CompletedTask;},processes.Identity,_=>Task.CompletedTask);
-        var profile=new CollectorProfile {AutoLoginEnabled=true,CharacterRotationEnabled=true,
+        var profile=new CollectorProfile {LoginServerId=1,AutoLoginEnabled=true,CharacterRotationEnabled=true,
             RotationCharacterCount=2,LoginName="fixture",LoginPassword="fixture"};
         var live=await launcher.LaunchAsync(profile,null,_=>{},CancellationToken.None,
             (_,_)=>{events.Add("reader");return Task.CompletedTask;});

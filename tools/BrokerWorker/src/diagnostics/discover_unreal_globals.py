@@ -153,6 +153,51 @@ def current_profile(mem, base, pe):
     return [objects], [names]
 
 
+def scan_globals(mem: Memory, base: int, pe: dict):
+    """Bounded, read-only fallback for a new image; callers require unique hits."""
+    objects: list[dict] = []
+    names: list[dict] = []
+    checked = 0
+    ranges = [
+        section for section in pe["sections"]
+        if section["characteristics"] & 0x40000000
+        and section["characteristics"] & 0x80000000
+    ]
+    for section in ranges:
+        section_start = base + int(section["rva"])
+        remaining = int(section["size"])
+        position = 0
+        while position < remaining:
+            check_stop()
+            size = min(MAX_TRANSFER, remaining - position)
+            data = mem.read(section_start + position, size)
+            for offset in range(0, max(0, len(data) - 0x30), 8):
+                checked += 1
+                slot = section_start + position + offset
+                chunks = struct.unpack_from("<Q", data, offset)[0]
+                count = struct.unpack_from("<i", data, offset + 0x14)[0]
+                chunk_count = struct.unpack_from("<i", data, offset + 0x1C)[0]
+                if (len(objects) < 4 and pointer(chunks) and 1000 < count < 4_000_000
+                        and 0 < chunk_count <= 64 and count <= chunk_count * 0x10000):
+                    candidate = validate_gobjects(mem, slot, data, offset)
+                    if candidate is not None:
+                        candidate["rva"] = slot - base
+                        candidate["section"] = section["name"]
+                        objects.append(candidate)
+                current_block = struct.unpack_from("<i", data, offset + 8)[0]
+                cursor = struct.unpack_from("<i", data, offset + 0x0C)[0]
+                block0 = struct.unpack_from("<Q", data, offset + 0x10)[0]
+                if (len(names) < 4 and 1 <= current_block <= 4096
+                        and 2 <= cursor <= 0x20000 and pointer(block0)):
+                    candidate = validate_fname_pool(mem, slot, data, offset)
+                    if candidate is not None:
+                        candidate["rva"] = slot - base
+                        candidate["section"] = section["name"]
+                        names.append(candidate)
+            position += size
+    return objects, names, checked
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Read-only discovery of current LU4 GObjects and FNamePool"
@@ -167,59 +212,11 @@ def main() -> int:
         base = client.process_base(args.pid)
         mem = Memory(client, args.pid)
         pe = pe_info(mem, base)
-        objects: list[dict] = []
-        names: list[dict] = []
-        if not args.scan:
+        if args.scan or (pe["timestamp"], pe["image_size"]) != (0x956E0D97, 0xDCEB000):
+            objects, names, checked = scan_globals(mem, base, pe)
+        else:
             objects, names = current_profile(mem, base, pe)
-        ranges = [
-            section
-            for section in pe["sections"]
-            if section["characteristics"] & 0x40000000
-            and section["characteristics"] & 0x80000000
-        ] if args.scan else []
-        checked = 0
-        for section in ranges:
-            section_start = base + int(section["rva"])
-            remaining = int(section["size"])
-            position = 0
-            while position < remaining:
-                check_stop()
-                size = min(MAX_TRANSFER, remaining - position)
-                data = mem.read(section_start + position, size)
-                for offset in range(0, max(0, len(data) - 0x30), 8):
-                    checked += 1
-                    slot = section_start + position + offset
-                    # Cheap local predicates prevent remote pointer reads for almost all slots.
-                    chunks = struct.unpack_from("<Q", data, offset)[0]
-                    count = struct.unpack_from("<i", data, offset + 0x14)[0]
-                    chunk_count = struct.unpack_from("<i", data, offset + 0x1C)[0]
-                    if (
-                        len(objects) < 4
-                        and pointer(chunks)
-                        and 1000 < count < 4_000_000
-                        and 0 < chunk_count <= 64
-                        and count <= chunk_count * 0x10000
-                    ):
-                        candidate = validate_gobjects(mem, slot, data, offset)
-                        if candidate is not None:
-                            candidate["rva"] = slot - base
-                            candidate["section"] = section["name"]
-                            objects.append(candidate)
-                    current_block = struct.unpack_from("<i", data, offset + 8)[0]
-                    cursor = struct.unpack_from("<i", data, offset + 0x0C)[0]
-                    block0 = struct.unpack_from("<Q", data, offset + 0x10)[0]
-                    if (
-                        len(names) < 4
-                        and 1 <= current_block <= 4096
-                        and 2 <= cursor <= 0x20000
-                        and pointer(block0)
-                    ):
-                        candidate = validate_fname_pool(mem, slot, data, offset)
-                        if candidate is not None:
-                            candidate["rva"] = slot - base
-                            candidate["section"] = section["name"]
-                            names.append(candidate)
-                position += size
+            checked = 0
 
     result = {
         "pid": args.pid,

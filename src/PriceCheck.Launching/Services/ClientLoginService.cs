@@ -13,8 +13,7 @@ public sealed class ClientLoginService
     public async Task EnterAsync(int pid, CollectorProfile profile, CancellationToken cancellationToken)
     {
         Validate(profile);
-        var user = profile.LoginName;
-        var password = profile.LoginPassword;
+        var (user,password) = profile.ActiveLogin();
 
         var dll = Path.Combine(AppContext.BaseDirectory, "ClientLaunchRuntime", "PriceCheck.ClientLogin.dll");
         using var mapping = MemoryMappedFile.CreateNew($@"Local\PriceCheckAutoLogin_{pid}", MappingSize);
@@ -28,7 +27,7 @@ public sealed class ClientLoginService
         view.Write(4, checked((ushort)user.Length));
         view.Write(6, checked((ushort)password.Length));
         view.Write(8, 0);
-        view.Write(12, 1); // Gamma
+        view.Write(12, profile.LoginServerId);
         view.Write(16, profile.CharacterSlot);
         for (var index = 0; index < user.Length; index++) view.Write(CredentialsOffset + index * 2, user[index]);
         view.Write(CredentialsOffset + user.Length * 2, '\0');
@@ -76,16 +75,15 @@ public sealed class ClientLoginService
     public static void Validate(CollectorProfile profile)
     {
         if (!profile.Name.Equals(profile.LoginServerName, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Рынок профиля не совпадает с сервером входа. Автовход остановлен, чтобы не отправить данные другого рынка.");
-        var user = profile.LoginName;
-        var password = profile.LoginPassword;
+            throw new InvalidOperationException("Profile market does not match the login server. Auto login stopped to prevent sending data to the wrong market.");
+        var (user,password) = profile.ActiveLogin();
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrEmpty(password) ||
             user.Length > 120 || password.Length > 120 ||
             user.Length + password.Length + 2 > 256 ||
             user.Contains('\0') || password.Contains('\0'))
             throw new InvalidOperationException("Auto login requires a username and password of at most 120 characters.");
-        if (profile.LoginServerName != "Gamma")
-            throw new InvalidOperationException("Auto login is currently validated only for the Gamma server.");
+        if (profile.LoginServerId is < 1 or > 1000)
+            throw new InvalidOperationException("Select a game server ID from 1 to 1000.");
         if (profile.CharacterSlot is < 0 or > 6)
             throw new InvalidOperationException("Select a character slot from 0 to 6.");
 
@@ -95,17 +93,17 @@ public sealed class ClientLoginService
 
     private static string ErrorMessage(int status) => status switch
     {
-            -3 => "Не удалось проверить структуру исполняемого файла LU4 для автологина.",
-            -40 => "Автовход: в загруженном клиенте не найдены проверенные таблицы объектов и имён.",
-            -41 => "Автовход: структура функций входа изменилась; проверьте журнал и клиент.",
-            -42 => "Автовход: таблица объектов изменилась во время входа.",
-            -30 => "Вход остановлен: защита HWID или прокси не подтверждена.",
-            -31 => "Экран персонажей открыт, но игра не подтвердила защищённый обмен с выбранным миром; программный выбор персонажа остановлен.",
+            -3 => "Could not verify the LU4 executable layout for auto login.",
+            -40 => "Auto login: verified object and name tables were not found in the loaded client.",
+            -41 => "Auto login: login-function layout changed; check the log and client build.",
+            -42 => "Auto login: object table changed during login.",
+            -30 => "Login stopped: HWID or proxy protection was not verified.",
+            -31 => "Character screen opened, but protected traffic to the selected world was not verified; automatic character selection stopped.",
             -15 => "The server selection screen did not appear in time.",
             -24 => "The character selection screen did not appear in time.",
             -26 => "The client returned an invalid character list.",
             -27 => "The character-list function differs from the validated client build.",
-            -28 => "Не удалось подключить наблюдение списка персонажей для ротации. Подробности: character-roster-<PID>.txt в папке logs.",
+            -28 => "Could not attach the character roster observer for rotation. See character-roster-<PID>.txt in the logs folder.",
             _ => $"Auto login stopped at {StageLabel(status)} (code {status})."
     };
 

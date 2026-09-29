@@ -8,6 +8,7 @@ from walk_geometry import Navigation,rounded_route
 from walk_escape import escape
 from cycle_recheck_plan import recheck_route
 from radar_pass_plan import radar_pass_route
+from walk_navigation import execution_navigation
 
 
 def rejoin(nav,current,path,arc,minimum=160):
@@ -71,16 +72,22 @@ def unstick(client,nav,guard,log,deadline):
 def follow_with_recovery(client,nav,points,log,max_seconds,progress_callback,guard,
                          dynamic_route_data=None,max_recoveries=12):
     started=time.monotonic();remaining=points;events=[];segments=[];zones={};unstick_zones=set()
-    radar_navigation=Navigation(dynamic_route_data,clearance=client.execution_clearance) if dynamic_route_data is not None else None
+    shops=getattr(client,'shops',None)
+    pause_baseline=getattr(shops,'pause_seconds_spent',0)
+    def active_elapsed():
+        return time.monotonic()-started-(getattr(shops,'pause_seconds_spent',0)-pause_baseline)
+    def deadline():
+        return time.monotonic()+max(0,max_seconds-active_elapsed())
+    radar_navigation=execution_navigation(client,dynamic_route_data) if dynamic_route_data is not None else None
     while True:
         local=Path(remaining)
-        result=follow(client,nav,remaining,log,max(0,max_seconds-(time.monotonic()-started)),progress_callback,guard)
+        result=follow(client,nav,remaining,log,max(0,max_seconds-active_elapsed()),progress_callback,guard)
         segments.append(result)
         if result['reason']=='radar_detour' and dynamic_route_data is not None:
             shops=client.shops
             target=shops.detour_target
             current=client.position()[:2]
-            budget=max_seconds-(time.monotonic()-started)
+            budget=max_seconds-active_elapsed()
             try:
                 planned=time.monotonic()
                 passing=radar_pass_route(dynamic_route_data,current,target,
@@ -95,16 +102,6 @@ def follow_with_recovery(client,nav,points,log,max_seconds,progress_callback,gua
                 log({'type':'radar_detour_plan','key':target['key'],
                      'seconds':round(time.monotonic()-planned,4),'direct_probe':direct,
                      'passing_arc':bool(passing),'points':approach})
-                # A radar detour can finish inside a different main-route
-                # anchor's exclusion disk. Validate its return before leaving.
-                if plan['points']:
-                    try:
-                        rejoin(nav,plan['points'][-1],local,result['progress'],minimum=0)
-                    except RuntimeError:
-                        # Read at the endpoint first. An immediate reverse tail
-                        # lets lookahead turn back before entering read range.
-                        # The actual return below already escapes anchor disks.
-                        log({'type':'radar_detour_rejoin_needs_escape','key':target['key']})
                 detour_length=Path(plan['points']).distance[-1] if plan['points'] else float('inf')
             except RuntimeError:
                 plan=None;detour_length=float('inf')
@@ -139,13 +136,21 @@ def follow_with_recovery(client,nav,points,log,max_seconds,progress_callback,gua
                 if detour['reason'] in ('cancelled','keyboard_interrupt',
                                         'target_changed_externally','position_jump'):
                     result=detour;break
+                # The detour may have exited a room and passed several old
+                # anchors. Resuming its old arc returns to already read shops.
+                # The caller's bounded revisit covers every unread assignment
+                # from the observed position, with the same reader and guards.
+                log({'type':'route_replan_required','trigger':'radar_detour_finished',
+                     'position':result['position'],'key':target['key'],
+                     'avoided_old_rejoin':True})
+                result['reason']='replan_required';break
             else:
                 log({'type':'radar_detour_skipped','key':target['key'],
                      'reason':'no bounded route or time'})
             try:
                 position=client.position()
                 if not nav.clear(position[:2],position[:2]):
-                    if not escape(client,nav,guard,log,started+max_seconds):
+                    if not escape(client,nav,guard,log,deadline()):
                         raise RuntimeError('could not leave main-route anchor clearance')
                 remaining,skipped=rejoin(nav,client.position()[:2],local,result['progress'],minimum=0)
                 log({'type':'radar_detour_rejoin','key':target['key'],
@@ -168,7 +173,7 @@ def follow_with_recovery(client,nav,points,log,max_seconds,progress_callback,gua
         zone=tuple(round(v/120) for v in current)
         if result['reason']=='stalled' and zone not in unstick_zones:
             unstick_zones.add(zone)
-            if unstick(client,nav,guard,log,started+max_seconds):
+            if unstick(client,nav,guard,log,deadline()):
                 try:
                     remaining,skipped=rejoin(nav,client.position()[:2],local,result['progress'])
                     log({'type':'unstick_rejoin','replaced_route_length':skipped})
@@ -183,7 +188,7 @@ def follow_with_recovery(client,nav,points,log,max_seconds,progress_callback,gua
         hit=guard.last_hit if result['reason']=='blocked' else None
         blocker=learn(nav,current,goal,hit)
         if not nav.clear(current,current):
-            if not escape(client,nav,guard,log,started+max_seconds):
+            if not escape(client,nav,guard,log,deadline()):
                 result['reason']='escape_unreachable';break
             current=client.position()[:2]
         try:

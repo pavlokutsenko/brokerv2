@@ -45,7 +45,6 @@ public partial class MainWindow
             runtime.IsBusy=false;
             await SaveProfilesAsync();
             if(template?.RotateEachLaunch==true) await SaveTemplatesAsync();
-            RefreshClientList();
         }
         return true;
     }

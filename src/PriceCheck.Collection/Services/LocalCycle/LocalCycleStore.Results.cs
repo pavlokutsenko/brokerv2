@@ -51,13 +51,14 @@ public sealed partial class LocalCycleStore
             var elapsed=capture.ReadStartedAtUtc is {} started?$" · duration_ms={(capture.CapturedAtUtc-started).TotalMilliseconds:F0}":"";
             Message?.Invoke($"INFO {_profile.Name}: {target.Name} trader={target.TraderKey} · exact read {capture.Rows.Count} rows{elapsed} · durable snapshot {capture.SnapshotId} · background send queued");
         }
-        WakeSender();return true;
+        MaintainStorage();WakeSender();return true;
     }
     public void ApplyBroker(BrokerInventoryFile inventory,RadarSnapshot radar,string epochId,CycleRadarPool? boundary=null)
     {
         lock(_sync) Transaction(()=>{
             if(boundary is not null)_collectionBoundary=boundary;
             var points=radar.Traders.GroupBy(t=>CycleQueue.Key(t.Name)).ToDictionary(g=>g.Key,g=>g.Last());
+            var included=0;
             foreach(var group in inventory.Rows.Where(r=>r.TraderName.Length>0).GroupBy(r=>CycleQueue.Key(r.TraderName)))
             {
                 var first=group.First();points.TryGetValue(group.Key,out var p);
@@ -66,6 +67,7 @@ public sealed partial class LocalCycleStore
                     Message?.Invoke($"INFO {_profile.Name}: trader={group.Key} · broker observation outside approved Giran boundary ignored");
                     continue;
                 }
+                included++;
                 if(!_traders.TryGetValue(group.Key,out var t))
                 { t=new(){Key=group.Key,Name=first.TraderName,KioskType=first.StoreType,ChangedAt=inventory.CapturedAtUtc};_traders.Add(t.Key,t); }
                 if(p is not null){t.X=p.X;t.Y=p.Y;t.ObjectId=p.ObjectId;t.HasPosition=true;}
@@ -87,6 +89,8 @@ public sealed partial class LocalCycleStore
                         items=group.GroupBy(r=>new{r.ItemId,side=r.StoreType==3?"Buy":"Sell"}).Select(g=>new {itemId=g.Key.ItemId.ToString(),g.Key.side,
                             quantity=g.Sum(r=>r.Amount).ToString(),listingCount=g.Count(),isPackage=g.Any(r=>r.StoreType==8)}).ToArray()}});
             }
+            _db.Command("INSERT INTO latest_broker_delivery(id,epoch_id,captured_at,traders,accepted) VALUES(1,?,?,?,0) ON CONFLICT(id) DO UPDATE SET epoch_id=excluded.epoch_id,captured_at=excluded.captured_at,traders=excluded.traders,accepted=0",
+                epochId,inventory.CapturedAtUtc.ToUnixTimeMilliseconds(),included);
         });
         WakeSender();
     }

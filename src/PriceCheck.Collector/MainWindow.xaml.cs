@@ -11,14 +11,12 @@ namespace PriceCheck.Collector;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private readonly IProfileStore _profileStore = new ProfileStore();
-    private readonly LaunchTemplateStore _templateStore = new();
+    private readonly IProfileStore _profileStore;
+    private readonly LaunchTemplateStore _templateStore;
     private readonly PriceCheck.Launching.LaunchModule _launcher = new();
     private readonly PriceCheck.Launching.CharacterRotationService _characterRotation;
     private readonly PriceCheck.Launching.ClientRecoveryService _clientRecovery;
     private readonly PriceCheck.Collection.CollectionModule _collection = new();
-    public ObservableCollection<PriceCheck.Contracts.ClientSession> AvailableClients { get; } = [];
-    public PriceCheck.Contracts.ClientSession? SelectedClient { get; set; }
     private bool _closeReady;
     private bool _closing;
     private readonly DispatcherTimer _refreshTimer;
@@ -26,6 +24,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _loaded;
     private bool _refreshing;
     private bool _syncingLoginPassword;
+    private bool _syncingProfileFields;
 
     public string? StartupLaunchProfileName { get; init; }
     public string? StartupCollectProfileId { get; init; }
@@ -33,18 +32,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public ObservableCollection<ProfileRuntime> Runtimes { get; } = [];
     public ObservableCollection<LaunchTemplate> LaunchTemplates { get; } =
-        [new LaunchTemplate { Id = Guid.Empty, Name = "No template", HardwareEnabled = false }];
+        [new LaunchTemplate { Id = Guid.Empty, Name = "Без шаблона", HardwareEnabled = false }];
     public string SelectedTemplateSummary =>
         LaunchTemplates.FirstOrDefault(value => value.Id == SelectedRuntime?.Profile.LaunchTemplateId)?.Summary ??
-        "Запуск запрещён: выберите шаблон HWID и прокси";
+        "Запуск недоступен: выберите шаблон HWID";
     public ObservableCollection<string> Events { get; } = [];
     public IReadOnlyList<CollectorRoleOption> RoleOptions => CollectorRoleOption.All;
-    public IReadOnlyList<string> MarketOptions { get; } = ["Gamma", "Black", "White", "Carmine"];
-    public IReadOnlyList<string> LoginServerOptions { get; } = ["Gamma"];
+    public ObservableCollection<string> MarketOptions { get; } = [];
     public IReadOnlyList<CharacterSlotOption> CharacterOptions =>
         SelectedRuntime?.Profile.RotationCharacterSlots is { Length: > 0 } slots
-            ? slots.Select(slot => new CharacterSlotOption(slot, $"Slot {slot}")).ToArray()
-            : [new CharacterSlotOption(0, "Slot 0 · список после входа")];
+            ? slots.Select(slot => new CharacterSlotOption(slot, $"Слот {slot}")).ToArray()
+            : [new CharacterSlotOption(0, "Слот 0 · после входа")];
 
     public ProfileRuntime? SelectedRuntime
     {
@@ -53,10 +51,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (_selectedRuntime == value) return;
             _selectedRuntime = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(SelectedTemplateSummary));
-            OnPropertyChanged(nameof(CharacterOptions));
-            SyncLoginPasswordField();
+            // Rebinding editors raises the same events as user edits. Do not
+            // validate the previous editor value against the newly selected profile.
+            var wasSyncing = _syncingProfileFields;
+            _syncingProfileFields = true;
+            try
+            {
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(SelectedTemplateSummary));
+                OnPropertyChanged(nameof(CharacterOptions));
+                SyncLoginPasswordField();
+            }
+            finally { _syncingProfileFields = wasSyncing; }
             _ = RefreshSelectedAsync();
         }
     }
@@ -64,12 +70,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public MainWindow() : this(true) { }
 
     // Allows rendering the actual window with synthetic data and no application lifecycle.
-    public MainWindow(bool initializeRuntime)
+    public MainWindow(bool initializeRuntime, string? settingsDirectory = null)
     {
+        _profileStore = new ProfileStore(settingsDirectory);
+        _templateStore = new LaunchTemplateStore(settingsDirectory);
         _characterRotation=new(_launcher);
         _clientRecovery=new(_launcher);
         InitializeComponent();
         DataContext = this;
+        Runtimes.CollectionChanged += (_, _) =>
+        {
+            foreach (var name in Runtimes.Select(value => value.Profile.Name)
+                         .Where(value => !string.IsNullOrWhiteSpace(value)))
+                if (!MarketOptions.Contains(name)) MarketOptions.Add(name);
+        };
         TemplatesView.SaveRequested = ApplyTemplatesAsync;
         _collection.Message += Log;
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
