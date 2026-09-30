@@ -4,6 +4,8 @@ public sealed record ClientProtectionStatus(bool HardwareReady, bool WorldIdenti
     bool ProxyReady, long ProxiedConnections, long SentBytes, long ReceivedBytes,
     string IdentityTag, string? Error, ulong BlockedConnections = 0, bool ProxyRequired = true)
 {
+    public bool? GameConnected { get; init; }
+    public string? NetworkError { get; init; }
     public static ClientProtectionStatus Pending { get; } = new(false, false, false, 0, 0, 0, "", null);
     public bool Failed => Error is not null;
     public string HardwareLabel => Failed ? (Error!.StartsWith("HWID:", StringComparison.Ordinal)

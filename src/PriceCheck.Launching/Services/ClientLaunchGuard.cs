@@ -119,7 +119,8 @@ internal sealed class ClientLaunchGuard : IDisposable
                     throw new LaunchProtectionException("HWID: identity override and current-world traffic were not verified.");
                 _broker.AllowLogin = state.Hardware;
                 lock (_gate) _status = new(state.Hardware, applied && _broker.WorldTrafficConfirmed,
-                    _broker.ProxyEnabled, _broker.Connections, _broker.SentBytes, _broker.ReceivedBytes, _mapping.IdentityTag, null, blocked, _broker.ProxyEnabled);
+                    _broker.ProxyEnabled, _broker.Connections, _broker.SentBytes, _broker.ReceivedBytes, _mapping.IdentityTag, null, blocked, _broker.ProxyEnabled)
+                    { GameConnected = _broker.GameConnected, NetworkError = _broker.NetworkError };
                 await Task.Delay(500, _stop.Token);
             }
         }

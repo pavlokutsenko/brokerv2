@@ -87,10 +87,16 @@ does not replace the verified artifact until its runtime checks have passed.
 
 ## Multi-instance ownership
 
-One persisted profile represents one market client. A live PID can be claimed
-by exactly one profile. Each profile owns its cancellation scope, radar loop,
-broker schedule, server identity and event stream. Starting or stopping one
-profile cannot replace global static state used by another profile.
+One persisted server profile can contain several account clients. Each account
+has a stable ID, its own launch template and one owned PID; a live PID can be
+claimed by exactly one account under one profile. The server profile owns the
+market's shared local history and one active broker/price cycle. Readers for
+waiting accounts stay attached, but only the active account updates market
+bindings or runs native broker and price commands. After one trader attempt and
+native cleanup, the cycle and pending pool move to the next ready account.
+ObjectIDs are invalidated at that handoff and rebound from the new PID.
+Character rotation stays inside its account and pauses while it waits.
+Different server profiles retain separate cancellation and collection scopes.
 
 The process launcher serializes client startup, records the PID set before
 launch and claims only a newly observed `lu4.bin`. Manual attachment is not a
@@ -154,6 +160,12 @@ writers, including copies launched from different extracted directories. The
 collector upload worker does not claim that UI lease. Copy both configuration
 files deliberately to migrate; durable profile/template IDs and world seeds
 are preserved, and machine-bound passwords must be entered on the destination.
+
+Both desktop apps present a flat account list inside each server profile.
+Accounts are added and launched individually with their own template and
+optional auto-login; launching alone never starts collection. The Collector
+keeps one shared market pool across its loaded accounts and starts collection
+only on the Collection tab. The two apps retain separate LocalAppData stores.
 
 Central-zone coordinates belong to a profile and city. Switching between
 `Giran` and `Gludio` selects that city's saved center automatically; marking or
@@ -230,3 +242,29 @@ The collector uploads that inventory and repeats at `BrokerIntervalMinutes`.
 Broker work runs asynchronously while the receive radar continues. A single
 global broker gate serializes the temporary ProcessEvent capture when several
 profiles exist.
+
+## Resident-memory budgets (candidate, not deployed)
+
+Launch templates optionally persist `MemoryBudgetEnabled` and `MemoryBudgetMiB`
+(5120 MiB suggested value, disabled for existing settings). `LaunchModule`
+applies the budget after window/agent readiness and before login or reader
+attachment. A relaunched client receives its own budget; an already owned live
+session is not reapplied. Windows interop and quota policy never depend on radar
+presence, trader distances, broker work, or game offsets.
+
+`Lu4Device.WorkingSet` uses additive protocol-3 IOCTL function `0x813` with a
+48-byte PID/birth/minimum/maximum/flags/operation/status request. The driver
+requires an owned proxy route for foreign processes, checks process birth and
+liveness, forces Windows access checks and verifies that the resulting handle
+retained query/set-quota rights. Rejected rights are reported, not overridden.
+Only Windows working-set limits change: a hard resident maximum and soft
+minimum; pool, commit, CPU and time quotas are preserved. Operation errors are
+returned independently of transport success.
+
+The managed boundary saves original bounds, verifies Windows readback, and
+attempts restoration after an ambiguous application failure. Process release
+restores the saved bounds if that same session is alive; errors are logged under
+LocalAppData. Failure to confirm an enabled limit aborts that new launch through
+the existing cleanup path. The feature remains disabled in current user settings
+and installed applications. An unsigned candidate must not replace the verified
+driver artifact or be loaded through signature-enforcement bypass tools.

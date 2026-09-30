@@ -21,6 +21,7 @@ public partial class LaunchTemplatesView : UserControl
         InitializeComponent();
         DataContext = this;
         Editor.IsEnabled = false;
+        IsVisibleChanged += async (_, _) => { if (IsVisible) await ScanAsync(); };
     }
 
     public void SetTemplates(IEnumerable<LaunchTemplate> templates)
@@ -51,6 +52,8 @@ public partial class LaunchTemplatesView : UserControl
     {
         Id = value.Id, Name = value.Name, Description = value.Description,
         HardwareEnabled = value.HardwareEnabled, RotateEachLaunch = value.RotateEachLaunch,
+        MemoryBudgetEnabled = value.MemoryBudgetEnabled, MemoryBudgetMiB = value.MemoryBudgetMiB,
+        CpuBudgetEnabled = value.CpuBudgetEnabled, CpuBudgetPercent = value.CpuBudgetPercent,
         Identity = new LaunchIdentity
         {
             WorldIdentitySeed = value.Identity.WorldIdentitySeed,
@@ -97,7 +100,8 @@ public partial class LaunchTemplatesView : UserControl
         var name = "Новый шаблон";
         for (var number = 2; Templates.Any(value => string.Equals(value.Name.Trim(), name, StringComparison.OrdinalIgnoreCase)); number++)
             name = $"Новый шаблон {number}";
-        var template = new LaunchTemplate { Name = name, Identity = ClientLaunchConfiguration.GenerateIdentity() };
+        var template = new LaunchTemplate { Name = name, MemoryBudgetEnabled = true, CpuBudgetEnabled = false,
+            Identity = ClientLaunchConfiguration.GenerateIdentity() };
         Templates.Add(template);
         TemplateList.SelectedItem = template;
     }
@@ -130,6 +134,11 @@ public partial class LaunchTemplatesView : UserControl
         }
         try
         {
+            MemoryBudgetInput.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            if (Validation.GetHasError(MemoryBudgetInput)) throw new ArgumentException("Введите целое число МиБ.");
+            CpuBudgetInput.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            if (Validation.GetHasError(CpuBudgetInput)) throw new ArgumentException("Введите целый процент CPU.");
+            foreach (var template in Templates) ClientResourceBudget.Validate(template);
             foreach (var template in Templates.Where(value => value.HardwareEnabled))
                 ClientLaunchConfiguration.ValidateIdentity(template.Identity);
             foreach (var template in Templates.Where(value => value.ProxyEnabled))
@@ -156,16 +165,18 @@ public partial class LaunchTemplatesView : UserControl
 
     private void Reset_Click(object sender, RoutedEventArgs e) => SetTemplates(_savedTemplates);
 
-    private async void Scan_Click(object sender, RoutedEventArgs e)
+    private bool _scanning;
+    private async Task ScanAsync()
     {
+        if (_scanning) return;
+        _scanning = true;
         ScanRows.Clear();
         ScanStatusText.Text = "Сканирование…";
         try
         {
-            foreach (var row in await Task.Run(HardwareInventoryService.Scan)) ScanRows.Add(row);
+            foreach (var row in await Task.Run(HardwareInventoryService.Scan).WaitAsync(TimeSpan.FromSeconds(60))) ScanRows.Add(row);
             RefreshPreview();
-            ScanDetails.IsExpanded = true;
-            ScanStatusText.Text = $"Найдено: {ScanRows.Count}";
+            ScanStatusText.Text = $"Найдено: {ScanRows.Count} · {DriverIdentityService.Status}";
         }
         catch (Exception exception)
         {
@@ -173,6 +184,7 @@ public partial class LaunchTemplatesView : UserControl
             MessageBox.Show(Window.GetWindow(this), RussianUiTextConverter.Translate(exception.Message), "Сканирование ПК",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+        finally { _scanning = false; }
     }
 
     private void RefreshPreview()

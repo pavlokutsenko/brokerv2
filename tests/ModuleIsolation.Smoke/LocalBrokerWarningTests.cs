@@ -22,7 +22,7 @@ internal static class LocalBrokerWarningTests
         foreach(var item in broker){using var body=JsonDocument.Parse(item.Payload);Check(!body.RootElement.GetProperty("compositionComplete").GetBoolean(),"Incomplete epoch cannot authorize composition clearing.");}
         var cycle=LocalTestFixture.Cycle(module,runtime);cycle.GetType().GetProperty("Phase")!.SetValue(cycle,"Broker inventory");
         typeof(CollectionModule).GetMethod("RecordCycleFailure",LocalTestFixture.Hidden)!.Invoke(module,[runtime,cycle,new InvalidOperationException("Broker native cleanup failed; route must not start")]);
-        Check(runtime.ClientFault is not null&&File.Exists((string)cycle.GetType().GetProperty("StopFile")!.GetValue(cycle)!)&&LocalTestFixture.Phase(cycle)=="Broker inventory","Unsafe pending native command requires owned-client recovery rather than route continuation.");
+        Check(runtime.ClientFault is not null&&File.Exists((string)cycle.GetType().GetProperty("StopFile")!.GetValue(cycle)!)&&LocalTestFixture.Phase(cycle)=="Client recovery","Unsafe pending native command requires owned-client recovery rather than route continuation.");
         await module.DetachAsync(runtime);
         Console.WriteLine("LOCAL_BROKER_WARNING_OK no_local_retries partial_payloads warning_counts available_route unsafe_native_recovery");
     }

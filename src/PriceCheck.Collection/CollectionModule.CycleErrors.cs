@@ -9,6 +9,7 @@ public sealed partial class CollectionModule
     {
         var message=error.GetBaseException().Message;
         return message.Contains("ProcessEvent command bridge is busy:",StringComparison.Ordinal) ||
+            error.Message.Contains("Route session still owns the native lane",StringComparison.Ordinal) ||
             message.Contains("game-thread ProcessEvent command was not consumed",StringComparison.Ordinal) ||
             message.Contains("Broker native cleanup failed; route must not start",StringComparison.Ordinal);
     }

@@ -16,13 +16,11 @@
     <TextBlock Text="{Binding Cycle.Detail, Converter={StaticResource RussianText}}" TextWrapping="Wrap" Foreground="{StaticResource PrimaryBrush}"/>
     <TextBlock Text="{Binding UploadStatus, Converter={StaticResource RussianText}}" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0"/>
     <WrapPanel Margin="0,8,0,0">
-     <TextBlock Margin="0,0,24,4"><Run Text="Трейдеров в центре: "/><Run Text="{Binding CenterRadarTraderCount, Mode=OneWay}" FontWeight="SemiBold"/><Run Text=" · "/><Run Text="{Binding CenterRadarCountAge, Mode=OneWay}" Foreground="{StaticResource MutedBrush}"/></TextBlock>
-     <TextBlock Margin="0,0,24,4"><Run Text="Радар сейчас: "/><Run Text="{Binding CurrentRadarTraderCount, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
-     <TextBlock Margin="0,0,24,4"><Run Text="Последний брокер: "/><Run Text="{Binding BrokerTraderCount, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
-     <TextBlock Margin="0,0,24,4"><Run Text="Отправлено с последнего брокера: "/><Run Text="{Binding BrokerSentTraderCount, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
-     <TextBlock Margin="0,0,0,4"><Run Text="С актуальной ценой: "/><Run Text="{Binding Cycle.CurrentPriceTraders, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
+     <TextBlock Margin="0,0,24,4"><Run Text="Общий радар в центре: "/><Run Text="{Binding MarketRadarCountLabel, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
+     <TextBlock Margin="0,0,24,4"><Run Text="Брокер на сервере: "/><Run Text="{Binding BrokerSentTraderCount, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
+     <TextBlock Margin="0,0,0,4"><Run Text="Актуальных цен на сервере: "/><Run Text="{Binding ServerPriceCountLabel, Mode=OneWay}" FontWeight="SemiBold"/></TextBlock>
     </WrapPanel>
-    <TextBlock Margin="0,8,0,0"><Run Text="Текущий проход: прочитано "/><Run Text="{Binding Cycle.PassRead}"/><Run Text=" · новых "/><Run Text="{Binding Cycle.PassNewFound}"/><Run Text=" · осталось "/><Run Text="{Binding Cycle.Pending}"/></TextBlock>
+    <TextBlock Margin="0,8,0,0"><Run Text="Общий проход: прочитано "/><Run Text="{Binding Cycle.PassRead}"/><Run Text=" · новых "/><Run Text="{Binding Cycle.PassNewFound}"/><Run Text=" · осталось "/><Run Text="{Binding Cycle.Pending}"/></TextBlock>
    </StackPanel>
   </Border>
   <TabControl x:Name="CollectionTabs" Grid.Row="2" Background="Transparent" BorderThickness="0">
@@ -39,7 +37,7 @@
      <DataGrid.Columns><DataGridTextColumn Header="Трейдер" Binding="{Binding Name}" Width="*"/><DataGridTextColumn Header="Состояние" Binding="{Binding State, Converter={StaticResource RussianText}}" Width="*"/><DataGridTextColumn Header="Цена" Binding="{Binding PriceAge, Converter={StaticResource RussianText}}" Width="*"/></DataGrid.Columns>
     </DataGrid>
    </TabItem>
-   <TabItem Header="Карта Гирана"><controls:RadarMapControl Snapshot="{Binding Radar}" City="{Binding Profile.City}" Margin="0,10,0,0"/></TabItem>
+   <TabItem Header="Карта Гирана"><controls:RadarMapControl Snapshot="{Binding MarketRadar}" City="{Binding Profile.City}" Margin="0,10,0,0"/></TabItem>
    <TabItem Header="Настройки сбора">
     <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="12" MaxWidth="760" HorizontalAlignment="Left">
        <TextBlock Text="Рынок совпадает с сервером выбранного профиля" Margin="0,0,0,6"/>

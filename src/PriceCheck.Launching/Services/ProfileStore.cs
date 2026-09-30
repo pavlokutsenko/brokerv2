@@ -46,15 +46,24 @@ public sealed class ProfileStore : IProfileStore
         {
             profile.City = "Giran";
             profile.RotationAccounts ??= [];
-            if(profile.RotationAccountIndex<0 || profile.RotationAccountIndex>=profile.RotationAccountCount)
-                profile.RotationAccountIndex=0;
+            profile.RotationAccountIndex=0;
             if (profile.LoginServerId == 0 &&
                 GameServerCatalog.TryGetVerifiedId(profile.LoginServerName, out var serverId))
                 profile.LoginServerId = serverId;
             profile.ProxyPassword = Unprotect(profile.ProxyPasswordProtected, () => profile.ProxyEnabled = false);
             profile.LoginPassword = Unprotect(profile.LoginPasswordProtected, () => profile.AutoLoginEnabled = false);
             foreach(var account in profile.RotationAccounts)
-                account.LoginPassword=Unprotect(account.LoginPasswordProtected,()=>profile.CharacterRotationEnabled=false);
+            {
+                if(account.LaunchTemplateId==Guid.Empty)
+                {
+                    account.CharacterRotationEnabled=profile.CharacterRotationEnabled;
+                    account.RotationIntervalMinutes=profile.RotationIntervalMinutes;
+                    account.RotationJitterMinutes=profile.RotationJitterMinutes;
+                    account.AutoRestartEnabled=profile.AutoRestartEnabled;
+                }
+                account.LoginPassword=Unprotect(account.LoginPasswordProtected,()=>
+                {account.CharacterRotationEnabled=false;account.AutoLoginEnabled=false;});
+            }
         }
         SavedGiranCenter.AssignSharedFallback(profiles);
         return Task.FromResult<IReadOnlyList<CollectorProfile>>(profiles);
@@ -76,8 +85,8 @@ public sealed class ProfileStore : IProfileStore
                 profile.LoginPasswordProtected = string.IsNullOrEmpty(profile.LoginPassword) ? null :
                     Protect(profile.LoginPassword);
                 foreach(var account in profile.RotationAccounts)
-                    if(!string.IsNullOrEmpty(account.LoginPassword))
-                        account.LoginPasswordProtected=Protect(account.LoginPassword);
+                    account.LoginPasswordProtected=string.IsNullOrEmpty(account.LoginPassword) ? null :
+                        Protect(account.LoginPassword);
             }
             DurableJsonFile.Write(_path, materialized, JsonOptions);
         }
@@ -96,12 +105,16 @@ public sealed class ProfileStore : IProfileStore
             profile.RotationAccountIndex>=0 && profile.RotationAccountIndex<=accounts.Count &&
             accounts.All(account=>account is not null && account.Id!=Guid.Empty &&
                 !string.IsNullOrWhiteSpace(account.LoginName) && account.LoginName.Length<=120 &&
-                (!string.IsNullOrEmpty(account.LoginPassword) || !string.IsNullOrEmpty(account.LoginPasswordProtected))) &&
+                (account.AutoLoginEnabled!=true || !string.IsNullOrEmpty(account.LoginPassword) ||
+                    !string.IsNullOrEmpty(account.LoginPasswordProtected)) &&
+                account.CharacterSlot is >=0 and <=6 && account.RotationIntervalMinutes is >=1 and <=1440 &&
+                account.RotationJitterMinutes>=0 && account.RotationJitterMinutes<account.RotationIntervalMinutes) &&
             accounts.Select(account=>account.Id).Distinct().Count()==accounts.Count &&
             (accounts.Count==0 || !string.IsNullOrWhiteSpace(profile.LoginName)) &&
             accounts.Select(account=>account.LoginName.Trim()).Append(profile.LoginName.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase).Count()==accounts.Count+1) &&
-        profiles.Select(profile => profile.Id).Distinct().Count() == profiles.Count;
+        profiles.SelectMany(profile=>profile.RotationAccounts.Select(account=>account.Id).Prepend(profile.Id))
+            .Distinct().Count()==profiles.Sum(profile=>profile.RotationAccounts.Count+1);
 
     private static string Unprotect(string? value, Action onFailure)
     {

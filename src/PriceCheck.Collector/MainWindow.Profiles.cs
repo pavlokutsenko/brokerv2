@@ -87,8 +87,7 @@ public partial class MainWindow
                 profile.LoginServerId = verifiedId;
             if (profile.CharacterSlot is < 0 or > 6) profile.CharacterSlot = 0;
             profile.RotationAccounts ??= [];
-            if(profile.RotationAccountIndex<0 || profile.RotationAccountIndex>=profile.RotationAccountCount)
-                profile.RotationAccountIndex=0;
+            profile.RotationAccountIndex=0;
             profile.City = "Giran";
             profile.CenterZonesByCity ??= [];
             if (profile.CenterZoneX is double legacyX && profile.CenterZoneY is double legacyY &&
@@ -106,6 +105,7 @@ public partial class MainWindow
             Runtimes.Add(runtime);
         }
         ApplySavedGiranCenter();
+        foreach(var runtime in Runtimes)RebuildAccountRuntimes(runtime);
         SelectedRuntime = Runtimes.FirstOrDefault();
         _collection.InitializeLocalHistory(Runtimes.Select(runtime => runtime.Profile));
         TemplatesView.SetTemplates(LaunchTemplates.Where(value => value.Id != Guid.Empty));
@@ -130,6 +130,20 @@ public partial class MainWindow
                 SelectedRuntime = requested;
                 await LaunchProfileAsync(requested, StartupResumeCharacter);
                 if (requested.Session is null) break;
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(StartupLaunchAccountsName))
+        {
+            foreach(var name in StartupLaunchAccountsName.Split(',',
+                         StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                var requested=Runtimes.FirstOrDefault(runtime=>
+                    runtime.Profile.Name.Equals(name,StringComparison.OrdinalIgnoreCase));
+                if(requested is null){Log($"Профиль запуска «{name}» не найден");continue;}
+                SelectedRuntime=requested;
+                await LaunchProfileAsync(requested,StartupResumeCharacter);
+                foreach(var child in _accountRuntimes.GetValueOrDefault(requested.Profile.Id,[]))
+                    await LaunchChildAccountAsync(requested,child);
             }
         }
         await StartRequestedCollectionAsync();

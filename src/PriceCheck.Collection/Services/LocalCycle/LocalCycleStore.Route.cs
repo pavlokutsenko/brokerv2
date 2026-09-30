@@ -54,24 +54,47 @@ public sealed partial class LocalCycleStore
                 var pending=_remaining.Where(k=>_traders.TryGetValue(k,out var t) && Ready(t) && boundary.Inside(t.X,t.Y))
                     .Select(k=>_traders[k]).ToList();
                 _remaining.Clear();
-                var clusters=pending.GroupBy(t=>CycleRouteSections.Room(t.X,t.Y) is {Length:>0} room
-                    ? room : $"grid:{(int)Math.Floor(t.X/256)}:{(int)Math.Floor(t.Y/256)}").Select(g=>g.ToList()).ToList();
-                while(clusters.Count>0)
+                foreach(var t in OrderPending(pending,x,y))
                 {
-                    var cluster=clusters.MinBy(g=>Distance(x,y,g.Average(t=>t.X),g.Average(t=>t.Y)))!;
-                    clusters.Remove(cluster);
-                    while(cluster.Count>0)
-                    {
-                        var t=cluster.MinBy(t=>Distance(x,y,t.X,t.Y))!;cluster.Remove(t);
-                        _remaining.Add(t.Key);x=t.X;y=t.Y;
-                        _db.Command("UPDATE route SET ordinal=? WHERE pass_id=? AND trader_key=?",_remaining.Count,_pass,t.Key);
-                    }
+                    _remaining.Add(t.Key);
+                    _db.Command("UPDATE route SET ordinal=? WHERE pass_id=? AND trader_key=?",_remaining.Count,_pass,t.Key);
                 }
             });
             Message?.Invoke($"INFO {_profile.Name}: continuing route {_pass} · {_remaining.Count} remaining targets from new character position");
             return _remaining.Count>0;
         }
     }
+    public CycleTarget? PreviewNextTarget(double x,double y,CycleRadarPool boundary,string? excludedKey)
+    {
+        lock(_sync)
+        {
+            if(_pass.Length==0 || !double.IsFinite(x) || !double.IsFinite(y))return null;
+            var pending=_remaining.Where(k=>k!=excludedKey && _traders.TryGetValue(k,out var t) &&
+                Ready(t) && boundary.Inside(t.X,t.Y)).Select(k=>_traders[k]).ToList();
+            var first=OrderPending(pending,x,y).FirstOrDefault();
+            return first is null?null:Target(first);
+        }
+    }
+    private static IReadOnlyList<LocalTrader> OrderPending(List<LocalTrader> pending,double x,double y)
+    {
+        var ordered=new List<LocalTrader>(pending.Count);
+        var clusters=pending.GroupBy(t=>CycleRouteSections.Room(t.X,t.Y) is {Length:>0} room
+            ? room : $"grid:{(int)Math.Floor(t.X/256)}:{(int)Math.Floor(t.Y/256)}").Select(g=>g.ToList()).ToList();
+        while(clusters.Count>0)
+        {
+            var cluster=clusters.MinBy(g=>Distance(x,y,g.Average(t=>t.X),g.Average(t=>t.Y)))!;
+            clusters.Remove(cluster);
+            while(cluster.Count>0)
+            {
+                var t=cluster.MinBy(t=>Distance(x,y,t.X,t.Y))!;cluster.Remove(t);
+                ordered.Add(t);x=t.X;y=t.Y;
+            }
+        }
+        return ordered;
+    }
+    private static CycleTarget Target(LocalTrader t) =>
+        new(t.Key,t.Name,t.ObjectId,t.KioskType,t.X,t.Y,t.Revision,t.Reason,t.ChangedAt)
+        {RebindOnRead=t.ObjectId==0,VerificationRevision=t.VerificationToken};
     private bool Ready(LocalTrader t) => t.HasPosition && !t.ClosedThisSession && !t.ConfirmedClosed && !t.NeedsServerHistory && t.KioskType is 1 or 3 or 8 && NeedsRead(t);
     private void InsertPassTarget(LocalTrader t,double x,double y)
     {
@@ -103,8 +126,7 @@ public sealed partial class LocalCycleStore
             {
                 var t=_traders[key];
                 if(!Ready(t)) { _remaining.Remove(key); continue; }
-                targets.Add(new(t.Key,t.Name,t.ObjectId,t.KioskType,t.X,t.Y,t.Revision,t.Reason,t.ChangedAt)
-                    {RebindOnRead=t.ObjectId==0,VerificationRevision=t.VerificationToken});
+                targets.Add(Target(t));
                 if(targets.Count>=count) break;
             }
             return targets;
@@ -135,6 +157,7 @@ public sealed partial class LocalCycleStore
         {
             var targets=_remaining.Where(k=>Ready(_traders[k])).Select(k=>_traders[k]).ToArray();
             return state with {Active=_traders.Values.Count(t=>!t.ConfirmedClosed),Pending=targets.Length,Checked=_readPass.Count,
+                ServerCurrentPriceTraders=_serverCurrentPriceTraders,ServerPriceCountAt=_serverPriceCountAt,
                 CurrentPriceTraders=_traders.Values.Count(t=>t.SeenOpenThisSession && t.HasPosition && _collectionBoundary.Inside(t.X,t.Y) &&
                     !t.ClosedThisSession && !t.ConfirmedClosed && !t.NeedsServerHistory && t.KioskType is 1 or 3 or 8 && !NeedsRead(t)),
                 Deferred=0,Overdue=0,PassRead=_readPass.Count,PassNewFound=Math.Max(0,_admitted.Count-_initialCount),PassRadarPending=targets.Length,

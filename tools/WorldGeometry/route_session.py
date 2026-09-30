@@ -25,6 +25,7 @@ def next_command(path, previous):
 
 def run(pid, command_file, output):
     previous = None; sections = 0; reason = 'completed'; waiting=time.monotonic();scope=None
+    startup=time.monotonic()
     # Cancellation, final rest and hook cleanup belong to the session boundary.
     # Section outputs acknowledge execution; the host awaits this final output
     # before changing native role, returning to broker or changing the client.
@@ -48,6 +49,8 @@ def run(pid, command_file, output):
                 raise ValueError('Route session profile/market/city changed')
             scope=current_scope
             config['continuousSession'] = True
+            if sections == 0:
+                config['readerStartupSeconds'] = round(time.monotonic()-startup, 3)
             os.environ['PRICECHECK_PROGRESS_FILE']=str(section_output.with_suffix('.progress.json'))
             try:
                 result = run_section(client, config, section_output)

@@ -11,7 +11,12 @@ public sealed partial class CollectionModule
         if (!before.IsInsideCenterZone) throw new InvalidOperationException("Broker requires the configured center zone.");
         if (!cycle.RadarPool.CoversCenter(cycle.Center!.Value))
             throw new InvalidOperationException("Center standing zone does not cover the collection polygon with radar margin.");
-        await cycle.Store.ImportActiveServerRosterAsync(cycle.RadarPool);
+        try { await cycle.Store.ImportActiveServerRosterAsync(cycle.RadarPool); }
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException or
+                                     InvalidDataException or JsonException)
+        {
+            Log($"WARNING {runtime.Profile.Name}: server roster unavailable; continuing local broker · {error.Message}");
+        }
         var started = DateTimeOffset.UtcNow;
         Log($"INFO {runtime.Profile.Name}: broker started · PID {runtime.ProcessId} · epoch {started:O}");
         cycle.CollectingBrokerRadar=true;
@@ -61,8 +66,11 @@ public sealed partial class CollectionModule
                 ProcessId=runtime.ProcessId.Value,WorldCharacterDataAvailable=true,LivePlayerPositionAvailable=true,
                 IsInsideCenterZone=true,PlayerX=raw.NativeRadar.CollectorX,PlayerY=raw.NativeRadar.CollectorY,
                 Traders=raw.NativeStateObservations.Where(t=>t.KioskType is 1 or 3 or 8)
+                    .GroupBy(t=>CycleQueue.Key(t.Name)).Where(group=>group.Key.Length>0)
+                    .Select(group=>group.MaxBy(t=>t.ObservedAt)!)
                     .Select(t=>new RadarPoint(t.ObjectId,t.Name,t.KioskType,t.X,t.Y,0,true,t.ObservedAt){StateObservedAtUtc=t.ObservedAt}).ToArray()};
             cycle.Store.Observe(live,cycle.RadarPool,cycle.Center.Value,cycle.CenterEnteredAt,publishNewPresence:true);
+            cycle.Store.RecordMarketRadar(live);
         }
         var inventory = new BrokerInventoryFile { Complete=complete, StartedAtUtc=started,
             CapturedAtUtc=raw.CapturedAtUtc, ElapsedSeconds=raw.ElapsedSeconds, Summary=raw.Summary, Rows=rows };

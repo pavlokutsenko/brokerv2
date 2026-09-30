@@ -3,9 +3,21 @@ using PriceCheck.Contracts;
 using PriceCheck.Launching;
 using PriceCheck.Collector.Models;
 
+if (args.Contains("--memory-budget-only"))
+{
+    await MemoryBudgetTests.Run();
+    return;
+}
+
 if (args.Contains("--route-continuation-only"))
 {
     await LocalRouteContinuationTests.Run();
+    return;
+}
+
+if (args.Contains("--market-turns-only"))
+{
+    await MarketAccountTurnsTests.Run();
     return;
 }
 
@@ -21,6 +33,7 @@ if (args.Contains("--rotation-recovery-only"))
 
 if (args.Contains("--recovery-only"))
 {
+    await ProxyRelayTests.Run();
     await ClientRecoveryTests.Run();
     Console.WriteLine("ModuleIsolation.Smoke recovery: PASS");
     return;
@@ -128,6 +141,7 @@ Check(processes.Terminations == 2, "Draining collection must never terminate a g
 // a temp SQLite store. Historical lease/cohort fixtures remain in separate files.
 await LocalCoordinatorTests.Run();
 await LocalRouteContinuationTests.Run();
+await MarketAccountTurnsTests.Run();
 await LocalBrokerWarningTests.Run();
 await LocalNativeFailureTests.Run();
 await LocalCenterArrivalTests.Run();

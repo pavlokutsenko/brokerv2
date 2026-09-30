@@ -5,7 +5,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace PriceCheck.Collector.Runtime.Driver;
 
-public sealed class Lu4Device : IDisposable
+public sealed partial class Lu4Device : IDisposable
 {
     private const uint Version = 3;
     private const uint DeviceType = 0x8337;

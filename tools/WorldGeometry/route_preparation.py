@@ -24,7 +24,11 @@ def targets_for(config, data):
 
 
 def identity(config):
-    return {'city': config['city'], 'targets': config['targets']}
+    # ObjectID belongs to one client process; it cannot identify a market plan
+    # shared between accounts. The live reader still rebinds and verifies it.
+    geometry_keys=('traderKey','name','x','y','kiosk_type','verification_revision','local_revision')
+    return {'city': config['city'], 'targets': [
+        {key:target.get(key) for key in geometry_keys} for target in config['targets']]}
 
 
 def dump_navigation(nav, clearance):

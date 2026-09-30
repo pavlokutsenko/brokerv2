@@ -351,7 +351,7 @@ def main() -> int:
         return 0
 
     parser = argparse.ArgumentParser(description="PriceCheck embedded market worker")
-    parser.add_argument("--mode", choices=("broker", "market-route", "market-route-session", "market-plan", "price-prepare", "price", "price-batch", "price-sweep", "manual-passby", "move", "cleanup"), default="broker")
+    parser.add_argument("--mode", choices=("broker", "market-route", "market-route-session", "market-plan", "market-reader-prepare", "price-prepare", "price", "price-batch", "price-sweep", "manual-passby", "move", "cleanup"), default="broker")
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--object-id", type=int)
@@ -372,6 +372,19 @@ def main() -> int:
         sys.path.insert(0,str(navigation))
         from route_preparation import run
         run(args.input,args.output.resolve())
+    elif args.mode == "market-reader-prepare":
+        from types import SimpleNamespace
+        navigation = ROOT / 'navigation'
+        if not navigation.exists(): navigation = ROOT.parents[2] / 'tools/WorldGeometry'
+        sys.path.insert(0,str(navigation))
+        from walk_shop_hooks import ShopHooks
+        directory=Path(os.environ['LOCALAPPDATA']) / 'PriceCheckCollector/research/market-walk' / str(args.pid)
+        directory.mkdir(parents=True,exist_ok=True)
+        stop=Path(os.environ['PRICECHECK_STOP_FILE']) if os.environ.get('PRICECHECK_STOP_FILE') else None
+        walk=SimpleNamespace(pid=args.pid,directory=directory,cancelled=lambda: bool(stop and stop.exists()))
+        ShopHooks(walk).prepare()
+        args.output.parent.mkdir(parents=True,exist_ok=True)
+        args.output.write_text(json.dumps({'pid':args.pid,'ready':True}),encoding='utf-8')
     elif args.mode in ("market-route", "market-route-session"):
         if args.input is None: parser.error('--input is required')
         navigation = ROOT / 'navigation'

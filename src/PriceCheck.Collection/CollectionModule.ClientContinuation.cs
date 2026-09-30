@@ -17,6 +17,7 @@ public sealed partial class CollectionModule
             {
                 cycle.Bindings.BeginSession();cycle.RadarPool.BeginSession();
                 cycle.ContinueAfterClientChange=true;
+                cycle.TraderTurnComplete=false;
                 cycle.Phase="Resume route";
                 cycle.PreviousDestination=null;
                 cycle.Next=DateTimeOffset.MinValue;

@@ -1,10 +1,20 @@
-using System.Net.NetworkInformation;
 using System.Text;
-using Microsoft.Win32;
 
 namespace PriceCheck.Collector.Services;
 
-public sealed record HardwareScanRow(string Label, string CurrentValue, string Coverage, string TargetValue = "");
+public sealed record HardwareScanRow(string Label, string CurrentValue, string Coverage, string TargetValue = "")
+{
+    public string DriverCoverage => Coverage is "Detected only" or "Access denied" or "Scan unavailable" or "Invalid EDID" or "Read failed"
+        ? "Подмена не подтверждена / источник недоступен"
+        : RegistryValueName is "MachineGuid" or "HwProfileGuid" or "EDID" or "ProductId" or "SusClientId" or "MachineId"
+            or "VideoIdentifier" or "ComputerName" or "ProcessorNameString" or "Update Revision" or "InstallDate"
+            ? "Драйвер · PID/шаблон + общий набор первого клиента (нужна новая сборка)"
+            : "Агент · только клиент и его шаблон";
+    public string SourceId { get; init; } = "";
+    public int SourceCapacity { get; init; }
+    public string RegistryPath { get; init; } = "";
+    public string RegistryValueName { get; init; } = "";
+}
 
 public static class HardwareInventoryService
 {
@@ -12,11 +22,11 @@ public static class HardwareInventoryService
     {
         var rows = new List<HardwareScanRow>();
         try { ScanFirmware(rows); } catch (Exception e) { rows.Add(new("SMBIOS", e.Message, "Scan unavailable")); }
-        ScanRegistry(rows);
-        ScanNetwork(rows);
+        HardwareInventoryRegistry.Scan(rows);
+        HardwareInventoryNetwork.Scan(rows);
         ScanVolumes(rows);
         try { ScanDisks(rows); } catch (Exception e) { rows.Add(new("Physical disks", e.Message, "Scan unavailable")); }
-        try { ScanMonitors(rows); } catch (Exception e) { rows.Add(new("Monitors", e.Message, "Scan unavailable")); }
+        try { HardwareInventoryMonitors.Scan(rows); } catch (Exception e) { rows.Add(new("Monitors", e.Message, "Scan unavailable")); }
         HardwareInventoryPeripheral.Scan(rows);
         HardwareInventoryWmi.Scan(rows);
         return rows;
@@ -92,54 +102,6 @@ public static class HardwareInventoryService
         return Encoding.Latin1.GetString(table, position, last - position);
     }
 
-    private static void ScanRegistry(List<HardwareScanRow> rows)
-    {
-        var values = new (string Label, string Path, string Name, bool Hooked)[]
-        {
-            ("Windows · MachineGuid", @"SOFTWARE\Microsoft\Cryptography", "MachineGuid", true),
-            ("Windows · HwProfileGuid", @"SYSTEM\CurrentControlSet\Control\IDConfigDB\Hardware Profiles\0001", "HwProfileGuid", true),
-            ("Windows · ProductId", @"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ProductId", true),
-            ("Windows · PC name (registry)", @"SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName", "ComputerName", true),
-            ("Windows · InstallDate", @"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallDate", true),
-            ("Windows · SusClientId", @"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate", "SusClientId", true),
-            ("Windows · SQM MachineId", @"SOFTWARE\Microsoft\SQMClient", "MachineId", true),
-            ("Windows · Secure Boot", @"SYSTEM\CurrentControlSet\Control\SecureBoot\State", "UEFISecureBootEnabled", false),
-            ("Processor · model", @"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString", true),
-            ("Processor · revision", @"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "Update Revision", true)
-        };
-        foreach (var value in values)
-        {
-            try
-            {
-                using var key = Registry.LocalMachine.OpenSubKey(value.Path);
-                var raw = key?.GetValue(value.Name);
-                var current = raw is byte[] bytes ? Convert.ToHexString(bytes) : raw?.ToString();
-                if (!string.IsNullOrWhiteSpace(current)) rows.Add(new(value.Label, current,
-                    value.Hooked ? "RegQueryValueEx · hooked" : "Detected only"));
-            }
-            catch (Exception e) { rows.Add(new(value.Label, e.Message, "Access denied")); }
-        }
-    }
-
-    private static void ScanNetwork(List<HardwareScanRow> rows)
-    {
-        var selectedGateway = GatewayIdentityService.FindIpv4Gateway();
-        foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces())
-        {
-            var bytes = adapter.GetPhysicalAddress().GetAddressBytes();
-            if (bytes.Length != 6) continue;
-            rows.Add(new($"MAC · {adapter.Name}", Convert.ToHexString(bytes), "GetAdaptersAddresses · hooked"));
-            foreach (var gateway in adapter.GetIPProperties().GatewayAddresses)
-            {
-                if (gateway.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
-                var routerMac = HardwareInventoryNative.TryRouterMac(gateway.Address);
-                rows.Add(new($"Gateway {gateway.Address} · MAC", routerMac ?? "ARP unresolved",
-                    routerMac is null ? "ARP unavailable" : gateway.Address.Equals(selectedGateway)
-                        ? "SendARP · gateway hook" : "Detected only"));
-            }
-        }
-    }
-
     private static void ScanVolumes(List<HardwareScanRow> rows)
     {
         foreach (var drive in DriveInfo.GetDrives())
@@ -156,7 +118,7 @@ public static class HardwareInventoryService
     private static void ScanDisks(List<HardwareScanRow> rows)
     {
         var found = false;
-        for (var index = 0; index < 16; index++)
+        foreach (var index in HardwareInventoryDisks.Indices())
         {
             var serial = HardwareInventoryNative.TryDiskSerial(index);
             var layout = HardwareInventoryNative.TryDiskLayout(index);
@@ -174,20 +136,4 @@ public static class HardwareInventoryService
         if (!found) rows.Add(new("Disks · serial", "Storage descriptor unavailable", "Read failed"));
     }
 
-    private static void ScanMonitors(List<HardwareScanRow> rows)
-    {
-        using var display = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\DISPLAY");
-        if (display is null) return;
-        foreach (var vendor in display.GetSubKeyNames())
-        using (var vendorKey = display.OpenSubKey(vendor))
-        {
-            if (vendorKey is null) continue;
-            foreach (var instance in vendorKey.GetSubKeyNames())
-            using (var parameters = vendorKey.OpenSubKey(instance + @"\Device Parameters"))
-            {
-                if (parameters?.GetValue("EDID") is not byte[] edid || edid.Length < 16) continue;
-                rows.Add(new($"Monitor {vendor} · EDID", Convert.ToHexString(edid, 12, 4), "Detected only"));
-            }
-        }
-    }
 }

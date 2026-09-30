@@ -48,6 +48,7 @@ public sealed class LaunchModule
         _lastProtection[profile.Id] = ClientProtectionStatus.Pending with { ProxyRequired = template?.ProxyEnabled == true };
         try
         {
+            if (template is not null) ClientResourceBudget.Validate(template);
             if (_owned.TryGetValue(profile.Id, out var current))
             {
                 if (_identity(current.ProcessId) == current)
@@ -74,6 +75,11 @@ public sealed class LaunchModule
             await _processes.ActivateLateAgentAsync(pid, cancellationToken);
             progress(template?.ProxyEnabled == true ? "Checking HWID and proxy protection…" : "Checking HWID…");
             await _processes.ValidateProtectionAsync(pid, false, cancellationToken);
+            if (template is { MemoryBudgetEnabled: true })
+            {
+                progress($"Проверка лимита ОЗУ · {template.MemoryBudgetMiB} МиБ…");
+                await _processes.ApplyMemoryBudgetAsync(session, template.MemoryBudgetMiB, cancellationToken);
+            }
             if (windowCorner is { } initialCorner && _identity(pid) == session)
                 _processes.TryPlaceGameWindow(session, initialCorner);
             if(beforeLogin is not null) await beforeLogin(session,cancellationToken);

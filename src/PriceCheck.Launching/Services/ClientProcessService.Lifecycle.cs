@@ -13,6 +13,8 @@ public sealed partial class ClientProcessService
     public void Release(int? pid)
     {
         if (pid is not int value) return;
+        RestoreMemoryBudget(value);
+        if (_resourceJobs.TryRemove(value, out var resourceJob)) resourceJob.Dispose();
         _claimed.TryRemove(value, out _);
         _pendingLateAgents.TryRemove(value, out _);
         if (_guards.TryRemove(value, out var guard)) { _lastProtection[value] = guard.Status; guard.Dispose(); }
@@ -50,6 +52,12 @@ public sealed partial class ClientProcessService
         if (!_pendingLateAgents.TryGetValue(pid, out var agentPath)) return;
         using var hook = await ClientAgentHookLoader.InstallAsync(pid, agentPath, cancellationToken);
         await WaitForAgentReadyAsync(pid, hook, cancellationToken);
+        if (_resourceJobs.TryGetValue(pid, out var resourceJob) && resourceJob.ApplyCpuBudget() is { } percent)
+        {
+            var session = PriceCheck.Windows.ClientProcessIdentity.Read(pid)
+                ?? throw new IOException("CPU: client exited before budget confirmation.");
+            LogMemoryBudget(session, $"cpu-job-applied percent={percent}");
+        }
         _pendingLateAgents.TryRemove(pid, out _);
     }
 

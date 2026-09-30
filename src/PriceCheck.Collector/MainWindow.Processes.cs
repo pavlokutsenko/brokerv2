@@ -7,14 +7,12 @@ namespace PriceCheck.Collector;
 
 public partial class MainWindow
 {
-    private async void Launch_Click(object sender, RoutedEventArgs e) => await LaunchProfileAsync(SelectedRuntime);
-
     private async Task LaunchProfileAsync(ProfileRuntime? runtime, bool resumeCharacter = false)
     {
         if (runtime is null || runtime.IsBusy || _closing) return;
         if (runtime.Session is { } current && ClientProcessIdentity.IsCurrent(current))
         {
-            Log($"{runtime.Profile.Name}: client is already running");
+            Log($"{runtime.Profile.Name}: клиент этого аккаунта уже запущен");
             return;
         }
         runtime.IsBusy = true;
@@ -46,6 +44,8 @@ public partial class MainWindow
         catch (Exception exception)
         {
             runtime.LaunchStatus = "Launch failed";
+            if(runtime.ReaderAttached)try {await _collection.DetachAsync(runtime);}catch(Exception e)
+            {Log($"WARNING {runtime.Profile.Name}: reader cleanup after launch failure · {e.Message}");}
             if (runtime.Session is null || !ClientProcessIdentity.IsCurrent(runtime.Session))
             {
                 runtime.Session = null;
@@ -67,11 +67,6 @@ public partial class MainWindow
         }
     }
 
-    private async void Stop_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is { IsBusy: false } runtime) await StopProfileAsync(runtime);
-    }
-
     private async Task<bool> StopProfileAsync(ProfileRuntime runtime)
     {
         _clientRecovery.Forget(runtime.Profile.Id);
@@ -79,6 +74,8 @@ public partial class MainWindow
         runtime.IsBusy = true;
         try
         {
+            await StopMarketReaderWarmupsAsync(runtime);
+            await StopAdditionalAccountsAsync(runtime);
             await _collection.DetachAsync(runtime);
             if (runtime.Session is { } session && !_launcher.Owns(runtime.Profile.Id, session) && ClientProcessIdentity.IsCurrent(session))
             {
@@ -93,6 +90,10 @@ public partial class MainWindow
             runtime.Session = null;
             runtime.Profile.LastProcessId = null;
             runtime.Profile.LastProcessStartUtc = null;
+            _marketActive.Remove(runtime.Profile.Id);
+            _lastBrokerOwner.Remove(runtime.Profile.Id);
+            runtime.MarketCollectionEnabled=false;
+            RefreshMarketDisplay(runtime);
             await SaveProfilesAsync();
             return true;
         }
@@ -114,7 +115,7 @@ public partial class MainWindow
         if (_closeReady) return;
         e.Cancel = true;
         if (_closing) return;
-        if (Runtimes.Any(runtime => runtime.IsBusy))
+        if (AllRuntimes().Any(runtime => runtime.IsBusy))
         {
             Log("Дождитесь завершения текущей операции перед закрытием.");
             return;
@@ -129,7 +130,8 @@ public partial class MainWindow
                 if(DateTimeOffset.UtcNow>=refreshDeadline) throw new TimeoutException("Module refresh has not finished before closing.");
                 await Task.Delay(50);
             }
-            foreach (var runtime in Runtimes) await _collection.DetachAsync(runtime);
+            foreach(var root in Runtimes)await StopMarketReaderWarmupsAsync(root);
+            foreach (var runtime in AllRuntimes()) await _collection.DetachAsync(runtime);
             _launcher.StopOwnedClients();
             await SaveProfilesAsync();
             await _journal.FlushAsync();

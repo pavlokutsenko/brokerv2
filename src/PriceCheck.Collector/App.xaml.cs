@@ -53,6 +53,7 @@ public partial class App : Application
             new DriverBootstrapper().EnsureReady();
             const string launchProfilePrefix = "--launch-profile=";
             const string launchProfilesPrefix = "--launch-profiles=";
+            const string launchAccountsPrefix = "--launch-accounts=";
             const string collectProfilePrefix = "--collect-profile=";
             var startupProfile = e.Args.FirstOrDefault(argument =>
                 argument.StartsWith(launchProfilePrefix, StringComparison.OrdinalIgnoreCase) ||
@@ -65,6 +66,8 @@ public partial class App : Application
                     startupProfile.StartsWith(launchProfilesPrefix, StringComparison.OrdinalIgnoreCase)
                         ? startupProfile[launchProfilesPrefix.Length..]
                         : startupProfile[launchProfilePrefix.Length..],
+                StartupLaunchAccountsName = e.Args.FirstOrDefault(argument =>
+                    argument.StartsWith(launchAccountsPrefix, StringComparison.OrdinalIgnoreCase))?[launchAccountsPrefix.Length..],
                 StartupCollectProfileId = e.Args.FirstOrDefault(argument =>
                     argument.StartsWith(collectProfilePrefix, StringComparison.OrdinalIgnoreCase))?[collectProfilePrefix.Length..]
             };

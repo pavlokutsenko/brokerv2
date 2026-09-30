@@ -42,8 +42,8 @@ internal static class ProfileSelectionChecks
         typeof(MainWindow).GetField("_loaded", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(window, true);
         var tabs = (TabControl)window.FindName("MainTabs");
         var profileTabs = (TabControl)window.FindName("ProfileTabs");
-        var server = Find<ComboBox>((LaunchPanelView)window.FindName("LaunchPanel"))
-            .Single(box => ReferenceEquals(box.ItemsSource, window.Runtimes));
+        if (tabs.SelectedIndex != 0 || tabs.SelectedContent is null || profileTabs.SelectedIndex != 0)
+            throw new Exception("Collector startup did not display the profile launch panel.");
         // Materialize both profile-bound editors before switching the left profile list.
         tabs.SelectedIndex = 0; profileTabs.SelectedIndex = 1; Pump(app);
         var collection = (CollectionPanelView)window.FindName("CollectionPanel");
@@ -68,7 +68,7 @@ internal static class ProfileSelectionChecks
             foreach (var runtime in fixtures.Reverse())
             {
                 list.SelectedItem = runtime; Pump(app);
-                if (!ReferenceEquals(window.SelectedRuntime, runtime) || !ReferenceEquals(server.SelectedItem,runtime))
+                if (!ReferenceEquals(window.SelectedRuntime, runtime))
                     throw new Exception("Left profile selection did not update collection settings.");
                 profileTabs.SelectedIndex = 0; Pump(app);
                 profileTabs.SelectedIndex = 1; Pump(app);
@@ -95,7 +95,7 @@ internal static class ProfileSelectionChecks
         if (stored.Single(value => value.Id == window.SelectedRuntime!.Profile.Id).TraderPauseSeconds != 45)
             throw new Exception("Trader pause stopped persisting settings.");
         tabs.SelectedIndex=0; profileTabs.SelectedIndex=0; Pump(app);
-        server.SelectedItem=fixtures[1]; Pump(app);
+        list.SelectedItem=fixtures[1]; Pump(app);
         if(window.SelectedRuntime!=fixtures[1] || window.SelectedRuntime.Profile.Name!=names[1])
             throw new Exception("Selecting a server did not switch its owned profile and market.");
         Console.WriteLine("PROFILE_SELECTION_OK repeated_switches=16 fields_preserved edit_saved isolated_settings");

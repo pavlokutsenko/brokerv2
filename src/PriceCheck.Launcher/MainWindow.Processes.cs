@@ -8,7 +8,6 @@ namespace PriceCheck.Launcher;
 
 public partial class MainWindow
 {
-    private async void Launch_Click(object sender, RoutedEventArgs e) => await LaunchAsync(SelectedRuntime);
     private async Task LaunchAsync(LaunchRuntime? runtime)
     {
         if (runtime is null || !_loaded || runtime.IsBusy || _closing) return;
@@ -17,7 +16,7 @@ public partial class MainWindow
         var template = LaunchTemplates.FirstOrDefault(value => value.Id == runtime.Profile.LaunchTemplateId && value.Id != Guid.Empty);
         try
         {
-            if (Runtimes.Count(value => value.Session is { } session && ClientProcessIdentity.IsCurrent(session)) >= 4)
+            if (AllAccounts().Count(value => value.Session is { } session && ClientProcessIdentity.IsCurrent(session)) >= 4)
                 throw new InvalidOperationException("Одновременно могут работать не более четырёх игровых клиентов.");
             CharacterRotationSchedule.Validate(runtime.Profile);
             _recovery.Forget(runtime.Profile.Id); runtime.ClientFault = null;
@@ -26,6 +25,7 @@ public partial class MainWindow
                 status => { runtime.LaunchStatus = status; runtime.Protection = _launcher.Protection(runtime.Profile.Id); }, CancellationToken.None));
             _rotation.Started(runtime.Profile, runtime.Session!, DateTimeOffset.UtcNow);
             Log($"{runtime.ProcessLabel} · ready", runtime);
+            RefreshAccountCounts();
         }
         catch (Exception exception)
         {
@@ -53,11 +53,6 @@ public partial class MainWindow
         _launcher.ReleaseExited(runtime.Profile.Id);
         runtime.Session = null; runtime.Profile.LastProcessId = null; runtime.Profile.LastProcessStartUtc = null;
     }
-    private async void Stop_Click(object sender, RoutedEventArgs e)
-    {
-        if (SelectedRuntime is not { IsBusy: false } runtime) return;
-        try { await StopAsync(runtime); } catch (Exception exception) { Error(exception, runtime); }
-    }
     private async Task StopAsync(LaunchRuntime runtime)
     {
         runtime.IsBusy = true;
@@ -68,6 +63,7 @@ public partial class MainWindow
             runtime.Protection = _launcher.Protection(runtime.Profile.Id);
             runtime.Profile.LastProcessId = null; runtime.Profile.LastProcessStartUtc = null;
             runtime.LaunchStatus = "Остановлено"; await SaveProfilesAsync();
+            RefreshAccountCounts();
         }
         finally { runtime.IsBusy = false; }
     }
@@ -76,7 +72,7 @@ public partial class MainWindow
         if (_closeReady) return;
         e.Cancel = true;
         if (_closing) return;
-        if (Runtimes.Any(value => value.IsBusy)) { Log("Дождитесь завершения текущей операции."); return; }
+        if (AllAccounts().Any(value => value.IsBusy)) { Log("Дождитесь завершения текущей операции."); return; }
         _closing = true; _timer.Stop();
         try
         {

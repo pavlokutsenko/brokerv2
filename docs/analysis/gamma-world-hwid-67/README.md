@@ -74,6 +74,11 @@ read-only market outbox was empty. This is a recovery for the current
 character, not evidence that the two unconfirmed capsule profiles are fixed.
 The finite pass is still incomplete.
 
+The 7.5x23 capsule was later validated on a live three-account Gamma run and
+admitted to the navigation profile; see
+[`gamma-multi-account-20260929`](../gamma-multi-account-20260929/README.md).
+The distinct 7.5x24 profile remains unvalidated and blocked.
+
 ## First finite pass result
 
 At 00:37:37 on 29 September, the live Gamma log recorded `finite price pass

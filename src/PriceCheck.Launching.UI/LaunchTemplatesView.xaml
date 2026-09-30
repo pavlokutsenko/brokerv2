@@ -9,11 +9,8 @@
         <StackPanel Margin="0,0,0,10">
             <Grid>
                 <TextBlock Text="Общие шаблоны запуска" FontSize="22" FontWeight="SemiBold"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock x:Name="ScanStatusText" Foreground="{StaticResource MutedBrush}" FontSize="11"
-                               VerticalAlignment="Center" Margin="0,0,12,0"/>
-                    <Button Content="Сканировать ПК" Click="Scan_Click"/>
-                </StackPanel>
+                <TextBlock x:Name="ScanStatusText" Foreground="{StaticResource MutedBrush}" FontSize="11"
+                           HorizontalAlignment="Right" VerticalAlignment="Center" MaxWidth="360" TextWrapping="Wrap"/>
             </Grid>
             <TextBlock Text="Шаблоны доступны всем профилям. Выберите шаблон в каждом профиле; изменения применятся при следующем запуске."
                        Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"/>
@@ -63,6 +60,31 @@
                         <TextBox x:Name="TemplateNameInput" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,6"/>
                         <TextBlock Text="ОПИСАНИЕ" Foreground="{StaticResource MutedBrush}" FontSize="10"/>
                         <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,8"/>
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="7" Padding="12" Margin="0,6,0,8">
+                            <StackPanel>
+                                <CheckBox x:Name="MemoryBudgetToggle" Content="Ограничивать рабочий набор каждого клиента"
+                                          IsChecked="{Binding MemoryBudgetEnabled, Mode=TwoWay}" FontWeight="SemiBold"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="Лимит, МиБ" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="MemoryBudgetInput" Width="100" Margin="10,0,0,0"
+                                             IsEnabled="{Binding IsChecked, ElementName=MemoryBudgetToggle}"
+                                             Text="{Binding MemoryBudgetMiB, UpdateSourceTrigger=LostFocus, ValidatesOnExceptions=True}"/>
+                                </StackPanel>
+                                <TextBlock Text="3072 МиБ = 3 ГиБ. Windows применяет предел при запуске. Возможны задержки из-за подкачки; объём выделенной памяти остаётся прежним."
+                                           Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                <CheckBox x:Name="CpuBudgetToggle" Content="Ограничивать CPU каждого клиента"
+                                          IsChecked="{Binding CpuBudgetEnabled, Mode=TwoWay}" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="Лимит, %" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="CpuBudgetInput" Width="100" Margin="10,0,0,0"
+                                             IsEnabled="{Binding IsChecked, ElementName=CpuBudgetToggle}"
+                                             Text="{Binding CpuBudgetPercent, UpdateSourceTrigger=LostFocus, ValidatesOnExceptions=True}"/>
+                                </StackPanel>
+                                <TextBlock Text="Процент от общей мощности процессора для одного клиента. При достижении лимита Windows временно приостанавливает его потоки."
+                                           Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
                         <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="7" Padding="12" Margin="0,6,0,14">
                             <StackPanel>
@@ -161,10 +183,10 @@
                         </Grid>
                         </Expander>
                         <Separator Margin="0,16,0,12"/>
-                        <Expander x:Name="ScanDetails" Header="Найдено на этом ПК · сканирование по запросу"
+                        <Expander x:Name="ScanDetails" Header="Найдено на этом ПК · полный скан при открытии и запуске"
                                   Foreground="{StaticResource TextBrush}" IsExpanded="False">
                         <StackPanel>
-                        <TextBlock Text="Исходные значения читаются локально и не сохраняются в шаблоне. Покрытие показывает, что агент может подменить."
+                        <TextBlock Text="Полный скан выполняется на этом ПК при открытии и перед каждым запуском. Источники не сохраняются в шаблоне. Клиент получает значения своего шаблона; общий режим драйвера использует набор первого клиента. Покрытие относится к указанным API."
                                    Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,8"/>
                         <ItemsControl ItemsSource="{Binding RelativeSource={RelativeSource AncestorType=UserControl}, Path=ScanRows}">
                             <ItemsControl.ItemTemplate>
@@ -177,6 +199,7 @@
                                                 <TextBlock Text="{Binding CurrentValue}" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentValue}"/>
                                                  <TextBlock Text="{Binding TargetValue, StringFormat='Значение шаблона: {0}'}"
                                                            TextTrimming="CharacterEllipsis" ToolTip="{Binding TargetValue}" FontSize="11" Margin="0,2,0,0"/>
+                                                <TextBlock Text="{Binding DriverCoverage}" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0" Foreground="{StaticResource MutedBrush}"/>
                                                 <TextBlock Text="{Binding Coverage, Converter={StaticResource RussianText}}" FontSize="10" Foreground="{StaticResource PrimaryBrush}" Margin="0,2,0,0"/>
                                             </StackPanel>
                                         </Grid>

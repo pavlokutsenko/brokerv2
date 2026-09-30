@@ -42,6 +42,7 @@ public sealed class LaunchTemplateStore(string? directory = null)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             var values = templates.Where(value => value.Id != Guid.Empty).ToArray();
+            foreach (var template in values) ClientResourceBudget.Validate(template);
             foreach (var template in values)
                 template.ProxyPasswordProtected = string.IsNullOrEmpty(template.ProxyPassword) ? null :
                     Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(template.ProxyPassword),

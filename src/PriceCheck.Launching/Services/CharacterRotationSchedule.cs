@@ -8,7 +8,7 @@ public sealed class CharacterRotationSchedule
 {
     private readonly Func<double> _random;
     private readonly Dictionary<Guid, Entry> _entries=[];
-    private sealed record Entry(ClientSession Session, int Count, int Accounts, int AccountIndex, int Minutes, int Jitter, DateTimeOffset? Due);
+    private sealed record Entry(ClientSession Session, int Count, int Accounts, int AccountIndex, int Minutes, int Jitter, DateTimeOffset? Due, DateTimeOffset? PausedAt);
     public readonly record struct Target(int AccountIndex,int CharacterSlot);
     public CharacterRotationSchedule(Func<double>? random=null) => _random=random ?? Random.Shared.NextDouble;
 
@@ -31,14 +31,24 @@ public sealed class CharacterRotationSchedule
             entry.AccountIndex==profile.RotationAccountIndex && entry.Minutes==profile.RotationIntervalMinutes &&
             entry.Jitter==profile.RotationJitterMinutes) return entry.Due;
         var minutes=profile.RotationIntervalMinutes+(2*Math.Clamp(_random(),0,1)-1)*profile.RotationJitterMinutes;
-        DateTimeOffset? due=profile.RotationCharacterCount>1 || profile.RotationAccountCount>1 ? now.AddMinutes(minutes) : null;
+        DateTimeOffset? due=profile.RotationCharacterCount>1 ? now.AddMinutes(minutes) : null;
         _entries[profile.Id]=new(session,profile.RotationCharacterCount,profile.RotationAccountCount,
-            profile.RotationAccountIndex,profile.RotationIntervalMinutes,profile.RotationJitterMinutes,due);
+            profile.RotationAccountIndex,profile.RotationIntervalMinutes,profile.RotationJitterMinutes,due,null);
         return due;
     }
 
     public bool IsDue(CollectorProfile profile,ClientSession session,DateTimeOffset now)=>
-        Observe(profile,session,now) is { } due && now>=due;
+        Observe(profile,session,now) is { } due && _entries.GetValueOrDefault(profile.Id)?.PausedAt is null && now>=due;
+    public void Pause(Guid profileId,DateTimeOffset now)
+    {
+        if(_entries.TryGetValue(profileId,out var entry) && entry.PausedAt is null)
+            _entries[profileId]=entry with {PausedAt=now};
+    }
+    public void Resume(Guid profileId,DateTimeOffset now)
+    {
+        if(_entries.TryGetValue(profileId,out var entry) && entry.PausedAt is { } paused)
+            _entries[profileId]=entry with {Due=entry.Due is { } due?due+(now-paused):null,PausedAt=null};
+    }
     public Target NextTarget(CollectorProfile profile)
     {
         var slots = profile.RotationCharacterSlots.Length > 0 ? profile.RotationCharacterSlots :
@@ -47,7 +57,7 @@ public sealed class CharacterRotationSchedule
         var index = Array.IndexOf(slots, profile.CharacterSlot);
         if(index<0)return new(profile.RotationAccountIndex,slots[0]);
         if(index>=0 && index+1<slots.Length)return new(profile.RotationAccountIndex,slots[index+1]);
-        return new((profile.RotationAccountIndex+1)%profile.RotationAccountCount,0);
+        return new(profile.RotationAccountIndex,slots[0]);
     }
     public int NextSlot(CollectorProfile profile)=>NextTarget(profile).CharacterSlot;
     public void Forget(Guid profileId)=>_entries.Remove(profileId);

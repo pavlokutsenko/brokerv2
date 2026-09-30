@@ -25,11 +25,14 @@ internal static class ModuleViews
             }).ToArray() };
         runtime.Cycle=new(){CurrentPriceTraders=150,PassRead=20,Pending=30};
         var fullRadar=runtime.Radar;
+        runtime.MarketRadar=fullRadar;
+        if(!runtime.MarketRadarCountLabel.StartsWith("180"))throw new Exception("Shared radar count was not displayed.");
         if(runtime.CenterRadarTraderCount!="—" || runtime.CurrentRadarTraderCount!="180")throw new Exception("Packet radar was mistaken for a complete center count.");
         runtime.ConfirmCenterRadarTraderCount(1550,DateTimeOffset.UtcNow);
         if(runtime.CenterRadarTraderCount!=1550.ToString("N0"))throw new Exception("Confirmed center count was not displayed.");
         runtime.Radar=new(){LivePlayerPositionAvailable=true,WorldCharacterDataAvailable=true,PlayerX=83000,PlayerY=150000,
             CenterZoneConfigured=true,IsInsideCenterZone=false,Traders=runtime.Radar.Traders.Take(23).ToArray()};
+        if(runtime.MarketRadar?.Traders.Count!=180)throw new Exception("Active account radar replaced shared market map.");
         if(runtime.CenterRadarTraderCount!=1550.ToString("N0") || runtime.CurrentRadarTraderCount!="23")throw new Exception("Roaming overwrote the confirmed center count.");
         runtime.Radar=fullRadar;
         window.Runtimes.Add(runtime);

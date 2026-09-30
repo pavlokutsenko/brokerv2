@@ -23,10 +23,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private ProfileRuntime? _selectedRuntime;
     private bool _loaded;
     private bool _refreshing;
-    private bool _syncingLoginPassword;
     private bool _syncingProfileFields;
 
     public string? StartupLaunchProfileName { get; init; }
+    public string? StartupLaunchAccountsName { get; init; }
     public string? StartupCollectProfileId { get; init; }
     public bool StartupResumeCharacter { get; init; }
 
@@ -60,7 +60,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(SelectedTemplateSummary));
                 OnPropertyChanged(nameof(CharacterOptions));
-                SyncLoginPasswordField();
+                OnPropertyChanged(nameof(AccountItems));
             }
             finally { _syncingProfileFields = wasSyncing; }
             _ = RefreshSelectedAsync();
@@ -86,6 +86,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
         TemplatesView.SaveRequested = ApplyTemplatesAsync;
         _collection.Message += Log;
+        _collection.MarketTraderStarted += runtime => PrepareWaitingAccountRoute(runtime,true);
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _refreshTimer.Tick += async (_, _) => await RefreshAllAsync();
         if (initializeRuntime)
@@ -95,15 +96,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
-    private Task SaveProfilesAsync() =>
-        _loaded ? _profileStore.SaveAsync(Runtimes.Select(runtime => runtime.Profile)) : Task.CompletedTask;
-
-    private void SyncLoginPasswordField()
+    private Task SaveProfilesAsync()
     {
-        if (LaunchPanel.LoginPasswordBox is null) return;
-        _syncingLoginPassword = true;
-        try { LaunchPanel.LoginPasswordBox.Password = SelectedRuntime?.Profile.LoginPassword ?? ""; }
-        finally { _syncingLoginPassword = false; }
+        if(!_loaded)return Task.CompletedTask;
+        SyncAccountSettings();
+        return _profileStore.SaveAsync(Runtimes.Select(runtime=>runtime.Profile));
     }
 
     private static MarketZone? GetCenterZone(CollectorProfile profile) =>

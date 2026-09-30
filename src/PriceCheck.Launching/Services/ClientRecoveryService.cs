@@ -21,6 +21,11 @@ public sealed class ClientRecoveryService(LaunchModule launcher)
     private readonly Dictionary<Guid,State> _states=[];
     private readonly HashSet<Guid> _busy=[];
     public void Forget(Guid id) => _states.Remove(id);
+    public void YieldCollection(Guid id)
+    {
+        if(_states.TryGetValue(id,out var state))
+        {state.Reader=true;state.Collection=false;}
+    }
     public void Arm(CollectorProfile profile,ClientSession session,bool reader,bool collection)
     {
         if(profile.AutoRestartEnabled && _states.TryGetValue(profile.Id,out var s) && s.Session==session)
@@ -33,6 +38,11 @@ public sealed class ClientRecoveryService(LaunchModule launcher)
         if(!profile.AutoRestartEnabled || !profile.AutoLoginEnabled || session is null ||
             (!launcher.Owns(profile.Id,session) && !Pending(profile.Id,session)))
         { Forget(profile.Id);return null; }
+        var protection=launcher.Protection(profile.Id);
+        if(protection.Failed && !Pending(profile.Id,session)) { Forget(profile.Id);return null; }
+        // Other TCP sockets can stay open after the game-world tunnel closes.
+        // Use the relay's actual world connection when it has been established.
+        if(protection.GameConnected is bool connected) health=health with {Connected=connected};
         if(!_states.TryGetValue(profile.Id,out var s)) _states[profile.Id]=s=new(session);
         if(s.Session!=session)
         {

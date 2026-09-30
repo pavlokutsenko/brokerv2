@@ -24,16 +24,16 @@ internal sealed class CollectionWorker(Func<ClientSession, bool> isCurrent) : IC
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
         var exited = process.WaitForExitAsync();
-        var plannerDeadline=DateTimeOffset.UtcNow.AddSeconds(60);
+        var backgroundDeadline=DateTimeOffset.UtcNow.AddSeconds(mode=="market-reader-prepare"?240:60);
         while (!exited.IsCompleted)
         {
             await Task.WhenAny(exited, Task.Delay(250));
-            if(mode=="market-plan" && (DateTimeOffset.UtcNow>plannerDeadline ||
+            if((mode is "market-plan" or "market-reader-prepare") && (DateTimeOffset.UtcNow>backgroundDeadline ||
                 start.Environment.TryGetValue("PRICECHECK_STOP_FILE",out var stopFile) && File.Exists(stopFile)))
             {
                 if(!process.HasExited)process.Kill(entireProcessTree:true);
                 await exited;
-                throw new OperationCanceledException("Offline route preparation stopped or exceeded60 seconds.");
+                throw new OperationCanceledException($"Background {mode} stopped or exceeded its deadline.");
             }
             if (isCurrent(session)) continue;
             // Only the worker is stopped. The target game has already exited or changed.

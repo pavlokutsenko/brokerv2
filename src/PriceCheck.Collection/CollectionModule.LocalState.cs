@@ -12,6 +12,14 @@ public sealed partial class CollectionModule
     private readonly Dictionary<Guid,DateTimeOffset> _enteredCenters=[];
     private readonly Dictionary<Guid,bool> _insideCenters=[];
     private readonly Dictionary<Guid,string> _worldLoggedSessions=[];
+    public MarketCycleStatus MarketStatus(string market,MarketCycleStatus current)
+    {
+        if(!_marketStores.TryGetValue(CycleQueue.Key(market),out var store))return current;
+        store.RequestServerPriceCount();
+        return store.Status(current);
+    }
+    public RadarSnapshot? MarketRadar(string market) =>
+        _marketStores.TryGetValue(CycleQueue.Key(market),out var store)?store.MarketRadar:null;
     public void InitializeLocalHistory(IEnumerable<CollectorProfile> profiles)
     {
         foreach(var profile in profiles)
@@ -20,7 +28,7 @@ public sealed partial class CollectionModule
             GetLocalStore(runtime);
         }
     }
-    private LocalCycleStore GetLocalStore(ProfileRuntime runtime)
+    private LocalCycleStore GetLocalStore(ProfileRuntime runtime,bool configure=true)
     {
         var market=CycleQueue.Key(runtime.Profile.Name);
         if(!_localStores.TryGetValue(runtime.Profile.Id,out var store) || _localStoreMarkets.GetValueOrDefault(runtime.Profile.Id)!=market)
@@ -31,7 +39,7 @@ public sealed partial class CollectionModule
             _localStoreSessions.Remove(runtime.Profile.Id);
             RecoverLocalCaptureFiles(runtime.Profile,store);
         }
-        store.Configure(runtime.Profile);
+        if(configure)store.Configure(runtime.Profile);
         store.WakeSender();return store;
     }
     private void ObserveLocalState(ProfileRuntime runtime,RadarSnapshot radar)

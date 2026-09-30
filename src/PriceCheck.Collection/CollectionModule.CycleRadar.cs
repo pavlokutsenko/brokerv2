@@ -12,6 +12,7 @@ public sealed partial class CollectionModule
         if(path is null || DateTimeOffset.UtcNow<cycle.NextRadarWrite) return;
         cycle.NextRadarWrite=DateTimeOffset.UtcNow.AddMilliseconds(500);
         var targets=cycle.Store.NextTargets(100)
+            .Where(t=>cycle.ActiveTraderKey is null || t.TraderKey==cycle.ActiveTraderKey)
             .Select(t=>new {name=t.Name,x=t.X,y=t.Y,object_id=t.ObjectId,kiosk_type=t.KioskType,observed_at=t.DueAt,
                 reopened=t.Reason=="Shop reopened",verification_revision=t.VerificationRevision??t.Revision.ToString()})
             .ToArray();

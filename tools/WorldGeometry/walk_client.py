@@ -77,9 +77,7 @@ class WalkClient:
         while time.monotonic()<deadline:
             if self.cancelled():
                 raise RuntimeError('navigation readiness cancelled')
-            self.m.pages.clear()
-            if self.m.u64(self.base+self.rvas['gworld'])!=self.world['world'] or \
-                    self.m.u64(self.world['controller']+0x2D0)!=self.world['player_actor']:
+            if not self.world_pawn_current():
                 raise RuntimeError('world/pawn changed during navigation readiness')
             radius=self.m.unpack('<f',capsule+0x544,0)
             half=self.m.unpack('<f',capsule+0x540,0)
@@ -110,14 +108,25 @@ class WalkClient:
     def position(self):
         # The imported reader caches pages for one-shot diagnostics. A live
         # controller must refresh world/pawn/target pages on every observation.
-        self.m.pages.clear()
         w = self.world
-        if self.m.u64(self.base+self.rvas['gworld']) != w["world"] or self.m.u64(w["controller"]+0x2D0) != w["player_actor"]:
+        if not self.world_pawn_current():
             raise RuntimeError("world/pawn changed")
         p = struct.unpack("<3d",self.m.read(w["player_capsule"]+0x1F0,24))
         if not all(math.isfinite(v) and abs(v)<1e7 for v in p):
             raise RuntimeError("invalid player position")
         return p
+
+    def world_pawn_current(self):
+        w = self.world
+        for attempt in range(3):
+            self.m.pages.clear()
+            world = self.m.u64(self.base+self.rvas['gworld'])
+            pawn = self.m.u64(w['controller']+0x2D0)
+            if world == w['world'] and pawn == w['player_actor']:
+                return True
+            if attempt < 2:
+                time.sleep(.05)
+        return False
 
     def install(self):
         k = ctypes.WinDLL("kernel32",use_last_error=True)

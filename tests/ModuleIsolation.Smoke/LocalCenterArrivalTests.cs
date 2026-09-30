@@ -32,7 +32,7 @@ internal static class LocalCenterArrivalTests
         await Scenario("stalled",501,false);
         await Scenario("time_limit",162,true);
         await Scenario("cancelled",162,false);
-        Console.WriteLine("LOCAL_CENTER_ARRIVAL_OK safe_inside_endpoint immediate_broker no_delay no_geometry_change reject_cancel_stale_foreign_missing_outside unsafe_command outside_three_failure_limit");
+        Console.WriteLine("LOCAL_CENTER_ARRIVAL_OK safe_inside_endpoint immediate_broker no_delay no_geometry_change reject_cancel_stale_foreign_missing_outside unsafe_command outside_three_failure_recovery");
     }
     private static async Task Scenario(string reason,double x,bool unsafeFailure)
     {
@@ -44,7 +44,7 @@ internal static class LocalCenterArrivalTests
         await module.AttachAsync(runtime,CancellationToken.None);await module.RefreshAsync(runtime);await module.SetCollectionAsync(runtime,true);
         await LocalTestFixture.Step(module,runtime,radar.CurrentSnapshot);
         var cycle=LocalTestFixture.Cycle(module,runtime);
-        if(unsafeFailure)Check(runtime.ClientFault is not null&&LocalTestFixture.Phase(cycle)=="Return to center","Inside endpoint cannot override unsafe native cleanup.");
+        if(unsafeFailure)Check(runtime.ClientFault is not null&&LocalTestFixture.Phase(cycle)=="Client recovery","Inside endpoint cannot override unsafe native cleanup.");
         else if(reason=="cancelled")Check(!runtime.IsCollectionEnabled&&LocalTestFixture.Phase(cycle)=="Stopped","Cancelled center route stays stopped.");
         else if(x<=500)
         {
@@ -57,7 +57,7 @@ internal static class LocalCenterArrivalTests
         {
             Check(LocalTestFixture.Phase(cycle)=="Return to center","Outside endpoint cannot start broker.");
             await LocalTestFixture.Step(module,runtime,radar.CurrentSnapshot);await LocalTestFixture.Step(module,runtime,radar.CurrentSnapshot);
-            Check(!runtime.IsCollectionEnabled&&LocalTestFixture.Phase(cycle)=="Stopped","Outside-center three-failure stop remains unchanged.");
+            Check(runtime.ClientFault is not null&&LocalTestFixture.Phase(cycle)=="Client recovery","Outside-center failures must request owned-client recovery when auto-restart is enabled.");
         }
         await module.DetachAsync(runtime);
     }

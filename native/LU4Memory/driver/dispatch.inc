@@ -97,6 +97,12 @@ static NTSTATUS DispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ 
     case IOCTL_LU4_QUERY_PROCESS_STATUS:
         status = HandleProcessStatus(buffer, inputLength, outputLength, &information);
         break;
+    case IOCTL_LU4_SET_PROCESS_IDENTITY:
+        status = HandleProcessIdentity(DeviceObject, buffer, inputLength, outputLength, &information);
+        break;
+    case IOCTL_LU4_SET_WORKING_SET:
+        status = HandleWorkingSet(buffer, inputLength, outputLength, &information);
+        break;
     default:
         status = STATUS_INVALID_DEVICE_REQUEST;
         break;
@@ -108,6 +114,7 @@ static NTSTATUS DispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ 
 static VOID DriverUnload(_In_ PDRIVER_OBJECT DriverObject)
 {
 #ifndef LU4_PROBE_BUILD
+    IdentityShutdown();
     ProxyRedirectShutdown();
 #endif
     IoDeleteSymbolicLink((PUNICODE_STRING)&g_SymbolicLink);
@@ -129,6 +136,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
 
     ExInitializeFastMutex(&g_TargetMutex);
     ExInitializeFastMutex(&g_CryptoMutex);
+    IdentityInitialize();
 #ifndef LU4_PROBE_BUILD
     ProxyRedirectInitialize();
 #endif

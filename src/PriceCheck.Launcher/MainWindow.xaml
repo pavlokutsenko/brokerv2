@@ -18,12 +18,11 @@
    <TabItem x:Name="ProfilesTab" Header="Профили">
     <TabControl x:Name="ProfileTabs" Background="Transparent" BorderThickness="0">
    <TabItem x:Name="LaunchTab" Header="Запуск">
-    <views:LaunchPanelView x:Name="LaunchPanel"
-     AutoLoginChangedRequested="AutoLogin_Changed" BrowseFolderClickRequested="BrowseFolder_Click"
-     LaunchClickRequested="Launch_Click" StopClickRequested="Stop_Click"
-     LaunchTemplateSelectionChangedRequested="ProfileSelection_Changed" LoginPasswordChangedRequested="LoginPassword_Changed"
-     ManageTemplatesClickRequested="ManageTemplates_Click" ProfileFieldChangedRequested="ProfileField_Changed"
-     ProfileSelectionChangedRequested="ProfileSelection_Changed"/>
+    <views:AccountLaunchPanelView x:Name="LaunchPanel"
+     AddAccountRequested="AddAccount_Click" EditAccountRequested="EditAccount_Click"
+     DeleteAccountRequested="DeleteAccount_Click" LaunchAccountRequested="LaunchAccount_Click"
+     StopAccountRequested="StopAccount_Click" BrowseFolderRequested="BrowseFolder_Click"
+     ManageTemplatesRequested="ManageTemplates_Click" ProfileFieldChangedRequested="AccountLaunchFile_Changed"/>
    </TabItem>
    <TabItem Header="Журнал">
     <Grid Margin="8,10">

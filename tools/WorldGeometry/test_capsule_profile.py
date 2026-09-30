@@ -10,8 +10,8 @@ import struct
 class CapsuleProfileTests(unittest.TestCase):
     def test_confirmed_shapes_only(self):
         self.assertTrue(supported_capsule(9,18));self.assertTrue(supported_capsule(9,23))
-        self.assertTrue(supported_capsule(5,19))
-        for size in ((12,23),(9,26),(9,22),(5,23),(float('nan'),23)):
+        self.assertTrue(supported_capsule(5,19));self.assertTrue(supported_capsule(7.5,23))
+        for size in ((12,23),(9,26),(9,22),(5,23),(7.5,24),(float('nan'),23)):
             self.assertFalse(supported_capsule(*size))
 
     def test_dwarf_spawn_readiness(self):

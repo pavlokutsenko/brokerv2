@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+  <PropertyGroup Label="Globals"><VCProjectVersion>17.0</VCProjectVersion><Keyword>Win32Proj</Keyword><WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion><BaseIntermediateOutputPath>build\obj\</BaseIntermediateOutputPath></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props"/>
+  <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v143</PlatformToolset></PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props"/>
+  <PropertyGroup><OutDir>$(ProjectDir)build\</OutDir><IntDir>$(ProjectDir)build\obj\</IntDir><TargetName>IdentityNativeProbe</TargetName></PropertyGroup>
+  <ItemDefinitionGroup><ClCompile><LanguageStandard>stdcpp17</LanguageStandard><RuntimeLibrary>MultiThreaded</RuntimeLibrary><WarningLevel>Level3</WarningLevel></ClCompile></ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="native_probe.cpp"/><ClCompile Include="registry_checks.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/monitor_identity.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/registry_api_identity.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/wmi_identity.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/device_identity.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/trace.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/identity.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/disk_identity.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/disk_serial.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/router_identity.cpp"/>
+    <ClCompile Include="../../native/ClientLaunch/minhook/src/buffer.c"/>
+    <ClCompile Include="../../native/ClientLaunch/minhook/src/hook.c"/>
+    <ClCompile Include="../../native/ClientLaunch/minhook/src/trampoline.c"/>
+    <ClCompile Include="../../native/ClientLaunch/minhook/src/hde/hde32.c"/>
+    <ClCompile Include="../../native/ClientLaunch/minhook/src/hde/hde64.c"/>
+  </ItemGroup>
+  <ItemDefinitionGroup><Link><AdditionalDependencies>advapi32.lib;ole32.lib;oleaut32.lib;wbemuuid.lib;setupapi.lib;cfgmgr32.lib;ws2_32.lib;iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets"/>
+</Project>

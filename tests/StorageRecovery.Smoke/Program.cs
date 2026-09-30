@@ -20,8 +20,8 @@ Check(!storedJson.Contains("primary-secret-test") && !storedJson.Contains("secon
 File.WriteAllBytes(Path.Combine(root,"profiles.json"),new byte[300]);
 var loaded = (await profiles.LoadAsync()).Single();
 Check(loaded.Id == profile.Id && loaded.CenterZonesByCity["Giran"].X == 82414,"profile and center restored");
-Check(loaded.RotationAccountIndex==1 && loaded.RotationAccounts.Single().LoginPassword=="secondary-secret-test" &&
-      loaded.LoginPassword=="primary-secret-test","additional account and active slot restore from protected backup");
+Check(loaded.RotationAccountIndex==0 && loaded.RotationAccounts.Single().LoginPassword=="secondary-secret-test" &&
+      loaded.LoginPassword=="primary-secret-test","additional credentials restore without selecting them for the primary client");
 var templates = new LaunchTemplateStore(root);
 var template = new LaunchTemplate { Name = "Fixture", HardwareEnabled = false, ProxyEnabled = false };
 await templates.SaveAsync([template]);await templates.SaveAsync([template]);

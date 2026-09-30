@@ -9,6 +9,15 @@ internal sealed class FakeProcesses : IClientProcessService
     private int _next = 100;
     public HashSet<int> Proxies { get; } = [];
     public List<(int Pid, GameWindowCorner Corner)> WindowPlacements { get; } = [];
+    public List<(ClientSession Session, int MaximumMiB)> MemoryBudgets { get; } = [];
+    public Exception? MemoryBudgetError { get; set; }
+    public Task ApplyMemoryBudgetAsync(ClientSession session, int maximumMiB, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        if (Identity(session.ProcessId) != session) throw new IOException("Stale budget target.");
+        MemoryBudgets.Add((session, maximumMiB));
+        return MemoryBudgetError is null ? Task.CompletedTask : Task.FromException(MemoryBudgetError);
+    }
     public int Terminations { get; private set; }
     public int Releases { get; private set; }
     public ClientSession? Identity(int pid) => _sessions.GetValueOrDefault(pid);
@@ -27,7 +36,8 @@ internal sealed class FakeProcesses : IClientProcessService
         return true;
     }
     public Task ActivateLateAgentAsync(int pid, CancellationToken token) => Task.CompletedTask;
-    public ClientProtectionStatus Protection(int pid) => new(true, true, true, 2, 64, 64, "TEST", null);
+    public ClientProtectionStatus ProtectionStatus { get; set; } = new(true, true, true, 2, 64, 64, "TEST", null);
+    public ClientProtectionStatus Protection(int pid) => ProtectionStatus;
     public Task ValidateProtectionAsync(int pid, bool requireWorld, CancellationToken token) => Task.CompletedTask;
     public void Terminate(int pid) { Terminations++; _sessions.Remove(pid); Proxies.Remove(pid); }
     public void Release(int? pid) { Releases++; if (pid is int value) Proxies.Remove(value); }
@@ -86,28 +96,61 @@ internal sealed class CycleReplayWorker:ICollectionWorker
             await File.WriteAllTextAsync(output,System.Text.Json.JsonSerializer.Serialize(new {
                 complete=!IncompleteBroker,captured_at=now,started_at=now,summary=new {unique_traders=2,listing_rows=2,market_item_requests=2,market_item_responses=IncompleteBroker?1:2},
                 warnings=IncompleteBroker?new[]{"Synthetic broker omitted one response"}:Array.Empty<string>(),
-                binding_pid=session.ProcessId,bindings=new[]{new {object_id=7,name="Shop",kiosk_type=1,x=100,y=100},new {object_id=8,name="Later",kiosk_type=1,x=200,y=200}}.Take(UnboundBroker?1:2),
+                binding_pid=session.ProcessId,
+                native_radar=new {pid=session.ProcessId,complete=true,started_at=now,observed_at=now,
+                    actor_count=2,identity_count=2,collector_x=0,collector_y=0},
+                native_state_observations=new[]{
+                    new {object_id=7,name="Shop",kiosk_type=1,x=100,y=100,observed_at=now,collector_x=0,collector_y=0},
+                    new {object_id=8,name="Later",kiosk_type=1,x=200,y=200,observed_at=now,collector_x=0,collector_y=0}},
+                bindings=new[]{new {object_id=7,name="Shop",kiosk_type=1,x=100,y=100},new {object_id=8,name="Later",kiosk_type=1,x=200,y=200}}.Take(UnboundBroker?1:2),
                 rows=new[]{new {trader_object_id=7,trader_name="Shop",item_id=100,store_type=1,amount=3},new {trader_object_id=8,trader_name="Later",item_id=100,store_type=1,amount=3}}}));return;
         }
-        using var input=System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(start.ArgumentList[1]));
-        if(input.RootElement.GetProperty("mode").GetString()=="center")
-        { await File.WriteAllTextAsync(output,"{\"reason\":\"completed\",\"destination\":[0,0]}");return; }
-        var wait=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        PriceInputs[session.ProcessId]=input.RootElement.GetRawText();
-        var radarPath=input.RootElement.GetProperty("radarFile").GetString();
-        InitialRadarFrames[session.ProcessId]=File.Exists(radarPath)?await File.ReadAllTextAsync(radarPath!):"";
-        PriceWaiters[session.ProcessId]=wait;await wait.Task;
-        if(File.Exists(StopFiles[session.ProcessId]))
-        { await File.WriteAllTextAsync(output,"{\"reason\":\"cancelled\",\"shops\":[],\"attempted\":[],\"failures\":[]}");return; }
-        if(input.RootElement.GetProperty("targets").GetArrayLength()==0)
+        if(mode=="market-plan")
+        { await File.WriteAllTextAsync(output,"{\"points\":[]}");return; }
+        if(mode=="market-route-session")
         {
-            await File.WriteAllTextAsync(output,"{\"reason\":\"completed\",\"shops\":[],\"attempted\":[],\"failures\":[],\"radarReviewed\":[\"Late\"]}");return;
+            var commandFile=start.ArgumentList[1];
+            string? previous=null;
+            while(true)
+            {
+                System.Text.Json.JsonElement command;
+                try
+                {
+                    using var document=System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(commandFile));
+                    command=document.RootElement.Clone();
+                }
+                catch(System.IO.IOException) { await Task.Delay(20);continue; }
+                if(command.TryGetProperty("finish",out var finish)&&finish.GetBoolean())return;
+                var id=command.GetProperty("id").GetString();
+                if(id==previous){await Task.Delay(20);continue;}
+                previous=id;
+                await RunRouteAsync(command.GetProperty("input").GetString()!,command.GetProperty("output").GetString()!);
+            }
         }
-        var targets=input.RootElement.GetProperty("targets").EnumerateArray().ToArray();
-        await File.WriteAllTextAsync(output,System.Text.Json.JsonSerializer.Serialize(new {
-            reason="completed",attempted=targets.Select(t=>t.GetProperty("traderKey").GetString()).ToArray(),failures=Array.Empty<object>(),shops=targets.Select(target=>new {
-                trader_key=target.GetProperty("traderKey").GetString(),precision="wire_int64",trader=new {object_id=target.GetProperty("object_id").GetInt32(),name=target.GetProperty("name").GetString(),kiosk_type=target.GetProperty("kiosk_type").GetInt32(),x=target.GetProperty("x").GetDouble(),y=target.GetProperty("y").GetDouble()},side="sell",at=DateTimeOffset.UtcNow,read_started_at=DateTimeOffset.UtcNow.AddMilliseconds(-1),verification_revision=target.GetProperty("verification_revision").GetString(),
-                rows=new[]{new {item_id=100L,item_object_id=700L,quantity=3L,enchant=7,price=9007199254740993L,base_price=0L}}}).ToArray()}));
+        else await RunRouteAsync(start.ArgumentList[1],output);
+
+        async Task RunRouteAsync(string inputPath,string resultPath)
+        {
+            using var input=System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(inputPath));
+            if(input.RootElement.GetProperty("mode").GetString()=="center")
+            { await File.WriteAllTextAsync(resultPath,"{\"reason\":\"completed\",\"destination\":[0,0]}");return; }
+            var wait=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            PriceInputs[session.ProcessId]=input.RootElement.GetRawText();
+            var radarPath=input.RootElement.GetProperty("radarFile").GetString();
+            InitialRadarFrames[session.ProcessId]=File.Exists(radarPath)?await File.ReadAllTextAsync(radarPath!):"";
+            PriceWaiters[session.ProcessId]=wait;await wait.Task;
+            if(File.Exists(StopFiles[session.ProcessId]))
+            { await File.WriteAllTextAsync(resultPath,"{\"reason\":\"cancelled\",\"shops\":[],\"attempted\":[],\"failures\":[]}");return; }
+            if(input.RootElement.GetProperty("targets").GetArrayLength()==0)
+            {
+                await File.WriteAllTextAsync(resultPath,"{\"reason\":\"completed\",\"shops\":[],\"attempted\":[],\"failures\":[],\"radarReviewed\":[\"Late\"]}");return;
+            }
+            var targets=input.RootElement.GetProperty("targets").EnumerateArray().ToArray();
+            await File.WriteAllTextAsync(resultPath,System.Text.Json.JsonSerializer.Serialize(new {
+                reason="completed",attempted=targets.Select(t=>t.GetProperty("traderKey").GetString()).ToArray(),failures=Array.Empty<object>(),shops=targets.Select(target=>new {
+                    trader_key=target.GetProperty("traderKey").GetString(),precision="wire_int64",trader=new {object_id=target.GetProperty("object_id").GetInt32(),name=target.GetProperty("name").GetString(),kiosk_type=target.GetProperty("kiosk_type").GetInt32(),x=target.GetProperty("x").GetDouble(),y=target.GetProperty("y").GetDouble()},side="sell",at=DateTimeOffset.UtcNow,read_started_at=DateTimeOffset.UtcNow.AddMilliseconds(-1),verification_revision=target.GetProperty("verification_revision").GetString(),
+                    rows=new[]{new {item_id=100L,item_object_id=700L,quantity=3L,enchant=7,price=9007199254740993L,base_price=0L}}}).ToArray()}));
+        }
     }
 }
 

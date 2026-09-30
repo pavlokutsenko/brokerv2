@@ -26,9 +26,11 @@ internal static class LocalNativeFailureTests
         var store=fixture.Install(module,runtime.Profile);
         await module.AttachAsync(runtime,CancellationToken.None);await module.RefreshAsync(runtime);await module.SetCollectionAsync(runtime,true);
         var cycle=LocalTestFixture.Cycle(module,runtime);cycle.GetType().GetProperty("Phase")!.SetValue(cycle,"Reading prices");
+        store.Observe(snapshot,new CycleRadarPool(),new MarketZone(0,0,500),DateTimeOffset.UtcNow);
         store.BeginPass(0,0,new CycleRadarPool());
         await LocalTestFixture.Step(module,runtime,snapshot);
-        Check(worker.TargetCount==20&&store.PendingOperations().All(o=>o.Kind!="price")&&runtime.Cycle.PassRead==0,"Native infrastructure failure must not fabricate exact results.");
+        Check(worker.TargetCount==20&&store.PendingOperations().All(o=>o.Kind!="price")&&runtime.Cycle.PassRead==0,
+            $"Native infrastructure failure must not fabricate exact results (targets={worker.TargetCount}, runs={worker.Runs}, pending={store.NextTargets().Count}, reads={runtime.Cycle.PassRead}).");
         if(fatal)
         {
             Check(runtime.ClientFault is not null&&store.Keys.All(k=>store.ErrorFor(k) is null),"Unsafe command before any request must not blame twenty shops.");

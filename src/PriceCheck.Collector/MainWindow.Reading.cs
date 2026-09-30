@@ -27,23 +27,38 @@ public partial class MainWindow
         _refreshing = true;
         try
         {
-            foreach (var runtime in runtimes)
+            foreach (var root in runtimes)
             {
-                if (runtime.IsBusy) continue;
-                if (await TickProtectionAsync(runtime)) continue;
-                if(await TickClientRecoveryAsync(runtime)) continue;
-                if(await TickCharacterRotationAsync(runtime)) continue;
-                await _collection.RefreshAsync(runtime);
-                if (runtime.Session is { } session && !ClientProcessIdentity.IsCurrent(session))
+                foreach(var runtime in MarketAccounts(root))
                 {
-                    _launcher.ReleaseExited(runtime.Profile.Id);
-                    _characterRotation.Forget(runtime.Profile.Id);
-                    runtime.Session = null;
-                    runtime.Profile.LastProcessId = null;
-                    runtime.Profile.LastProcessStartUtc = null;
-                    runtime.LaunchStatus = "Client exited";
-                    await SaveProfilesAsync();
+                    if(runtime!=root)CopyMarketSettings(root.Profile,runtime.Profile);
+                    if (runtime.IsBusy) continue;
+                    if (await TickProtectionAsync(runtime)) continue;
+                    if(await TickClientRecoveryAsync(runtime))
+                    {
+                        if(_marketActive.TryGetValue(root.Profile.Id,out var current) && current!=runtime)
+                            _characterRotation.Schedule.Pause(runtime.Profile.Id,DateTimeOffset.UtcNow);
+                        continue;
+                    }
+                    if(_marketActive.TryGetValue(root.Profile.Id,out var working) && working!=runtime)
+                        runtime.CharacterRotationStatus="Ожидает очередь аккаунта";
+                    else if(!(_marketActive.GetValueOrDefault(root.Profile.Id)==runtime &&
+                              _collection.MarketTurnComplete(runtime)) &&
+                            await TickCharacterRotationAsync(runtime)) continue;
+                    await _collection.RefreshAsync(runtime);
+                    if (runtime.Session is { } session && !ClientProcessIdentity.IsCurrent(session))
+                    {
+                        _launcher.ReleaseExited(runtime.Profile.Id);
+                        _characterRotation.Forget(runtime.Profile.Id);
+                        runtime.Session = null;
+                        runtime.Profile.LastProcessId = null;
+                        runtime.Profile.LastProcessStartUtc = null;
+                        runtime.LaunchStatus = "Client exited";
+                        await SaveProfilesAsync();
+                    }
                 }
+                await AdvanceMarketTurnAsync(root);
+                RefreshMarketDisplay(root);
             }
         }
         catch (Exception exception) { Log($"Module refresh: {exception.GetBaseException().Message}"); }

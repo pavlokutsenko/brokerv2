@@ -45,7 +45,10 @@ bool VerifyIdentityHooks() {
     }
     bool network = false;
     if (status == NO_ERROR) for (auto item = adapters; item; item = item->Next)
-        if (item->PhysicalAddressLength >= 6) { network = memcmp(item->PhysicalAddress, mac, 6) == 0; break; }
+        if (item->PhysicalAddressLength == 6) {
+            BYTE expected[6]{}; MapAdapterMac(mac, item->AdapterName, expected);
+            network = memcmp(item->PhysicalAddress, expected, 6) == 0; break;
+        }
     HeapFree(GetProcessHeap(), 0, adapters);
     return network;
 }

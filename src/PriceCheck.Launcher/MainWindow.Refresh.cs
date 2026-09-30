@@ -11,7 +11,7 @@ public partial class MainWindow
         _refreshing = true;
         try
         {
-            foreach (var runtime in Runtimes.ToArray())
+            foreach (var runtime in AllAccounts().ToArray())
             {
                 if (runtime.IsBusy || runtime.Session is not { } session) continue;
                 runtime.Protection = _launcher.Protection(runtime.Profile.Id);
@@ -60,6 +60,6 @@ public partial class MainWindow
             }
         }
         catch (Exception exception) { Log(exception.GetBaseException().Message); }
-        finally { _refreshing = false; }
+        finally { RefreshAccountCounts();_refreshing = false; }
     }
 }

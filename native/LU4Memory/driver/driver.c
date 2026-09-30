@@ -16,6 +16,7 @@
 DEFINE_GUID(GUID_DEVCLASS_LU4_MEMORY,
     0x98bc6514, 0x4a71, 0x4f68, 0xa7, 0x8d, 0xe3, 0x31, 0x69, 0xe7, 0x52, 0xb1);
 
+C_ASSERT(sizeof(LU4_PROCESS_IDENTITY_REQUEST) == 1048);
 C_ASSERT(sizeof(LU4_BASE_REQUEST) == 16);
 C_ASSERT(LU4_COPY_HEADER_SIZE == 24);
 C_ASSERT(sizeof(LU4_TARGET_COMMAND) == 48);
@@ -30,6 +31,7 @@ C_ASSERT(sizeof(LU4_PROXY_GUARD_REQUEST) == 32);
 C_ASSERT(sizeof(LU4_PROXY_GUARD_DETAILS) == 48);
 C_ASSERT(sizeof(LU4_PROCESS_STATUS_REQUEST) == 24);
 C_ASSERT(sizeof(LU4_PROXY_REDIRECT_CONTEXT) == 16);
+C_ASSERT(sizeof(LU4_WORKING_SET_REQUEST) == 48);
 
 #ifdef LU4_PROBE_BUILD
 static const UNICODE_STRING g_DeviceName = RTL_CONSTANT_STRING(L"\\Device\\LU4Probe");
@@ -68,6 +70,8 @@ NTSYSAPI NTSTATUS NTAPI PsResumeProcess(_In_ PEPROCESS Process);
 #include "packet_transform.inc"
 #include "packet_crypto.inc"
 #include "virtual_memory.inc"
+static VOID IdentityProcessNotify(PEPROCESS process, HANDLE processId, PPS_CREATE_NOTIFY_INFO createInfo);
 #include "proxy_redirect.inc"
+#include "identity_registry.inc"
+#include "working_set.inc"
 #include "dispatch.inc"
-

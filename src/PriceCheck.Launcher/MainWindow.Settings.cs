@@ -11,7 +11,7 @@ public partial class MainWindow
     private async void AddProfile_Click(object sender, RoutedEventArgs e)
     {
         if (!_loaded || _closing) return;
-        var dialog = new AddServerProfileDialog(this, Runtimes.Select(value => value.Profile.Name), allowExisting: true);
+        var dialog = new AddServerProfileDialog(this, Runtimes.Select(value => value.Profile.Name));
         if (dialog.ShowDialog() != true) return;
         var runtime = new LaunchRuntime { Profile = new()
         {
@@ -19,6 +19,7 @@ public partial class MainWindow
             LoginServerId = dialog.ServerId
         } };
         Runtimes.Add(runtime); SelectedRuntime = runtime;
+        RebuildAccountRuntimes(runtime);
         await SaveFieldsAsync();
     }
     private async void DeleteProfile_Click(object sender, RoutedEventArgs e)
@@ -27,7 +28,8 @@ public partial class MainWindow
         if (MessageBox.Show(this, $"Удалить профиль «{runtime.Profile.Name}»?", "PriceCheck Launcher", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
         try
         {
-            await StopAsync(runtime); Runtimes.Remove(runtime);
+            foreach(var account in MarketAccounts(runtime))await StopAsync(account);
+            Runtimes.Remove(runtime);_accountRuntimes.Remove(runtime.Profile.Id);
             SelectedRuntime = Runtimes.FirstOrDefault(); await SaveProfilesAsync();
         }
         catch (Exception exception) { Error(exception); }
@@ -40,21 +42,6 @@ public partial class MainWindow
         runtime.Profile.LaunchFile = dialog.FileName;
         runtime.Profile.ClientFolder = Path.GetDirectoryName(dialog.FileName) ?? "";
         runtime.RefreshProfile(); await SaveFieldsAsync();
-    }
-    private async void ProfileField_Changed(object sender, TextChangedEventArgs e)
-    { if (CanSaveProfileFields(sender)) await SaveFieldsAsync(); }
-    private async void AutoLogin_Changed(object sender, RoutedEventArgs e)
-    { if (CanSaveProfileFields(sender)) await SaveFieldsAsync(); }
-    private async void ProfileSelection_Changed(object sender, SelectionChangedEventArgs e)
-    { if (CanSaveProfileFields(sender)) await SaveFieldsAsync(); }
-    private bool CanSaveProfileFields(object sender) =>
-        _loaded && !_closing && !_syncingProfileFields && SelectedRuntime is not null &&
-        sender is FrameworkElement field && ReferenceEquals(field.DataContext, SelectedRuntime);
-    private async void LoginPassword_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!_loaded || _syncingPassword || SelectedRuntime is null || sender is not PasswordBox box) return;
-        SelectedRuntime.Profile.LoginPassword = box.Password;
-        await SaveFieldsAsync();
     }
     private async Task SaveFieldsAsync()
     {
@@ -82,7 +69,12 @@ public partial class MainWindow
         foreach (var template in values) LaunchTemplates.Add(template);
         foreach (var runtime in Runtimes)
             if (!LaunchTemplates.Any(value => value.Id == runtime.Profile.LaunchTemplateId)) runtime.Profile.LaunchTemplateId = Guid.Empty;
-        Changed(nameof(SelectedTemplateSummary)); Changed(nameof(SelectedRuntime));
+        foreach(var root in Runtimes)
+        foreach(var account in root.Profile.RotationAccounts)
+            if(!LaunchTemplates.Any(value=>value.Id==account.LaunchTemplateId))account.LaunchTemplateId=Guid.Empty;
+        foreach(var child in _accountRuntimes.Values.SelectMany(value=>value))
+            if(!LaunchTemplates.Any(value=>value.Id==child.Profile.LaunchTemplateId))child.Profile.LaunchTemplateId=Guid.Empty;
+        Changed(nameof(SelectedTemplateSummary)); Changed(nameof(SelectedRuntime));Changed(nameof(AccountItems));
         await SaveProfilesAsync();
     }
     private async Task SaveRotatedTemplateAsync(LaunchTemplate? template)

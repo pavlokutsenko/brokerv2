@@ -139,16 +139,7 @@ internal sealed partial class ProxyTcpBroker : IDisposable
                     await game.WriteAsync(extra, session.Token);
                     CountTraffic("proxy_to_client", port, extra.Length);
                 }
-                var outgoing = PumpAsync(game, network, "client_to_proxy", port, session.Token);
-                var incoming = PumpAsync(network, game, "proxy_to_client", port, session.Token);
-                await Task.WhenAny(outgoing, incoming);
-                if (!_stop.IsCancellationRequested && (outgoing.IsFaulted || incoming.IsFaulted))
-                SetError(ProxyEnabled ? "Game traffic through proxy was interrupted by a network error." : "Game traffic was interrupted by a network error.");
-                Trace("tunnel_ended", port);
-                session.Cancel();
-                upstream.Dispose();
-                try { await Task.WhenAll(outgoing, incoming); }
-                catch (Exception error) when (error is IOException or OperationCanceledException or ObjectDisposedException) { }
+                await RelayAsync(game, network, port, session, upstream.Dispose);
             }
             catch (Exception error) {
                 if (!_stop.IsCancellationRequested && (error is not OperationCanceledException || !session.IsCancellationRequested))

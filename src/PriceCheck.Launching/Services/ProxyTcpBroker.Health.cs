@@ -11,6 +11,7 @@ internal sealed partial class ProxyTcpBroker
     private long _connections, _sentBytes, _receivedBytes, _worldSent, _worldReceived, _worldOpenedAt, _worldConnections;
     private int _worldActive;
     private string? _error;
+    private string? _networkError;
     public bool AllowLogin { get; set; }
     public bool ProxyEnabled { get; }
     public string? Error => Volatile.Read(ref _error) ?? (_acceptLoop.IsFaulted ? "Local proxy stopped accepting connections." : null);
@@ -18,6 +19,8 @@ internal sealed partial class ProxyTcpBroker
     public long SentBytes => Interlocked.Read(ref _sentBytes);
     public long ReceivedBytes => Interlocked.Read(ref _receivedBytes);
     public long WorldConnections => Interlocked.Read(ref _worldConnections);
+    public bool? GameConnected => WorldConnections > 0 ? Volatile.Read(ref _worldActive) > 0 : null;
+    public string? NetworkError => Volatile.Read(ref _networkError);
     public long? WorldOpenedAt => Interlocked.Read(ref _worldOpenedAt) is >0 and var tick ? tick : null;
     public bool WorldTrafficConfirmed => Volatile.Read(ref _worldActive) > 0 &&
         Interlocked.Read(ref _worldSent) > 0 && Interlocked.Read(ref _worldReceived) > 0;

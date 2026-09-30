@@ -57,45 +57,40 @@ internal static class CharacterRotationTests
         catch(IOException) { }
         Check(processes.Terminations==stops && !rotation.IsDue(profile,live,at.AddDays(1)),"Failed drain preserves client and latches the error instead of retrying forever.");
         launcher.Stop(profile.Id);
-        await CheckMultipleAccounts();
+        await CheckAccountIsolation();
         Console.WriteLine("CHARACTER_ROTATION_OK jitter stable_deadline roster_refresh circular_slots drain_before_stop failure_latch");
     }
 
-    private static async Task CheckMultipleAccounts()
+    private static async Task CheckAccountIsolation()
     {
         var profile=new CollectorProfile {Name="Gamma",LoginServerName="Gamma",LoginServerId=1,
             CharacterRotationEnabled=true,AutoLoginEnabled=true,LoginName="primary",LoginPassword="primary-secret",
             RotationAccounts=[new(){LoginName="second",LoginPassword="second-secret"},
-                new(){LoginName="third",LoginPassword="third-secret"}]};
+                new(){LoginName="third",LoginPassword="third-secret"}],RotationCharacterCount=2};
         var processes=new FakeProcesses();var selected=new List<(int Account,int Slot,string Login)>();
         var launcher=new LaunchModule(processes,(_,p,_)=>
         {
             selected.Add((p.RotationAccountIndex,p.CharacterSlot,p.ActiveLogin().Name));
-            p.RotationCharacterCount=p.RotationAccountIndex==1?1:2;
+            p.RotationCharacterCount=2;
             p.RotationCharacterSlots=Enumerable.Range(0,p.RotationCharacterCount).ToArray();
             return Task.CompletedTask;
         },processes.Identity,_=>Task.CompletedTask);
         var rotation=new CharacterRotationService(launcher,()=>.5);
         var live=await launcher.LaunchAsync(profile,null,_=>{},CancellationToken.None);
         rotation.Started(profile,live,DateTimeOffset.UtcNow);
+        var pausedAt=DateTimeOffset.UtcNow;
+        rotation.Schedule.Pause(profile.Id,pausedAt);
+        Check(!rotation.IsDue(profile,live,pausedAt.AddHours(2)),"Waiting account does not rotate its character.");
+        rotation.Schedule.Resume(profile.Id,pausedAt.AddHours(2));
+        Check(!rotation.IsDue(profile,live,pausedAt.AddHours(2)),"Waiting time does not consume the character interval.");
         live=await rotation.RotateAsync(profile,live,null,()=>Task.CompletedTask,_=>Task.CompletedTask,_=>{},CancellationToken.None);
         live=await rotation.RotateAsync(profile,live,null,()=>Task.CompletedTask,_=>Task.CompletedTask,_=>{},CancellationToken.None);
-        Check(profile.RotationAccountIndex==1 && profile.RotationCharacterCount==1 &&
-              rotation.Schedule.Observe(profile,live,DateTimeOffset.UtcNow) is not null,
-            "One-character account still rotates when more accounts are configured.");
-        profile.RotationAccounts[1].LoginPassword="";
-        var before=processes.Terminations;
-        try { await rotation.RotateAsync(profile,live,null,()=>Task.CompletedTask,_=>Task.CompletedTask,_=>{},CancellationToken.None);
-            throw new Exception("Missing next-account credentials accepted"); }
-        catch(InvalidOperationException) { }
-        Check(processes.Terminations==before && launcher.Owns(profile.Id,live),
-            "Invalid next-account credentials cannot close the current client.");
-        profile.RotationAccounts[1].LoginPassword="third-secret";
-        rotation.Started(profile,live,DateTimeOffset.UtcNow);
-        for(var i=0;i<3;i++)live=await rotation.RotateAsync(profile,live,null,()=>Task.CompletedTask,_=>Task.CompletedTask,_=>{},CancellationToken.None);
-        Check(selected.SequenceEqual(new[]{(0,0,"primary"),(0,1,"primary"),(1,0,"second"),
-                (2,0,"third"),(2,1,"third"),(0,0,"primary")}),
-            "Rotation visits every character on each account, then returns to the primary account.");
+        Check(selected.SequenceEqual(new[]{(0,0,"primary"),(0,1,"primary"),(0,0,"primary")}) &&
+              profile.RotationAccountIndex==0,
+            "Character rotation remains inside the primary account while other accounts are configured.");
+        profile.RotationCharacterCount=1;profile.RotationCharacterSlots=[0];
+        Check(rotation.Schedule.Observe(profile,live,DateTimeOffset.UtcNow) is null,
+            "A single-character account has no automatic character change.");
         launcher.Stop(profile.Id);
     }
 }

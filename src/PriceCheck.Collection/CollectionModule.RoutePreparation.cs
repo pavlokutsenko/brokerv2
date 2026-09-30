@@ -55,7 +55,7 @@ public sealed partial class CollectionModule
             var points=doc.RootElement.GetProperty("points");
             if(points.GetArrayLength()==0)return;
             var start=points[points.GetArrayLength()-1].EnumerateArray().Select(v=>v.GetDouble()).ToArray();
-            var input=Path.Combine(cycle.Folder,"next-section.input.json");
+            var input=Path.Combine(cycle.Folder,$"next-section-{cycle.PlanGeneration}.input.json");
             var output=cycle.NextSectionPlanFile;
             var excluded=current.Select(t=>t.TraderKey).ToHashSet();
             string? previous=null;

@@ -36,10 +36,12 @@ class RoutePreparationTests(unittest.TestCase):
         self.assertIsNotNone(accepted)
 
     def test_moved_reopened_or_newly_admitted_target_discards_speculation(self):
-        for field,value in [('x',10),('verification_revision','two'),('object_id',124)]:
+        for field,value in [('x',10),('verification_revision','two'),('kiosk_type',3)]:
             config=self.config();config['targets'][0][field]=value
             self.assertIsNone(accept_prepared(config,DATA,[-850,0],24))
             self.assertIsNotNone(prepared_navigation(config,DATA,24))
+        config=self.config();config['targets'][0]['object_id']=124
+        self.assertIsNotNone(accept_prepared(config,DATA,[-850,0],24))
         config=self.config();config['targets'].append({**config['targets'][0],'name':'New'})
         self.assertIsNone(accept_prepared(config,DATA,[-850,0],24))
 

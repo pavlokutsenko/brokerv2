@@ -17,16 +17,27 @@ public partial class MainWindow
                     throw new InvalidOperationException("--collect-profile requires exact profile GUIDs.");
                 var runtime = Runtimes.SingleOrDefault(r => r.Profile.Id == id)
                     ?? throw new InvalidOperationException("Requested collection profile was not found.");
-                if (runtime.Session is not { } session || !ClientProcessIdentity.IsCurrent(session))
-                    throw new InvalidOperationException("Enter the game with this profile before starting collection.");
+                var accounts=MarketAccounts(runtime);
+                var active=accounts.FirstOrDefault(account=>account.Session is { } session && ClientProcessIdentity.IsCurrent(session))
+                    ?? throw new InvalidOperationException("Запустите хотя бы один аккаунт этого сервера перед сбором.");
                 SelectedRuntime = runtime;
-                MainTabs.SelectedIndex = 1;
+                MainTabs.SelectedItem = ProfilesTab;
+                ProfileTabs.SelectedIndex = 1;
                 runtime.IsBusy = true;
                 try
                 {
-                    await _launcher.ValidateProtectionAsync(runtime.Profile.Id, true, CancellationToken.None);
-                    await _collection.AttachAsync(runtime, CancellationToken.None);
-                    await _collection.SetCollectionAsync(runtime, true);
+                    foreach(var account in accounts)
+                        account.OneTraderPerTurn=accounts.Count(r=>r.Session is { } s && ClientProcessIdentity.IsCurrent(s))>1;
+                    await _launcher.ValidateProtectionAsync(active.Profile.Id, true, CancellationToken.None);
+                    await EnsureReaderAttachedAsync(active);
+                    await _collection.SetCollectionAsync(active, true);
+                    _marketActive[runtime.Profile.Id]=active;
+                    _lastBrokerOwner[runtime.Profile.Id]=accounts.ToList().IndexOf(active);
+                    runtime.MarketCollectionEnabled=true;
+                    BeginMarketReaderWarmups(runtime);
+                    foreach(var waiting in accounts.Where(r=>r!=active))
+                        _characterRotation.Schedule.Pause(waiting.Profile.Id,DateTimeOffset.UtcNow);
+                    RefreshMarketDisplay(runtime);
                     await SaveProfilesAsync();
                 }
                 finally { runtime.IsBusy = false; }

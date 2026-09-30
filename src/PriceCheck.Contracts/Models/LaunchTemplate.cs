@@ -43,6 +43,10 @@ public sealed class LaunchTemplate : INotifyPropertyChanged
     public string Description { get; set; } = "";
     public bool HardwareEnabled { get; set; } = true;
     public bool RotateEachLaunch { get; set; }
+    public bool MemoryBudgetEnabled { get; set; }
+    public int MemoryBudgetMiB { get; set; } = 3072;
+    public bool CpuBudgetEnabled { get; set; }
+    public int CpuBudgetPercent { get; set; } = 20;
     public LaunchIdentity Identity { get; set; } = new();
     public bool ProxyEnabled { get; set; }
     public string ProxyHost { get; set; } = "";

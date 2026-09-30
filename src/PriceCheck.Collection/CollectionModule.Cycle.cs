@@ -18,6 +18,8 @@ public sealed partial class CollectionModule
         public string ClaimRequest { get; set; } = Guid.NewGuid().ToString();
         public string ResumePhase { get; set; } = "Return to center";
         public bool ContinueAfterClientChange { get; set; }
+        public bool TraderTurnComplete { get; set; }
+        public string? ActiveTraderKey { get; set; }
         public BrokerSnapshot? PreviousBroker { get; set; }
         public required string Folder { get; init; }
         public required string Scope { get; init; }
@@ -32,6 +34,8 @@ public sealed partial class CollectionModule
         public string? ProgressFile { get; set; }
         public string? RadarFile { get; set; }
         public Task? BackgroundPlan { get; set; }
+        public MarketTurnPlan? UpcomingPlan { get; set; }
+        public string? PlanWaitReason { get; set; }
         public string PlanGeneration { get; set; } = Guid.NewGuid().ToString("N");
         public string NextSectionPlanFile => Path.Combine(Folder,$"next-section-{PlanGeneration}.plan.json");
         public Task? RouteSession { get; set; }
@@ -126,6 +130,7 @@ public sealed partial class CollectionModule
             detail += $" · {(DateTimeOffset.UtcNow-started):mm\\:ss}";
         runtime.Cycle = runtime.Cycle with { Phase = cycle.Phase, Detail = detail, NextBrokerAt = null };
         if (_activeJobs.TryGetValue(runtime.Profile.Id, out var job) && !job.IsCompleted) return;
+        if (cycle.TraderTurnComplete) return;
         if (DateTimeOffset.UtcNow < cycle.Next) return;
         TrackJob(runtime, StepCycleAsync(runtime, cycle, radar));
     }
@@ -205,6 +210,8 @@ public sealed partial class CollectionModule
         catch (Exception e)
         {
             RecordCycleFailure(runtime, cycle, e);
+            if(runtime.OneTraderPerTurn && runtime.IsCollectionEnabled && runtime.ClientFault is null &&
+               cycle.Phase is ("Reading prices" or "Return to center")) cycle.TraderTurnComplete=true;
         }
         finally { cycle.ProgressFile = null; cycle.WorkerStartedAt = null; }
     }

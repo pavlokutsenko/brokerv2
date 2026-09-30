@@ -15,6 +15,9 @@ public sealed partial class ClientProcessService : IClientProcessService
     private readonly ConcurrentDictionary<int, ClientLaunchGuard> _guards = new();
     private readonly ConcurrentDictionary<int, PriceCheck.Contracts.ClientProtectionStatus> _lastProtection = new();
     private readonly ConcurrentDictionary<int, string> _pendingLateAgents = new();
+    private readonly ConcurrentDictionary<int, ClientResourceJob> _resourceJobs = new();
+
+    public IReadOnlyList<HardwareScanRow> LastHardwareScan { get; private set; } = [];
 
     public async Task<int> LaunchAndBindAsync(CollectorProfile profile, LaunchTemplate? template, CancellationToken cancellationToken)
     {
@@ -23,6 +26,7 @@ public sealed partial class ClientProcessService : IClientProcessService
         ClientLaunchGuard? guard = null;
         LaunchGuardMapping? mapping = null;
         SuspendedClientProcess? suspended = null;
+        ClientResourceJob? resourceJob = null;
         var accepted = false;
         int candidate = 0;
         DateTime candidateStarted = DateTime.MinValue;
@@ -30,9 +34,12 @@ public sealed partial class ClientProcessService : IClientProcessService
         {
             if (template is not { HardwareEnabled: true })
                 throw new LaunchProtectionException("Launch blocked: select a template with HWID enabled.");
+            ClientResourceBudget.Validate(template);
             using (var device = new PriceCheck.Collector.Runtime.Driver.Lu4Device())
                 if (device.QueryProxyGuard().Capabilities != 31)
                     throw new LaunchProtectionException("The driver does not support mandatory direct-traffic protection.");
+            LastHardwareScan = await Task.Run(HardwareInventoryService.Scan, cancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(60), cancellationToken);
             await ProxyTcpBroker.VerifyUpstreamAsync(template, cancellationToken);
             var before = CurrentClientPids().ToHashSet();
             var executable = ResolveLaunchFile(profile);
@@ -46,7 +53,12 @@ public sealed partial class ClientProcessService : IClientProcessService
             broker = new ProxyTcpBroker(template, guarded: true);
             suspended = new(start);
             var root = suspended.Process;
+            if (template.MemoryBudgetEnabled || template.CpuBudgetEnabled)
+                resourceJob = ClientResourceJob.Assign(suspended,
+                    template.MemoryBudgetEnabled ? template.MemoryBudgetMiB : null,
+                    template.CpuBudgetEnabled ? template.CpuBudgetPercent : null);
             broker.Bind(root.Id);
+            DriverIdentityService.Bind(root, profile.Id, template.Identity);
             var rootIdentity = (root.Id, root.StartTime.ToUniversalTime());
             guard = new(mapping, broker, root.Id, IsAlive, () =>
             {
@@ -68,6 +80,8 @@ public sealed partial class ClientProcessService : IClientProcessService
                     });
                 if (candidate != 0)
                 {
+                    if (resourceJob is not null && !resourceJob.Contains(candidate))
+                        throw new IOException("Ресурсы: игровой клиент не унаследовал лимиты запуска.");
                     candidateStarted = ProcessStartTime(candidate);
                     broker.BindAdditional(candidate);
                     guard.Bind(candidate);
@@ -76,6 +90,11 @@ public sealed partial class ClientProcessService : IClientProcessService
                     _proxyBrokers[candidate] = broker;
                     _guards[candidate] = guard;
                     _pendingLateAgents[candidate] = agentPath;
+                    if (resourceJob is not null)
+                    {
+                        _resourceJobs[candidate] = resourceJob;
+                        resourceJob = null;
+                    }
                     profile.LaunchFile = executable; profile.LastProcessId = candidate;
                     accepted = true;
                     return candidate;
@@ -93,12 +112,14 @@ public sealed partial class ClientProcessService : IClientProcessService
         {
             if (!accepted)
             {
+                if (_resourceJobs.TryRemove(candidate, out var failedJob)) failedJob.Dispose();
                 guard?.Dispose();
                 if (suspended is not null && !suspended.Process.HasExited) suspended.Process.Kill(entireProcessTree: true);
                 broker?.Dispose();
                 if (guard is null) mapping?.Dispose();
             }
             suspended?.Dispose();
+            resourceJob?.Dispose();
             _launchGate.Release();
         }
     }

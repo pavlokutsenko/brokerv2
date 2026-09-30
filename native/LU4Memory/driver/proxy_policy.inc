@@ -77,6 +77,7 @@ static VOID ProxyProcessNotify(_Inout_ PEPROCESS process, _In_ HANDLE processId,
         }
     }
     KeReleaseSpinLock(&g_ProxyRouteLock, irql);
+    IdentityProcessNotify(process, processId, createInfo);
 }
 
 static VOID NTAPI ProxyAuthorize(const FWPS_INCOMING_VALUES0* values,

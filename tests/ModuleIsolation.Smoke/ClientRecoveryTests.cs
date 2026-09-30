@@ -22,6 +22,14 @@ internal static class ClientRecoveryTests
             recovery.Observe(profile,session,true,true,health,world,fault,time);
         var healthy=new ClientHealth(true,true,false,true);
         Check(Observe(healthy,at) is null,"Healthy idle client must not restart.");
+        processes.ProtectionStatus=processes.ProtectionStatus with {GameConnected=false,NetworkError="ConnectionReset"};
+        Check(Observe(healthy,at.AddSeconds(1)) is null,"World-tunnel disconnect keeps its grace period.");
+        Check(Observe(healthy,at.AddSeconds(62)) is {Reader:true,Collection:true,Reason:"Game connection closed"},
+            "A closed world tunnel must recover even when other TCP sockets remain open.");
+        processes.ProtectionStatus=processes.ProtectionStatus with {Error="HWID: fixture failure"};
+        Check(Observe(healthy,at.AddMinutes(3)) is null,"Protection failure must not enter network recovery.");
+        processes.ProtectionStatus=processes.ProtectionStatus with {Error=null,GameConnected=null,NetworkError=null};
+        Observe(healthy,at);
         var lost=new ClientHealth(true,true,false,false);
         Check(Observe(lost,at.AddSeconds(1)) is null && Observe(lost,at.AddSeconds(20)) is null,"Connection loss requires sustained confirmation.");
         var request=Observe(lost,at.AddSeconds(62))!;

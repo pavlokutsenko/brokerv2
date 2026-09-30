@@ -28,7 +28,8 @@ internal static class HardwareInventoryPeripheral
                 if (deviceKey is null) continue;
                 var value = deviceKey.GetValue("VideoIdentifier")?.ToString();
                 if (!string.IsNullOrWhiteSpace(value))
-                    rows.Add(new("Windows · VideoIdentifier", value, "RegQueryValueEx · hooked"));
+                    rows.Add(new("Windows · VideoIdentifier", value, "RegQueryValueEx · hooked")
+                        { RegistryPath = @"SYSTEM\CurrentControlSet\Control\Video\" + device, RegistryValueName = "VideoIdentifier" });
             }
         }
         catch (Exception e) { rows.Add(new("Video · registry", e.Message, "Access denied")); }
@@ -57,8 +58,8 @@ internal static class HardwareInventoryPeripheral
                     if (category is null) continue;
                     var ids = key?.GetValue("HardwareID") as string[];
                     var name = key?.GetValue("FriendlyName")?.ToString() ?? key?.GetValue("DeviceDesc")?.ToString() ?? device;
-                    var id = ids?.FirstOrDefault() ?? device;
-                    rows.Add(new($"{category} · {name}", id, "Detected only"));
+                    foreach (var id in ids is { Length: > 0 } ? ids : [device])
+                        rows.Add(new($"{category} · {name}", id, "Detected only") { SourceId = device + @"\" + instance });
                 }
             }
         }
@@ -75,24 +76,24 @@ internal static class HardwareInventoryPeripheral
         }
         try
         {
-            var usb = 0;
-            var hid = 0;
-            for (uint index = 0; index < 4096; index++)
+            for (uint index = 0; ; index++)
             {
                 var info = new DeviceInfoData { Size = (uint)Marshal.SizeOf<DeviceInfoData>() };
-                if (!SetupDiEnumDeviceInfo(set, index, ref info)) break;
+                if (!SetupDiEnumDeviceInfo(set, index, ref info))
+                {
+                    var error = Marshal.GetLastWin32Error();
+                    if (error == 259) break;
+                    throw new System.ComponentModel.Win32Exception(error);
+                }
                 var id = new StringBuilder(512);
                 if (!SetupDiGetDeviceInstanceIdW(set, ref info, id, id.Capacity, out _)) continue;
                 var value = id.ToString();
                 var isUsb = value.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase);
                 var isHid = value.StartsWith("HID\\", StringComparison.OrdinalIgnoreCase);
                 if (!isUsb && !isHid) continue;
-                if (isUsb && usb++ >= 24 || isHid && hid++ >= 24) continue;
                 rows.Add(new($"{(isUsb ? "USB" : "HID")} API · {value.Split('\\')[1]}",
-                    value, "SetupAPI/CM · hooked"));
+                    value, "SetupAPI/CM · hooked") { SourceId = value });
             }
-            if (usb > 24) rows.Add(new("USB · more", "Showing the first 24 devices", "Detected only"));
-            if (hid > 24) rows.Add(new("HID · more", "Showing the first 24 devices", "Detected only"));
         }
         catch (Exception e) { rows.Add(new("USB/HID API", e.Message, "Scan unavailable")); }
         finally { SetupDiDestroyDeviceInfoList(set); }

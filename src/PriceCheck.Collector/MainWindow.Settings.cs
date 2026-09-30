@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using Microsoft.Win32;
 using PriceCheck.Collector.Models;
 using PriceCheck.Collector.Services;
+using PriceCheck.Windows;
 
 namespace PriceCheck.Collector;
 
@@ -41,6 +42,9 @@ public partial class MainWindow
         if (!await StopProfileAsync(runtime)) return false;
         var wasSelected = SelectedRuntime == runtime;
         Runtimes.Remove(runtime);
+        _accountRuntimes.Remove(runtime.Profile.Id);
+        _marketActive.Remove(runtime.Profile.Id);
+        _lastBrokerOwner.Remove(runtime.Profile.Id);
         if (wasSelected || SelectedRuntime is null)
             SelectedRuntime = Runtimes[Math.Clamp(index, 0, Runtimes.Count - 1)];
         await SaveProfilesAsync();
@@ -85,30 +89,6 @@ public partial class MainWindow
         _loaded && !_closing && !_syncingProfileFields && SelectedRuntime is not null &&
         sender is FrameworkElement field && ReferenceEquals(field.DataContext, SelectedRuntime);
 
-    private async void AutoLogin_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!CanSaveProfileFields(sender)) return;
-        await SaveProfilesAsync();
-    }
-
-    private async void LoginPassword_Changed(object sender, RoutedEventArgs e)
-    {
-        if (!CanSaveProfileFields(sender) || _syncingLoginPassword || sender is not PasswordBox box) return;
-        SelectedRuntime!.Profile.LoginPassword = box.Password;
-        await SaveProfilesAsync();
-    }
-
-    private async void RotationAccounts_Click(object sender,RoutedEventArgs e)
-    {
-        if(SelectedRuntime is not {CanEditMarket:true} runtime)return;
-        var dialog=new RotationAccountsDialog(this,runtime.Profile);
-        if(dialog.ShowDialog()!=true)return;
-        runtime.Profile.RotationAccounts=dialog.Accounts.ToList();
-        runtime.Profile.RotationAccountIndex=0;
-        runtime.RefreshProfile();
-        await SaveProfilesAsync();
-    }
-
     private async void MarkCenterZone_Click(object sender, RoutedEventArgs e)
     {
         if (SelectedRuntime?.Radar is not RadarSnapshot radar) return;
@@ -129,7 +109,10 @@ public partial class MainWindow
         runtime.IsBusy = true;
         try
         {
-            await _collection.SetCollectionAsync(runtime, false);
+            if(_marketActive.Remove(runtime.Profile.Id,out var active))
+                await _collection.SetCollectionAsync(active,false);
+            else await _collection.SetCollectionAsync(runtime,false);
+            runtime.MarketCollectionEnabled=false;
             runtime.Profile.CenterZonesByCity.Remove(runtime.Profile.City);
             runtime.RefreshProfile();
             await SaveProfilesAsync();
@@ -145,15 +128,36 @@ public partial class MainWindow
         runtime.IsBusy = true;
         try
         {
-            if (!runtime.IsCollectionEnabled && Runtimes.Any(other => other != runtime && other.IsCollectionEnabled &&
+            if (!_marketActive.ContainsKey(runtime.Profile.Id) && Runtimes.Any(other => other != runtime && other.MarketCollectionEnabled &&
                 other.Profile.Name.Equals(runtime.Profile.Name, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("На этом рынке уже работает другой профиль.");
-            if (!runtime.IsCollectionEnabled)
+            if(!_marketActive.TryGetValue(runtime.Profile.Id,out var active))
             {
-                await _launcher.ValidateProtectionAsync(runtime.Profile.Id, true, CancellationToken.None);
-                await EnsureReaderAttachedAsync(runtime);
+                var accounts=MarketAccounts(runtime);
+                active=accounts.FirstOrDefault(r=>r.Session is { } session && ClientProcessIdentity.IsCurrent(session) && r.ClientFault is null)
+                    ?? throw new InvalidOperationException("Нет загруженных аккаунтов для этого сервера.");
+                foreach(var account in accounts)account.OneTraderPerTurn=accounts.Count(r=>r.Session is { } s && ClientProcessIdentity.IsCurrent(s))>1;
+                await _launcher.ValidateProtectionAsync(active.Profile.Id, true, CancellationToken.None);
+                await EnsureReaderAttachedAsync(active);
+                await _collection.SetCollectionAsync(active,true);
+                _marketActive[runtime.Profile.Id]=active;
+                _lastBrokerOwner[runtime.Profile.Id]=accounts.ToList().IndexOf(active);
+                runtime.MarketCollectionEnabled=true;
+                BeginMarketReaderWarmups(runtime);
+                foreach(var waiting in accounts.Where(r=>r!=active))
+                    _characterRotation.Schedule.Pause(waiting.Profile.Id,DateTimeOffset.UtcNow);
+                _characterRotation.Schedule.Resume(active.Profile.Id,DateTimeOffset.UtcNow);
             }
-            await _collection.SetCollectionAsync(runtime, !runtime.IsCollectionEnabled);
+            else
+            {
+                await StopMarketReaderWarmupsAsync(runtime);
+                await _collection.SetCollectionAsync(active,false);
+                _marketActive.Remove(runtime.Profile.Id);
+                runtime.MarketCollectionEnabled=false;
+                foreach(var account in MarketAccounts(runtime))
+                    _characterRotation.Schedule.Resume(account.Profile.Id,DateTimeOffset.UtcNow);
+            }
+            RefreshMarketDisplay(runtime);
             _clientRecovery.Forget(runtime.Profile.Id);
             await SaveProfilesAsync();
         }
@@ -166,7 +170,13 @@ public partial class MainWindow
         runtime.IsBusy = true;
         try
         {
-            await _collection.SetCollectionAsync(runtime, false);
+            if(_marketActive.Remove(runtime.Profile.Id,out var active))
+            {
+                await StopMarketReaderWarmupsAsync(runtime);
+                await _collection.SetCollectionAsync(active,false);
+            }
+            else await _collection.SetCollectionAsync(runtime,false);
+            runtime.MarketCollectionEnabled=false;
             runtime.RefreshProfile();
             await SaveProfilesAsync();
             Log($"{runtime.Profile.Name}: role — {runtime.RoleLabel}");

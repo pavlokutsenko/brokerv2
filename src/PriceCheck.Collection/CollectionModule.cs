@@ -32,6 +32,7 @@ public sealed partial class CollectionModule
     private readonly HashSet<int> _preparedPricePids = [];
     private readonly Dictionary<Guid, DateTimeOffset> _nextPriceClaims = [];
     public event Action<string>? Message;
+    public event Action<ProfileRuntime>? MarketTraderStarted;
 
     public CollectionModule(IRadarSessions? radarSessions = null, Func<ClientSession, bool>? isCurrent = null,
         ICollectionWorker? worker = null, Action? startUploadWorker = null, ServerUploadOutbox? uploadOutbox = null,
@@ -58,13 +59,11 @@ public sealed partial class CollectionModule
         if (!_isCurrent(session)) throw new InvalidOperationException("Client exited or PID was reused. Refresh the process list.");
         if (_owners.ContainsKey(session.ProcessId) || !_attaching.Add(id))
             throw new InvalidOperationException("This client or profile already has a reader.");
-        if(_attached.Keys.Any(other=>other!=id && _localStoreMarkets.GetValueOrDefault(other)==CycleQueue.Key(runtime.Profile.Name)))
-        {_attaching.Remove(id);throw new InvalidOperationException("This market already has a connected collector reader.");}
         _owners.Add(session.ProcessId, id);
         try
         {
             await _radarSessions.StartAsync(session.ProcessId, GetCenterZone(runtime.Profile), false, cancellationToken);
-            _radarSessions.RememberTraderKeys(session.ProcessId,GetLocalStore(runtime).Keys);
+            _radarSessions.RememberTraderKeys(session.ProcessId,GetLocalStore(runtime,configure:false).Keys);
             if (!_isCurrent(session)) throw new InvalidOperationException("Client changed while attaching.");
             _attached.Add(id, session);
             runtime.ReaderAttached = true;

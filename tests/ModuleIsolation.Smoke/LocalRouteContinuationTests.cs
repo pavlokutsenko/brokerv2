@@ -23,8 +23,9 @@ internal static class LocalRouteContinuationTests
         };
         radar.CurrentSnapshot=Frame(401,0,true,Point("First",1,100),Point("Middle",2,300),Point("Last",3,500));
         await module.AttachAsync(runtime,CancellationToken.None);
-        await module.RefreshAsync(runtime);
         await module.SetCollectionAsync(runtime,true);
+        store.BeginSession("401");
+        store.Observe(radar.CurrentSnapshot,new CycleRadarPool(),new(0,0,500),now);
         store.BeginPass(0,0,new CycleRadarPool());
         var first=store.NextTargets().Single(t=>t.Name=="First");
         store.Commit(first,new ShopCaptureFile {SnapshotId="continuation-first",Precision="wire_int64",Side="sell",
@@ -38,13 +39,16 @@ internal static class LocalRouteContinuationTests
         await module.AttachAsync(runtime,CancellationToken.None);
         await module.RefreshAsync(runtime);
         await module.SetCollectionAsync(runtime,true);
+        await module.RefreshAsync(runtime);
         Check(ReferenceEquals(cycle,LocalTestFixture.Cycle(module,runtime)) && LocalTestFixture.Phase(cycle)=="Resume route",
             "Rotation retains the unfinished pass without starting a new center cycle.");
         Check((string)cycle.GetType().GetProperty("NextSectionPlanFile")!.GetValue(cycle)! != oldPlan,
             "New character cannot reuse an old-position prepared route.");
-        Check(store.Status(new()).PassRead==1 && store.NextTargets().Count==2 &&
-              store.NextTargets().All(t=>t.ObjectId==0 && t.RebindOnRead),
-            "Completed reads and pending targets survive, but old client object IDs do not.");
+        var resumed=store.NextTargets();
+        Check(store.Status(new()).PassRead==1 && resumed.Count==2 &&
+              resumed.All(t=>t.ObjectId==0 && t.RebindOnRead),
+            $"Completed reads and pending targets survive, but old client object IDs do not: " +
+            $"read={store.Status(new()).PassRead} targets={string.Join(',',resumed.Select(t=>$"{t.Name}:{t.ObjectId}:{t.RebindOnRead}"))}.");
         await LocalTestFixture.Step(module,runtime,radar.CurrentSnapshot);
         Check(LocalTestFixture.Phase(cycle)=="Resume route","Route waits for a live new-character position.");
         radar.CurrentSnapshot=Frame(402,510,true);

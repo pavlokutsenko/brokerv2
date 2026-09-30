@@ -8,10 +8,14 @@ public sealed partial class ProfileRuntime : INotifyPropertyChanged
     private string _status = "Не запущен";
     private bool _isBusy;
     private bool _isCollectionEnabled;
+    private bool _marketCollectionEnabled;
+    private int _accountProcessCount;
+    private string _accountsStatus="";
     private bool _readerAttached;
     private string _launchStatus = "Не запущен";
     private PriceCheck.Contracts.ClientSession? _session;
     private RadarSnapshot? _radar;
+    private RadarSnapshot? _marketRadar;
     private BrokerSnapshot? _broker;
     private PriceCheck.Collector.Services.BrokerDeliveryStatus? _brokerDelivery;
     private MarketCycleStatus _cycle = new();
@@ -42,7 +46,11 @@ public sealed partial class ProfileRuntime : INotifyPropertyChanged
     public string CharacterRotationStatus { get => _characterRotationStatus; set => Set(ref _characterRotationStatus,value); }
     public bool IsBusy { get => _isBusy; set { if (Set(ref _isBusy, value)) OnPropertyChanged(nameof(CanEditMarket)); } }
     public bool IsCollectionEnabled { get => _isCollectionEnabled; set { if (Set(ref _isCollectionEnabled, value)) { NotifyMetrics(); OnPropertyChanged(nameof(CanEditMarket)); } } }
-    public bool CanEditMarket => !IsBusy && Session is null && !ReaderAttached && !IsCollectionEnabled;
+    public bool MarketCollectionEnabled { get => _marketCollectionEnabled; set { if(Set(ref _marketCollectionEnabled,value)) { OnPropertyChanged(nameof(CollectionToggleLabel)); OnPropertyChanged(nameof(NextBrokerLabel)); } } }
+    public int AccountProcessCount { get => _accountProcessCount; set { if(Set(ref _accountProcessCount,value)) { OnPropertyChanged(nameof(ProcessLabel));OnPropertyChanged(nameof(CanEditMarket)); } } }
+    public string AccountsStatus { get => _accountsStatus; set => Set(ref _accountsStatus,value); }
+    public bool OneTraderPerTurn { get; set; }
+    public bool CanEditMarket => AccountProcessCount==0 && !IsBusy && Session is null && !ReaderAttached && !IsCollectionEnabled;
 
     public bool TryChangeMarket(string previousMarket, string requestedMarket)
     {
@@ -58,6 +66,10 @@ public sealed partial class ProfileRuntime : INotifyPropertyChanged
         return true;
     }
     public RadarSnapshot? Radar { get => _radar; set { if (Set(ref _radar, value)) { NotifyRadarCounts(); NotifyMetrics(); } } }
+    public RadarSnapshot? MarketRadar { get => _marketRadar; set { if (Set(ref _marketRadar,value)) OnPropertyChanged(nameof(MarketRadarCountLabel)); } }
+    public string MarketRadarCountLabel => MarketRadar is null ? "—" : $"{MarketRadar.Traders.Count:N0} · снимок {MarketRadar.CapturedAtUtc.ToLocalTime():HH:mm:ss}";
+    public string ServerPriceCountLabel => Cycle.ServerCurrentPriceTraders is int count
+        ? $"{count:N0} · сервер {Cycle.ServerPriceCountAt?.ToLocalTime():HH:mm:ss}" : "ожидание сервера";
     public BrokerSnapshot? Broker { get => _broker; set { if (Set(ref _broker, value)) NotifyMetrics(); } }
     public PriceCheck.Collector.Services.BrokerDeliveryStatus? BrokerDelivery
     {
@@ -65,11 +77,13 @@ public sealed partial class ProfileRuntime : INotifyPropertyChanged
         set { if (Set(ref _brokerDelivery,value)) OnPropertyChanged(nameof(BrokerSentTraderCount)); }
     }
     public string BrokerSentTraderCount => BrokerDelivery is null ? "—" : $"{BrokerDelivery.Accepted:N0} / {BrokerDelivery.Traders:N0}";
-    public MarketCycleStatus Cycle { get => _cycle; set { if (Set(ref _cycle, value)) OnPropertyChanged(nameof(NextBrokerLabel)); } }
-    public string NextBrokerLabel => IsCollectionEnabled ? "Следующий брокер: после прохода цен" : "Сбор остановлен";
+    public MarketCycleStatus Cycle { get => _cycle; set { if (Set(ref _cycle, value)) { OnPropertyChanged(nameof(NextBrokerLabel)); OnPropertyChanged(nameof(ServerPriceCountLabel)); } } }
+    public string NextBrokerLabel => IsCollectionEnabled || MarketCollectionEnabled ? "Следующий брокер: после прохода цен" : "Сбор остановлен";
 
     public string RoleLabel => "СБОРЩИК";
-    public string ProcessLabel => ProcessId is int pid ? $"PID {pid}" : "Нет процесса";
+    public string ProcessLabel => AccountProcessCount>1 ? $"{AccountProcessCount} клиентов" :
+        ProcessId is int pid ? $"PID {pid}" :
+        AccountProcessCount==1 ? "1 клиент" : "Нет процесса";
     public string RadarTraderCount => Radar is null ? "—" : $"{Radar.Traders.Count:N0} / {Radar.VisibleTraders:N0}";
     public string CenterZoneLabel => SavedGiranCenter.Resolve(Profile) is { } center
         ? $"X {center.X:N0}  ·  Y {center.Y:N0}"
@@ -78,10 +92,10 @@ public sealed partial class ProfileRuntime : INotifyPropertyChanged
         ? "Центр не задан"
         : Radar is null ? "Позиция появится после запуска клиента"
         : !Radar.CenterZoneConfigured ? "Позиция недоступна"
-        : !IsCollectionEnabled
+        : !IsCollectionEnabled && !MarketCollectionEnabled
             ? "Сбор остановлен"
             : Radar.IsInsideCenterZone ? "В зоне наблюдения" : "Маршрут цен · вне центра";
-    public string CollectionToggleLabel => IsCollectionEnabled ? "Остановить сбор" : "Начать сбор";
+    public string CollectionToggleLabel => IsCollectionEnabled || MarketCollectionEnabled ? "Остановить сбор" : "Начать сбор";
     public string CurrentPositionLabel => Radar is null
         ? "Текущая позиция недоступна"
         : $"Сейчас X {Radar.PlayerX:N0}  ·  Y {Radar.PlayerY:N0}";

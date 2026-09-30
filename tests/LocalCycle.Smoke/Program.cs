@@ -13,6 +13,16 @@ var boundary=new CycleRadarPool([[-10000,-10000],[10000,-10000],[10000,10000],[-
 var center=new MarketZone(0,0,500);
 var checks=0;
 void Check(bool ok,string name){if(!ok)throw new Exception(name);Console.WriteLine("PASS "+name);checks++;}
+using(var roster=JsonDocument.Parse($$"""
+    [{"isActive":true,"kioskType":1,"lastReadAtUtc":"{{time.AddHours(-1):O}}","verificationRequiredAtUtc":"{{time.AddHours(-2):O}}","lastReadKioskType":1},
+     {"isActive":true,"kioskType":1,"lastReadAtUtc":"{{time.AddHours(-3):O}}","verificationRequiredAtUtc":"{{time.AddHours(-2):O}}","lastReadKioskType":1},
+     {"isActive":false,"kioskType":1,"lastReadAtUtc":"{{time.AddHours(-1):O}}"},
+     {"isActive":true,"kioskType":1,"lastReadAtUtc":"{{time.AddHours(-1):O}}","lastReadKioskType":3},
+     {"isActive":true,"kioskType":3,"lastReadAtUtc":"{{time.AddHours(-25):O}}"}]
+    """))
+    Check(LocalCycleStore.CountCurrentServerPrices(roster.RootElement,time,24)==1,
+        "server count excludes stale, invalidated, closed and type-changed prices");
+MarketPreviewTests.Run(root);
 Check(profile.TraderPauseSeconds==30,"trader pause defaults to thirty seconds");
 var migratedPause=JsonSerializer.Deserialize<CollectorProfile>("{\"NewTargetIntervalSeconds\":45}")!;
 Check(migratedPause.TraderPauseSeconds==45,"old new-target interval migrates to trader pause");
@@ -26,6 +36,10 @@ ShopCaptureFile Capture(string id,CycleTarget target)=>new(){SnapshotId=id,Preci
 
 using(var store=new LocalCycleStore(profile,root,()=>time))
 {
+    var centerRadar=Frame(Point("Shared",oid:11));
+    store.RecordMarketRadar(centerRadar);
+    store.RecordMarketRadar(new RadarSnapshot{CapturedAtUtc=time.AddSeconds(-1)});
+    Check(store.MarketRadar?.Traders.Single().Name=="Shared","market radar retains latest complete center snapshot across account turns");
     store.BeginSession("client1");store.Observe(Frame(Point()),boundary,center,time.AddSeconds(-1));
     store.BeginPass(0,0,boundary);var original=store.NextTargets().Single();
     time=time.AddMilliseconds(1);Check(store.Commit(original,Capture("shop-first",original)),"full shop durable commit");

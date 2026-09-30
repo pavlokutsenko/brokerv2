@@ -11,6 +11,7 @@ internal sealed class SuspendedClientProcess : IDisposable
     private ProcessInfo _native;
     private bool _resumed;
     public Process Process { get; }
+    internal nint NativeHandle => _native.Process;
     public SuspendedClientProcess(ProcessStartInfo start)
     {
         var environment = string.Join('\0', start.Environment.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)

@@ -53,13 +53,17 @@ def run_section(client,config,output):
         def progress(value):
             write(status,{**value,'mode':config['mode'],'elapsed':round(time.monotonic()-started,1)})
         try:
+            if 'readerStartupSeconds' in config:
+                log({'type':'reader_startup','seconds':config['readerStartupSeconds']})
             if client.cancelled(): results['reason']='cancelled';return results
             if shops and config['mode']=='prices' and hasattr(shops,'wait_after_capture'):
                 pause_result,_=shops.wait_after_capture(client,log,progress)
                 if pause_result!='ready':
                     results['reason']=pause_result;return results
             if not client.owned:
+                phase=time.monotonic();publish('Checking the client navigation capsule')
                 client.wait_navigation_capsule();client.install()
+                log({'type':'native_install','seconds':round(time.monotonic()-phase,3)})
             client.navigation_rules=data.get('navigationRules',{})
             guard=getattr(client,'route_guard',None)
             if guard is None:
@@ -67,6 +71,7 @@ def run_section(client,config,output):
             # A price pass can end inside a floor area hidden by the same broad
             # 3D projection. The return route must use the matching map.
             route_data=price_navigation_data(data)
+            phase=time.monotonic();publish('Loading surveyed route geometry')
             cached_navigation=prepared_navigation(config,data,client.execution_clearance) if config['mode']=='prices' else None
             cached_navigation=cached_navigation or getattr(client,'route_navigation',None)
             prepared=accept_prepared(config,data,client.position()[:2],client.execution_clearance,cached_navigation) if config['mode']=='prices' else None
@@ -74,6 +79,8 @@ def run_section(client,config,output):
             # The route planner uses 55 units. Escaping only the narrower
             # execution margin can leave the starting point invalid for A*.
             planning=cached_navigation[0].fork() if cached_navigation else Navigation(route_data)
+            log({'type':'navigation_geometry','seconds':round(time.monotonic()-phase,3),
+                 'prepared':cached_navigation is not None})
             if config['mode']=='prices':
                 client.route_navigation=(planning.fork(),execution.fork())
             client.section_handoff=bool(config.get('continuousSession'))
@@ -117,7 +124,9 @@ def run_section(client,config,output):
                     # host-assigned retry needs a fresh native approach again.
                     shops.unavailable_keys.difference_update(shops.local_section_keys)
                 if new_reader:
-                    publish('Preparing nearby shop reader');shops.prepare();shops.start()
+                    phase=time.monotonic();publish('Preparing nearby shop reader')
+                    shops.prepare();shops.start()
+                    log({'type':'shop_reader_setup','seconds':round(time.monotonic()-phase,3)})
                 log({'type':'reader_session','reused':not new_reader,'pid':client.pid})
                 if not targets:
                     # Bootstrap the same reader; pooled packet coordinates only

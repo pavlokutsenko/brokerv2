@@ -25,7 +25,7 @@ internal static class Program
         var settings = Path.Combine(output, "settings"); Directory.CreateDirectory(settings);
         var profileId = Guid.NewGuid(); var templateId = Guid.NewGuid();
         const string seed = "0123456789ABCDEF0123456789ABCDEF";
-        var profile = new CollectorProfile { Id = profileId, Name = "Gamma", LaunchTemplateId = templateId };
+        var profile = new CollectorProfile { Id = profileId, Name = "Gamma", LoginName="fixture-account", LaunchTemplateId = templateId };
         new ProfileStore(settings).SaveAsync([profile]).GetAwaiter().GetResult();
         var templateStore = new LaunchTemplateStore(settings);
         templateStore.SaveAsync([new() { Id = templateId, Name = "Fixture", HardwareEnabled = true,
@@ -37,6 +37,8 @@ internal static class Program
             firstMigration.SqmMachineId == secondMigration.SqmMachineId,
             "New identity fields change between loads of a fixed template.");
         var inventory = Task.Run(HardwareInventoryService.Scan).GetAwaiter().GetResult();
+        foreach (var error in inventory.Where(row => row.Coverage is "Scan unavailable" or "Access denied"))
+            Console.WriteLine($"INVENTORY_UNAVAILABLE {error.Label}: {error.CurrentValue}");
         Check(inventory.Any(row => row.Coverage == "SetupAPI/CM · hooked"),
             "USB/HID API inventory is unavailable.");
         Check(inventory.Any(row => row.Label == "WMI · System UUID" &&
@@ -51,7 +53,7 @@ internal static class Program
             "USB/HID or WMI preview does not match the selected template.");
         var references = typeof(MainWindow).Assembly.GetReferencedAssemblies()
             .Concat(typeof(PriceCheck.Launching.LaunchModule).Assembly.GetReferencedAssemblies())
-            .Concat(typeof(PriceCheck.Collector.LaunchPanelView).Assembly.GetReferencedAssemblies());
+            .Concat(typeof(PriceCheck.Collector.AccountLaunchPanelView).Assembly.GetReferencedAssemblies());
         Check(!references.Any(value => value.Name is "PriceCheck.Collection" or "PriceCheck.Collector"), "Launcher depends on collection or its desktop host.");
         var app = new App(false); app.InitializeComponent();
         VerifyEmptyTemplateEditor(app, output);
@@ -78,9 +80,11 @@ internal static class Program
         Check(tabs.Items.Count == 2 && profileTabs.Items.Count == 2 &&
             !profileTabs.Items.Cast<TabItem>().Any(value => value.Header.ToString()!.Contains("Сбор")),
             "Launcher should show profile launch/log and shared templates, without collection UI.");
-        var panel = (PriceCheck.Collector.LaunchPanelView)window.FindName("LaunchPanel")!;
-        var hwid = (TextBlock)panel.FindName("HardwareProtectionIndicator")!;
-        var proxy = (TextBlock)panel.FindName("ProxyProtectionIndicator")!;
+        var panel = (PriceCheck.Collector.AccountLaunchPanelView)window.FindName("LaunchPanel")!;
+        Check(window.AccountItems.Count==1 && window.AccountItems[0].TemplateName=="Fixture",
+            "Launcher did not show the account and its own template.");
+        var hwid = (TextBlock)FindVisual<TextBlock>(panel,value=>value.Text.Contains("HWID"));
+        var proxy = (TextBlock)FindVisual<TextBlock>(panel,value=>value.Text.Contains("ПРОКСИ"));
         Check(hwid.Text.Contains("не проверен") && proxy.Text.Contains("не проверен"), "Unverified indicators displayed success.");
         window.SelectedRuntime.Protection = new(true, true, true, 2, 69, 13, "FIXTURE123", null); Pump(app);
         Check(hwid.Text.Contains("FIXTURE123") && proxy.Text.Contains("2 CONNECT"), "Protection status did not bind in Launcher.");
@@ -88,11 +92,19 @@ internal static class Program
         window.SelectedRuntime.Protection = window.SelectedRuntime.Protection with { Error = "HWID: Synthetic protection failure" }; Pump(app);
         Check(hwid.Text.Contains("ОШИБКА") && proxy.Text.Contains("ОШИБКА"), "Failed protection displayed success.");
         window.SelectedRuntime.Protection = PriceCheck.Contracts.ClientProtectionStatus.Pending; Pump(app);
-        var login = (CheckBox)FindVisual<CheckBox>(panel, value => Equals(value.Content, "Автовход"));
-        login.IsChecked = true; Pump(app);
-        Check(new ProfileStore(settings).LoadAsync().GetAwaiter().GetResult().Single().AutoLoginEnabled, "Launcher profile changes were not saved.");
+        Check(!new ProfileStore(settings).LoadAsync().GetAwaiter().GetResult().Single().AutoLoginEnabled,
+            "Account launch unexpectedly enabled automatic login.");
         var templates = (PriceCheck.Collector.LaunchTemplatesView)window.FindName("TemplatesView")!;
         tabs.SelectedItem = window.FindName("TemplatesTab"); Pump(app);
+        var scanStatus = (TextBlock)templates.FindName("ScanStatusText")!;
+        var scanDeadline = DateTime.UtcNow.AddSeconds(15);
+        while (!scanStatus.Text.StartsWith("Найдено:") && DateTime.UtcNow < scanDeadline)
+        { Pump(app); Thread.Sleep(20); }
+        Check(templates.ScanRows.Count > 0 && scanStatus.Text.StartsWith("Найдено:"), "Opening templates did not complete the automatic hardware scan.");
+        Check(templates.ScanRows.Any(row => row.RegistryValueName == "MachineGuid" &&
+            row.TargetValue == templates.Templates.Single().Identity.MachineGuid), "Automatic scan preview did not use the selected template.");
+        ((Expander)templates.FindName("ScanDetails")!).IsExpanded = true; Pump(app);
+        Render(window, Path.Combine(output, "launcher-hardware-scan.png"));
         ((CheckBox)templates.FindName("ProxyToggle")!).IsChecked = true;
         ((TextBox)templates.FindName("ProxyHostInput")!).Text = "127.0.0.1";
         var port = (TextBox)templates.FindName("ProxyPortInput")!;
@@ -158,6 +170,9 @@ internal static class Program
         var newButton = (Button)view.FindName("NewTemplateButton")!;
         newButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); Pump(app);
         Check(view.Templates.Select(value => value.Name).Distinct().Count() == 2, "New templates received duplicate names.");
+        Check(view.Templates.All(value => value.MemoryBudgetEnabled && value.MemoryBudgetMiB == 3072 &&
+            !value.CpuBudgetEnabled && value.CpuBudgetPercent == 20),
+            "New templates must default to a 3 GiB memory limit and an unlimited CPU.");
         var delete = (Button)view.FindName("DeleteTemplateButton")!;
         delete.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         delete.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); Pump(app);

@@ -6,13 +6,6 @@ namespace PriceCheck.Collector;
 
 public partial class MainWindow
 {
-    private async void LaunchTemplateSelection_Changed(object sender, SelectionChangedEventArgs e)
-    {
-        if (!CanSaveProfileFields(sender)) return;
-        OnPropertyChanged(nameof(SelectedTemplateSummary));
-        await SaveProfilesAsync();
-    }
-
     private void ManageTemplates_Click(object sender, RoutedEventArgs e) => MainTabs.SelectedItem = TemplatesTab;
 
     private void SidebarProfileSelected(object sender, RoutedEventArgs e) => MainTabs.SelectedItem = ProfilesTab;
@@ -30,10 +23,17 @@ public partial class MainWindow
         LaunchTemplates.Add(new LaunchTemplate { Id = Guid.Empty, Name = "Без шаблона", HardwareEnabled = false });
         foreach (var template in updated) LaunchTemplates.Add(template);
         foreach (var runtime in Runtimes)
+        {
             if (!updated.Any(value => value.Id == runtime.Profile.LaunchTemplateId))
                 runtime.Profile.LaunchTemplateId = Guid.Empty;
+            foreach(var account in runtime.Profile.RotationAccounts)
+                if(!updated.Any(value=>value.Id==account.LaunchTemplateId))account.LaunchTemplateId=Guid.Empty;
+            foreach(var child in _accountRuntimes.GetValueOrDefault(runtime.Profile.Id,[]))
+                if(!updated.Any(value=>value.Id==child.Profile.LaunchTemplateId))child.Profile.LaunchTemplateId=Guid.Empty;
+        }
         OnPropertyChanged(nameof(SelectedRuntime));
         OnPropertyChanged(nameof(SelectedTemplateSummary));
+        RefreshAccountItems();
         await SaveTemplatesAsync();
         await SaveProfilesAsync();
     }

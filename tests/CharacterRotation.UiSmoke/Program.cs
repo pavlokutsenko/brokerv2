@@ -11,92 +11,90 @@ internal static class Program
 {
     [STAThread] private static void Main(string[] args)
     {
-        if(args is ["--accounts-only",var accountsOutput])
-        {
-            var accountsApp=new App(enableRuntime:false);accountsApp.InitializeComponent();
-            var accountsWindow=new MainWindow(false){ShowInTaskbar=false,Left=-20000,Top=-20000};
-            accountsWindow.Show();
-            CheckAccountEditor(accountsWindow,accountsOutput);
-            accountsWindow.Close();accountsApp.Shutdown();
-            Console.WriteLine("ROTATION_ACCOUNTS_UI_OK add masked_list layout");
-            return;
-        }
+        var output=Path.GetFullPath(args[^1]);
         var app=new App(enableRuntime:false);app.InitializeComponent();
-        var runtime=new ProfileRuntime{Profile=new(){AutoLoginEnabled=true,LoginName="primary",LoginPassword="test-secret",RotationCharacterCount=7},
-            CharacterRotationStatus="Character 0 of 7 · next change 17:30:00 · 60.0 min",LaunchStatus="Client ready"};
+        var template=new LaunchTemplate{Name="Account HWID"};
+        var profile=new CollectorProfile{LoginName="first",LoginPassword="secret",
+            LaunchTemplateId=template.Id,AutoLoginEnabled=true};
+        var runtime=new ProfileRuntime{Profile=profile};
         var window=new MainWindow(false){ShowInTaskbar=false,Left=-20000,Top=-20000};
-        window.Runtimes.Add(runtime);window.SelectedRuntime=runtime;
-        window.Show();app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
-        var view=(LaunchPanelView)window.FindName("LaunchPanel")!;
-        runtime.Protection=new(true,true,true,2,69,13,"FIXTURE123",null);
-        app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
-        if(!((TextBlock)view.FindName("HardwareProtectionIndicator")!).Text.Contains("FIXTURE123") ||
-            !((TextBlock)view.FindName("ProxyProtectionIndicator")!).Text.Contains("2 CONNECT"))
-            throw new Exception("Collector protection indicators did not bind to the selected runtime.");
-        runtime.Protection = runtime.Protection with { ProxyReady = false, ProxyRequired = false };
-        app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
-        var proxyIndicator = (TextBlock)view.FindName("ProxyProtectionIndicator")!;
-        if (!proxyIndicator.Text.Contains("выключен в шаблоне") ||
-            ((SolidColorBrush)proxyIndicator.Foreground).Color != Color.FromRgb(0x8F,0x9C,0xAB))
-            throw new Exception("Disabled proxy was displayed as an error or active protection.");
-        var toggle=(CheckBox)view.FindName("RotationToggle")!;
-        var interval=(TextBox)view.FindName("RotationIntervalInput")!;
-        var jitter=(TextBox)view.FindName("RotationJitterInput")!;
-        var restart=(CheckBox)view.FindName("AutoRestartToggle")!;
-        if(restart.IsChecked!=true) throw new Exception("Client recovery is not enabled by default.");
-        restart.IsChecked=false;
-        if(runtime.Profile.AutoRestartEnabled) throw new Exception("Recovery toggle did not update the profile.");
-        restart.IsChecked=true;
-        if(interval.Text!="60" || jitter.Text!="15" || toggle.IsChecked!=false) throw new Exception("Rotation defaults not visible.");
-        toggle.IsChecked=true;
-        interval.Text="90";interval.GetBindingExpression(TextBox.TextProperty)!.UpdateSource();
-        jitter.Text="10";jitter.GetBindingExpression(TextBox.TextProperty)!.UpdateSource();
-        if(!runtime.Profile.CharacterRotationEnabled || runtime.Profile.RotationIntervalMinutes!=90 || runtime.Profile.RotationJitterMinutes!=10)
-            throw new Exception("Rotation controls do not update the selected profile.");
-        interval.Text="60";jitter.Text="15";
-        CheckAccountEditor(window,Path.Combine(Path.GetDirectoryName(Path.GetFullPath(args[0]))!,"rotation-accounts.png"));
-        runtime.CharacterRotationStatus="Character 0 of 7 · next change 17:30:00 · 60.0 min";
-        var collection=(CollectionPanelView)window.FindName("CollectionPanel")!;
-        if(((TextBlock)collection.FindName("CharacterRotationCountdown")!).Text!=runtime.CharacterRotationStatus)
-            throw new Exception("Collection panel does not show the actual rotation clock.");
+        window.LaunchTemplates.Add(template);window.Runtimes.Add(runtime);window.SelectedRuntime=runtime;
+        window.Show();Pump(app);
+        var panel=(AccountLaunchPanelView)window.FindName("LaunchPanel")!;
+        Check(window.AccountItems.Count==1 && window.AccountItems[0].TemplateName=="Account HWID",
+            "Account list did not show its launch template.");
+        var hardware=FindText(panel,"HWID ·");
+        var proxy=FindText(panel,"ПРОКСИ ·");
+        runtime.Protection=new(true,true,true,2,69,13,"FIXTURE123",null);Pump(app);
+        Check(hardware.Text.Contains("FIXTURE123") && proxy.Text.Contains("2 CONNECT"),
+            $"Per-account protection did not bind (HWID={hardware.Text}; proxy={proxy.Text}).");
+        runtime.Protection=runtime.Protection with{ProxyReady=false,ProxyRequired=false};Pump(app);
+        Check(proxy.Text.Contains("отключён в шаблоне"),"Disabled proxy was displayed as active.");
+
+        var second=new LaunchTemplate{Name="Second HWID"};
+        var dialog=new AccountEditorDialog(window,null,[template,second],["first"],[template.Id])
+            {ShowInTaskbar=false};
+        dialog.Dispatcher.BeginInvoke(new Action(()=>
+        {
+            ((TextBox)dialog.FindName("LoginInput")!).Text="second";
+            ((ComboBox)dialog.FindName("TemplateInput")!).SelectedValue=second.Id;
+            FindButton(dialog,"Сохранить").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }),DispatcherPriority.ApplicationIdle);
+        dialog.ShowDialog();
+        Check(dialog.Settings is {LoginName:"second",AutoLogin:false,Password:""} && dialog.DialogResult==true,
+            "Manual account setup did not allow an empty saved password.");
+
+        var rotation=new AccountEditorDialog(window,profile,[template],[],[]){ShowInTaskbar=false};
+        rotation.Dispatcher.BeginInvoke(new Action(()=>
+        {
+            Check(((TextBox)rotation.FindName("PasswordInput")!).Text=="secret",
+                "Saved password is not visible in the account editor.");
+            var autoLogin=(CheckBox)rotation.FindName("AutoLoginInput")!;
+            autoLogin.IsChecked=false;
+            var rotate=(CheckBox)rotation.FindName("RotationInput")!;
+            Check(rotate.IsChecked==false && !rotate.IsEnabled,
+                "Manual login did not release character rotation.");
+            autoLogin.IsChecked=true;
+            ((CheckBox)rotation.FindName("RotationInput")!).IsChecked=true;
+            ((TextBox)rotation.FindName("IntervalInput")!).Text="90";
+            ((TextBox)rotation.FindName("JitterInput")!).Text="10";
+            FindButton(rotation,"Сохранить").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }),DispatcherPriority.ApplicationIdle);
+        rotation.ShowDialog();
+        Check(rotation.Settings is {Rotate:true,Interval:90,Jitter:10},
+            "Per-account character rotation settings were not saved by the editor.");
+
         window.UpdateLayout();
-        var bitmap=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);bitmap.Render(window);
-        var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(args[0]))!);
-        using(var output=File.Create(args[0])) encoder.Save(output);
-        var closing=typeof(MainWindow).GetMethod("MainWindow_Closing",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic)!;
-        window.Closing+=(sender,e)=>closing.Invoke(window,[sender,e]);
-        window.Close();app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
-        if(window.IsVisible) throw new Exception("Idle collector close was canceled or remained stuck.");
-        app.Shutdown();Console.WriteLine("CHARACTER_ROTATION_UI_OK defaults editable_fields toggle recovery idle_close");
+        var image=new RenderTargetBitmap((int)window.ActualWidth,(int)window.ActualHeight,96,96,PixelFormats.Pbgra32);
+        image.Render(window);
+        var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        using(var stream=File.Create(output))encoder.Save(stream);
+        window.Close();app.Shutdown();
+        Console.WriteLine("ACCOUNT_UI_OK uniform_list manual_login account_template rotation_editor");
     }
 
-    private static void CheckAccountEditor(MainWindow window,string output)
+    private static void Check(bool value,string message)
+    {if(!value)throw new Exception(message);}
+    private static void Pump(Application app)=>app.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
+    private static Button FindButton(DependencyObject parent,string label)
     {
-        var previous=window.SelectedRuntime;
-        var profile=new CollectorProfile{LoginName="primary",LoginPassword="primary-secret"};
-        var runtime=new ProfileRuntime{Profile=profile};
-        window.Runtimes.Add(runtime);window.SelectedRuntime=runtime;
-        window.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
-        var view=(LaunchPanelView)window.FindName("LaunchPanel")!;
-        if(!((Button)view.FindName("RotationAccountsButton")!).IsEnabled)
-            throw new Exception("Account editor unavailable for a stopped profile.");
-        var accounts=new RotationAccountsDialog(window,profile){ShowInTaskbar=false};
-        accounts.Show();window.Dispatcher.Invoke(()=>{},DispatcherPriority.ApplicationIdle);
-        var name=(TextBox)accounts.FindName("LoginInput")!;
-        var password=(PasswordBox)accounts.FindName("PasswordInput")!;
-        name.Text="secondary";password.Password="secondary-secret";
-        ((Button)accounts.FindName("SaveAccountButton")!).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        if(accounts.Accounts.Count!=1 || accounts.Accounts[0].LoginName!="secondary" ||
-           accounts.Accounts[0].LoginPassword!="secondary-secret")
-            throw new Exception("Rotation account editor did not add an account draft.");
-        accounts.UpdateLayout();
-        var bitmap=new RenderTargetBitmap((int)accounts.ActualWidth,(int)accounts.ActualHeight,96,96,PixelFormats.Pbgra32);
-        bitmap.Render(accounts);
-        var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
-        using(var stream=File.Create(output))encoder.Save(stream);
-        accounts.Close();
-        window.SelectedRuntime=previous;
+        for(var i=0;i<VisualTreeHelper.GetChildrenCount(parent);i++)
+        {
+            var child=VisualTreeHelper.GetChild(parent,i);
+            if(child is Button button && Equals(button.Content,label))return button;
+            try{return FindButton(child,label);}catch(InvalidOperationException){}
+        }
+        throw new InvalidOperationException("Button not found: "+label);
+    }
+    private static TextBlock FindText(DependencyObject parent,string value)
+    {
+        for(var i=0;i<VisualTreeHelper.GetChildrenCount(parent);i++)
+        {
+            var child=VisualTreeHelper.GetChild(parent,i);
+            if(child is TextBlock text && text.Text.Contains(value))return text;
+            try{return FindText(child,value);}catch(InvalidOperationException){}
+        }
+        throw new InvalidOperationException("Text not found: "+value);
     }
 }

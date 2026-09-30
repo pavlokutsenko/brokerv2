@@ -14,4 +14,6 @@ public interface IClientProcessService
     Task ActivateLateAgentAsync(int pid, CancellationToken cancellationToken);
     PriceCheck.Contracts.ClientProtectionStatus Protection(int pid);
     Task ValidateProtectionAsync(int pid, bool requireWorld, CancellationToken cancellationToken);
+    Task ApplyMemoryBudgetAsync(ClientSession session, int maximumMiB, CancellationToken token) =>
+        Task.FromException(new NotSupportedException("This process service does not support resident-memory budgets."));
 }

@@ -208,3 +208,6 @@ HWID bit 1, отсутствие native error, controller_ready и свежес�
 чужое время создания PID, отсутствие HWID и stale heartbeat отклоняются.
 Перенос и запуск второго профиля на другом ПК требуют повторной пользовательской
 проверки. Локальная приёмка: [checkpoint](analysis/launcher-second-profile/RESUME.md).
+
+Автоматический скан HWID, изоляция шаблонов и границы нового режима драйвера:
+[Hardware identity](HARDWARE_IDENTITY.md).

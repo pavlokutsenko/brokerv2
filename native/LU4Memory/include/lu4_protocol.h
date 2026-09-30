@@ -207,3 +207,45 @@ typedef struct _LU4_PROXY_REDIRECT_CONTEXT {
     USHORT PortNetworkOrder;
     USHORT Reserved;
 } LU4_PROXY_REDIRECT_CONTEXT, *PLU4_PROXY_REDIRECT_CONTEXT;
+
+/* Additive per-process registry identity. Never writes Windows registry values. */
+#define IOCTL_LU4_SET_PROCESS_IDENTITY \
+    CTL_CODE(LU4_DEVICE_TYPE, 0x812, METHOD_BUFFERED, FILE_WRITE_DATA)
+#define LU4_PROCESS_IDENTITY_CAPABILITIES 15u /* GUIDs, EDID, additional registry identity */
+
+/* Resident working-set policy; never caps committed memory or frees allocations. */
+#define IOCTL_LU4_SET_WORKING_SET \
+    CTL_CODE(LU4_DEVICE_TYPE, 0x813, METHOD_BUFFERED, FILE_WRITE_DATA)
+#define LU4_WORKING_SET_APPLY 1u
+#define LU4_WORKING_SET_RESTORE 2u
+typedef struct _LU4_WORKING_SET_REQUEST {
+    ULONG Version;
+    ULONG ProcessId;
+    ULONGLONG CreationTime;
+    ULONGLONG MinimumBytes;
+    ULONGLONG MaximumBytes;
+    ULONG Flags;
+    ULONG Operation;
+    LONG Status;
+    ULONG Reserved;
+} LU4_WORKING_SET_REQUEST, *PLU4_WORKING_SET_REQUEST;
+typedef struct _LU4_PROCESS_IDENTITY_REQUEST {
+    ULONG Version;
+    ULONG ProcessId;
+    ULONGLONG CreatedTime;
+    GUID ProfileId;
+    WCHAR MachineGuid[40];
+    WCHAR HardwareProfileGuid[40];
+    WCHAR SystemUuid[40];
+    ULONG Capabilities;
+    ULONG Reserved;
+    WCHAR ProductId[64];
+    WCHAR SusClientId[40];
+    WCHAR SqmMachineId[40];
+    WCHAR VideoIdentifier[40];
+    WCHAR ComputerName[64];
+    WCHAR ProcessorModel[128];
+    UCHAR ProcessorRevision[8];
+    ULONG InstallDate;
+    ULONG Reserved2;
+} LU4_PROCESS_IDENTITY_REQUEST, *PLU4_PROCESS_IDENTITY_REQUEST;

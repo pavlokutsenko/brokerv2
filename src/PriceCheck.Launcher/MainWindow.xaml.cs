@@ -20,7 +20,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly ClientRecoveryService _recovery;
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private LaunchRuntime? _selected;
-    private bool _loaded, _syncingPassword, _syncingProfileFields, _refreshing, _closing, _closeReady;
+    private bool _loaded, _refreshing, _closing, _closeReady;
     public string? StartupProfiles { get; init; }
     public ObservableCollection<LaunchRuntime> Runtimes { get; } = [];
     public ObservableCollection<LaunchTemplate> LaunchTemplates { get; } = [new() { Id = Guid.Empty, Name = "Без шаблона", HardwareEnabled = false }];
@@ -37,11 +37,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         set
         {
             if (_selected == value) return;
-            var wasSyncing = _syncingProfileFields;
-            _syncingProfileFields = true;
-            try { _selected = value; Changed(); Changed(nameof(CharacterOptions));
-                Changed(nameof(SelectedTemplateSummary)); SyncPassword(); }
-            finally { _syncingProfileFields = wasSyncing; }
+            _selected = value; Changed(); Changed(nameof(CharacterOptions));
+            Changed(nameof(SelectedTemplateSummary));Changed(nameof(AccountItems));
             ProfileEvents?.Refresh();
         }
     }
@@ -73,6 +70,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     throw new InvalidDataException($"Нет шаблона для профиля «{profile.Name}». Скопируйте также launch-templates.json.");
                 Runtimes.Add(new() { Profile = profile });
             }
+            foreach(var runtime in Runtimes)RebuildAccountRuntimes(runtime);
             SelectedRuntime = Runtimes.FirstOrDefault();
             TemplatesView.SetTemplates(LaunchTemplates.Where(value => value.Id != Guid.Empty));
             _loaded = true; await SaveProfilesAsync(); _timer.Start(); Log("Лаунчер готов", system: true);
@@ -86,17 +84,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception) { Error(exception); }
     }
-    private Task SaveProfilesAsync() => _loaded ? _profiles.SaveAsync(Runtimes.Select(value => value.Profile)) : Task.CompletedTask;
-    private void SyncPassword()
+    private Task SaveProfilesAsync()
     {
-        if (LaunchPanel?.LoginPasswordBox is null) return;
-        _syncingPassword = true;
-        try { LaunchPanel.LoginPasswordBox.Password = SelectedRuntime?.Profile.LoginPassword ?? ""; }
-        finally { _syncingPassword = false; }
+        if(!_loaded)return Task.CompletedTask;
+        SyncAccountSettings();
+        return _profiles.SaveAsync(Runtimes.Select(value => value.Profile));
     }
     private void Log(string value, LaunchRuntime? runtime = null, bool system = false)
     {
-        var profile = system ? null : (runtime ?? SelectedRuntime)?.Profile;
+        var profile = system ? null : runtime is { } account ? RootOf(account).Profile : SelectedRuntime?.Profile;
         Events.Add(new(DateTimeOffset.Now, profile?.Id, profile?.Name ?? "Система", value));
         while (Events.Count > 500) Events.RemoveAt(0);
     }

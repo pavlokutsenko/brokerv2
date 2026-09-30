@@ -32,7 +32,7 @@ public sealed class CharacterRotationService
         var due=Schedule.Observe(profile,session,now);
         var remaining=due is null ? TimeSpan.Zero : TimeSpan.FromSeconds(Math.Ceiling(Math.Max(0,(due.Value-now).TotalSeconds)));
         return due is null ? "Only character 0 · no rotation needed" :
-            $"Account {profile.RotationAccountIndex+1}/{profile.RotationAccountCount} · Character {profile.CharacterSlot+1} of {profile.RotationCharacterCount} · switch in {(int)remaining.TotalHours:00}:{remaining:mm\\:ss} · at {due.Value.ToLocalTime():HH:mm:ss}";
+            $"Character {profile.CharacterSlot+1} of {profile.RotationCharacterCount} · switch in {(int)remaining.TotalHours:00}:{remaining:mm\\:ss} · at {due.Value.ToLocalTime():HH:mm:ss}";
     }
     public bool IsDue(CollectorProfile profile,ClientSession session,DateTimeOffset now)
     {

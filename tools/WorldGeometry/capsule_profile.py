@@ -1,7 +1,7 @@
 """Native-confirmed pawn sizes fitting the Giran 9 x 23 map envelope."""
 import math
 
-CONFIRMED_CAPSULES = ((9,23),(9,18),(5,19))
+CONFIRMED_CAPSULES = ((9,23),(9,18),(5,19),(7.5,23))
 
 def supported_capsule(radius,half_height):
     return (math.isfinite(radius) and math.isfinite(half_height)

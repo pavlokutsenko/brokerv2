@@ -64,12 +64,32 @@ if (view.Templates[0].ProxyHost != "127.0.0.1" || view.Templates[0].ProxyPort !=
     throw new Exception("Proxy input did not update the selected template.");
 
 IReadOnlyList<LaunchTemplate>? saved = null;
+var memoryToggle = (CheckBox)view.FindName("MemoryBudgetToggle")!;
+var memoryInput = (TextBox)view.FindName("MemoryBudgetInput")!;
+var cpuToggle = (CheckBox)view.FindName("CpuBudgetToggle")!;
+var cpuInput = (TextBox)view.FindName("CpuBudgetInput")!;
+if (memoryInput.IsEnabled) throw new Exception("Disabled budgets must disable their numeric input.");
+if (cpuInput.IsEnabled) throw new Exception("Disabled CPU budgets must disable their numeric input.");
+memoryToggle.IsChecked = true;
+memoryInput.Text = "4096";
+memoryInput.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+cpuToggle.IsChecked = true;
+cpuInput.Text = "20";
+cpuInput.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+if (!memoryInput.IsEnabled || !view.Templates[0].MemoryBudgetEnabled || view.Templates[0].MemoryBudgetMiB != 4096)
+    throw new Exception("Memory budget controls did not update the selected template.");
+if (!cpuInput.IsEnabled || !view.Templates[0].CpuBudgetEnabled || view.Templates[0].CpuBudgetPercent != 20)
+    throw new Exception("CPU budget controls did not update the selected template.");
 view.SaveRequested = values => { saved = values; return Task.CompletedTask; };
 save.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
 if (saved?.Count != 1 || !saved[0].ProxyEnabled || saved[0].ProxyPort != 50100)
     throw new Exception("Save did not receive the proxy configuration.");
 if (saved[0].Identity.WorldIdentitySeed != "0123456789ABCDEF0123456789ABCDEF")
     throw new Exception("Template editing lost the saved world identity seed.");
+if (!saved[0].MemoryBudgetEnabled || saved[0].MemoryBudgetMiB != 4096)
+    throw new Exception("Template cloning lost the saved resident-memory budget.");
+if (!saved[0].CpuBudgetEnabled || saved[0].CpuBudgetPercent != 20)
+    throw new Exception("Template cloning lost the saved CPU budget.");
 
 view.Measure(new Size(1024, 740));
 view.Arrange(new Rect(0, 0, 1024, 740));
